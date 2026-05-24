@@ -60,6 +60,21 @@ Version values should be quoted in YAML so semantic versions are always parsed a
 
 Dependency constraints in the manifest describe acceptable package versions. Exact released deployments should be recorded in a lockfile rather than by rewriting the manifest to include transient repository details.
 
+## SQLcl Project Compatibility
+
+Packages produced from SQLcl `project` workflows should still expose dbpm metadata. SQLcl project files, release folders, generated Liquibase changelogs, and `dist/install.sql` may be part of the package implementation, but they do not replace the dbpm manifest.
+
+A SQLcl project-based package may point a manifest script entry at the SQLcl-generated installer, for example:
+
+```yaml
+scripts:
+  install: dist/install.sql
+```
+
+Future manifest versions may add explicit runner metadata when dbpm needs to distinguish plain SQL*Plus scripts from SQLcl-only commands or a direct `project deploy` adapter. Until then, manifest entry points should remain SQL*Plus/SQLcl-compatible files wherever possible.
+
+Dependencies declared by a SQLcl project-based package should remain dependencies beyond Core. Core itself should continue to be represented by `core.minimum_version` and verified before deployment.
+
 ## Provenance
 
 The manifest should not contain the source commit hash for a built artifact. dbpm should resolve provenance from artifact metadata, such as `META-INF/<artifact>-build.properties`, and pass it into the deployment script at execution time.

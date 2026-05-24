@@ -71,6 +71,7 @@ The database is a first-class software platform deserving:
 dbpm should integrate naturally with:
 - SQL*Plus
 - SQLcl
+- SQLcl project workflows
 - PL/SQL
 - Oracle metadata
 - Oracle deployment workflows
@@ -78,6 +79,8 @@ dbpm should integrate naturally with:
 rather than forcing developers into unnatural abstractions.
 
 Consumer workflows should not require Maven or a JDK merely to retrieve a package. Maven-compatible repositories may be supported as a storage and publishing convention, but dbpm should resolve and download artifacts through plain HTTP(S) where possible.
+
+SQLcl `project` is a natural producer-side and execution integration point because it can export database objects, stage changes, create releases, generate artifacts, and deploy through SQLcl. dbpm should be able to coexist with that workflow by treating SQLcl project output as a possible package artifact or execution backend, while dbpm continues to own dependency resolution, Core verification, provenance injection, environment policy, and deployment orchestration.
 
 ### Declarative Over Manual
 
@@ -148,8 +151,9 @@ Integration with modern development workflows including:
 - Jenkins
 - Azure DevOps
 - GitLab CI
+- SQLcl project release and artifact workflows
 
-Producer workflows may use Maven, Gradle, GitHub Actions, or dbpm-native publishing commands to create and publish immutable artifacts. This producer-side flexibility should not leak into consumer installation requirements.
+Producer workflows may use Maven, Gradle, GitHub Actions, SQLcl `project`, or dbpm-native publishing commands to create and publish immutable artifacts. This producer-side flexibility should not leak into consumer installation requirements.
 
 ### Artifact-Based Deployments
 
@@ -158,6 +162,8 @@ Deployments should use immutable versioned artifacts rather than mutable collect
 Deployment provenance should come from artifact metadata whenever possible, including the artifact coordinates, source commit hash, dirty-state marker, and build time. Local source deployments may derive provenance from repository state, but committed deployment scripts should remain parameterized rather than embedding a specific commit hash.
 
 Applications should rely on local artifact caches and organization-controlled mirrors for resilience. If an upstream package is deleted, dbpm may still deploy the locked artifact from a trusted cache or mirror when the checksum matches. If the exact artifact cannot be found, dbpm should fail rather than substitute a different package.
+
+Artifacts produced by SQLcl `project` should follow the same dbpm expectations when consumed through dbpm: immutable identity, checksum verification, package metadata, Core requirements, dependencies beyond Core, and parameterized deployment entry points.
 
 ### Ecosystem Standardization
 

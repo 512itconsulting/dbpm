@@ -179,14 +179,60 @@ dbpm aims to replace this with:
 
 SQLcl is a powerful Oracle command-line client and scripting environment.
 
+SQLcl also includes the `project` command for Oracle database CI/CD workflows. A SQLcl project can:
+
+- initialize a database project repository
+- export database objects into source control
+- compare branches and stage changes
+- generate Liquibase changelogs or changesets
+- promote staged work into versioned releases
+- generate deployable artifacts
+- deploy those artifacts to a target database
+- verify snapshots, staged changes, and project state
+
+The `project` workflow is especially useful when a team wants Oracle-supported object export, Git-based change capture, and Liquibase-backed deployment artifacts.
+
 ## dbpm Relationship
 
-dbpm is complementary to SQLcl rather than competitive with it.
+dbpm is complementary to SQLcl rather than competitive with it. SQLcl `project` overlaps with dbpm around database change packaging and deployment execution, but it does not replace dbpm's package-management responsibilities.
+
+SQLcl `project` is primarily project and changelog oriented.
+
+dbpm is package and dependency oriented.
+
+dbpm should own:
+
+- artifact resolution
+- dependency solving across packages
+- deployment planning
+- Core prerequisite checks
+- provenance injection
+- environment policy evaluation
+- install, upgrade, reinstall, and repair mode selection
+- execution orchestration across one or more packages
+
+SQLcl `project` may be useful to dbpm as:
+
+- a producer-side workflow for creating deployable database artifacts
+- an artifact format dbpm can retrieve, verify, and deploy
+- an execution backend for packages that are authored as SQLcl projects
+- a source of generated Liquibase changelogs for schema evolution
+
+In that model, dbpm would still treat Core as an implicit substrate prerequisite, not as a normal package dependency. A SQLcl project artifact consumed by dbpm should still declare package identity, version, Core requirements, dependencies beyond Core, and deployment entry points in dbpm metadata.
 
 dbpm may eventually:
+
 - integrate with SQLcl
 - execute deployments through SQLcl
 - leverage SQLcl scripting capabilities
+- consume SQLcl project artifacts as package artifacts
+- wrap `project deploy` behind dbpm planning, policy, and provenance checks
+
+## Key Difference
+
+SQLcl `project` helps a project produce and deploy database changes.
+
+dbpm coordinates packages, dependencies, policy, provenance, and Core-backed installed state across database applications and reusable components.
 
 ---
 

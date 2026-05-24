@@ -54,9 +54,11 @@ If no configured trusted source can provide the locked artifact with the expecte
 
 ## Producer Flexibility
 
-Package producers may use Maven, Gradle, GitHub Actions, dbpm-native publishing, or another build workflow to publish immutable package archives.
+Package producers may use Maven, Gradle, GitHub Actions, SQLcl `project`, dbpm-native publishing, or another build workflow to publish immutable package archives.
 
 Producer tooling should create artifacts with stable dbpm manifests and generated provenance metadata. It should not force Maven concepts into the package manifest beyond optional repository coordinates and artifact metadata.
+
+SQLcl project artifacts should be treated as producer output, not as a replacement for dbpm package metadata. If a producer uses SQLcl `project gen-artifact`, dbpm should still require enough metadata to resolve package identity, version, Core requirements, dependencies beyond Core, provenance, and deployment entry points.
 
 ## MVP Status
 
