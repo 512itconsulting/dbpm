@@ -19,7 +19,10 @@ def execute_plan(plan: dict[str, object], *, connect: str, runner: str) -> int:
         raise ExecutionError("Plan execution arguments must be a list")
 
     command = [runner, "-L", connect, f"@{script_ref}", *[str(arg) for arg in arguments]]
-    result = subprocess.run(command, cwd=_cwd_for_script(script_ref))
+    try:
+        result = subprocess.run(command, cwd=_cwd_for_script(script_ref))
+    except FileNotFoundError as exc:
+        raise ExecutionError(f"SQL runner not found: {runner}") from exc
     if result.returncode != 0:
         raise ExecutionError(f"Deployment command failed with exit code {result.returncode}")
     return result.returncode

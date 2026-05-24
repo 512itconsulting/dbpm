@@ -5,6 +5,7 @@ import json
 import os
 import sys
 
+from .db import check_core
 from .environment import resolve_environment
 from .errors import DbpmError
 from .executor import execute_plan
@@ -21,6 +22,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "plan":
             plan = _build_plan(args.mode, args)
             _print_json(plan)
+            return 0
+        if args.command == "check-core":
+            result = check_core(
+                connect=_connect_string(args),
+                runner=args.runner,
+                minimum_version=args.minimum_version,
+            )
+            print(result.stdout.strip())
             return 0
         if args.command in {"bootstrap-core", "install", "reinstall"}:
             plan = _build_plan(args.command, args)
@@ -40,6 +49,10 @@ def main(argv: list[str] | None = None) -> int:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="dbpm")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    check = subparsers.add_parser("check-core", help="Verify Core is available in a target database")
+    _add_database_args(check)
+    check.add_argument("--minimum-version", help="Minimum Core version, such as 3.0.0")
 
     plan = subparsers.add_parser("plan", help="Generate a deployment plan")
     _add_common_args(plan)
@@ -78,11 +91,19 @@ def _add_common_args(parser: argparse.ArgumentParser) -> None:
 
 def _add_execution_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--dry-run", action="store_true", help="Print the plan without executing")
-    parser.add_argument("--connect", help="SQLPlus/SQLcl connect string")
+    _add_database_args(parser)
+
+
+def _add_database_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--connect",
+        default=os.environ.get("DBPM_CONNECT"),
+        help="SQLPlus/SQLcl connect string, default: DBPM_CONNECT",
+    )
     parser.add_argument(
         "--runner",
         default=os.environ.get("DBPM_SQL_RUNNER", "sqlplus"),
-        help="SQL runner executable, default: sqlplus",
+        help="SQL runner executable, default: DBPM_SQL_RUNNER or sqlplus",
     )
 
 
@@ -109,9 +130,13 @@ def _execute_or_explain(plan: dict[str, object], args: argparse.Namespace) -> No
         reasons = [*blocked, *approvals] if isinstance(blocked, list) and isinstance(approvals, list) else []
         raise DbpmError("; ".join(str(reason) for reason in reasons) or "Policy blocks execution")
 
+    execute_plan(plan, connect=_connect_string(args), runner=args.runner)
+
+
+def _connect_string(args: argparse.Namespace) -> str:
     if not args.connect:
-        raise DbpmError("Execution requires --connect, or use --dry-run to print the plan")
-    execute_plan(plan, connect=args.connect, runner=args.runner)
+        raise DbpmError("Database access requires --connect or DBPM_CONNECT")
+    return args.connect
 
 
 def _print_json(value: dict[str, object]) -> None:
