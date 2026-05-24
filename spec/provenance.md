@@ -29,6 +29,8 @@ build.time=2026-05-22T20:13:18Z
 
 For local source deployments, dbpm may derive provenance from repository state. This is useful during active development, but it should be visibly marked when the working tree is dirty.
 
+Dirty local deployments should be allowed only when the selected environment policy permits them. Released artifact deployments should normally require `git.dirty=false`.
+
 ## Injection
 
 Package deployment scripts should remain parameterized. dbpm should inject the resolved commit hash at execution time, typically by passing it as the first SQL*Plus/SQLcl argument:
@@ -39,8 +41,12 @@ Package deployment scripts should remain parameterized. dbpm should inject the r
 
 Committed wrappers should not hard-code commit hashes.
 
+Local convenience wrappers may exist, but they are not the authoritative dbpm execution path.
+
 ## Core Registry
 
 dbpm should pass the resolved 40-character source commit hash to Core through `pkg_application.begin_deployment_p`.
 
 Future Core/dbpm integration may record richer artifact metadata beyond the commit hash, including artifact coordinates, build time, and dirty-state policy.
+
+Until Core stores richer artifact metadata, dbpm should retain it in the deployment plan and execution logs.

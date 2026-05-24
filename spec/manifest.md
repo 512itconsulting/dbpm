@@ -21,7 +21,7 @@ Initial recommendation: `dbpm.yaml`.
 ```yaml
 package:
   name: job_control
-  version: 1.0.0
+  version: "1.0.0"
   description: Scheduling Package
   vendor: rsantmyer
   license: Apache-2.0
@@ -31,7 +31,7 @@ database:
   minimum_version: "19c"
 
 core:
-  minimum_version: 3.0.0
+  minimum_version: "3.0.0"
 
 dependencies:
   - name: utl_interval
@@ -54,6 +54,12 @@ scripts:
 - `dependencies`: Package dependencies beyond Core.
 - `scripts`: SQL*Plus/SQLcl-compatible entry points. Scripts should accept dbpm-injected provenance parameters instead of hard-coding commit hashes.
 
+Version values should be quoted in YAML so semantic versions are always parsed as strings.
+
 ## Provenance
 
 The manifest should not contain the source commit hash for a built artifact. dbpm should resolve provenance from artifact metadata, such as `META-INF/<artifact>-build.properties`, and pass it into the deployment script at execution time.
+
+## Deployment Scripts
+
+The default convention is that deployment scripts accept the resolved 40-character commit hash as their first SQL*Plus/SQLcl argument. Future manifest versions may make script arguments explicit, but scripts should remain parameterized from the beginning.

@@ -28,6 +28,8 @@ dependencies:
 
 dbpm resolves these dependencies into a deployment plan ordered so each dependency is installed or upgraded before packages that require it.
 
+Dependency declarations are read from package manifests and artifact metadata. Core's registry is used to determine what is already installed in the target schema and whether a dependency is already satisfied.
+
 ## Installed State
 
 Installed state should be read from Core's registry, not from local files. dbpm should use Core as the source of truth for:
@@ -38,6 +40,8 @@ Installed state should be read from Core's registry, not from local files. dbpm 
 - deployment commit hash
 - dependency records
 
+Core dependency records reflect what installed applications declared during deployment. They are useful for audit and validation, but dbpm should plan from package manifests before execution so it can resolve dependencies prior to installing the package.
+
 ## Version Constraints
 
 Initial version constraint support should be intentionally small and semver-oriented:
@@ -47,6 +51,15 @@ Initial version constraint support should be intentionally small and semver-orie
 - minimum versions, such as `>=1.2.0`
 
 The resolver should reject ambiguous or unsupported constraints until the syntax is formally specified.
+
+## Conflicts And Cycles
+
+The resolver should fail the plan when:
+
+- no available package version satisfies all constraints
+- two packages require incompatible versions of the same dependency
+- dependency declarations contain a cycle that cannot be reduced to already-installed packages
+- an installed package is present but its Core deployment status is not complete
 
 ## Planning
 

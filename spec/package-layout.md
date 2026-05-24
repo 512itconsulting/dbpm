@@ -34,6 +34,10 @@ META-INF/<artifact>-build.properties
 
 dbpm should read this metadata when deploying packaged artifacts.
 
+The metadata file is part of the built artifact, not the source manifest. Source templates for build metadata may exist under `assembly/` or an equivalent build directory, but generated metadata should be what dbpm consumes from packaged artifacts.
+
 ## Compatibility
 
 The exact object directories are package-specific. A package does not need every directory listed above, but deployment entry points should be declared in `dbpm.yaml` rather than inferred from directory names alone.
+
+Committed `deploy_wrapper.sql` files may be kept as human convenience entry points, but dbpm should execute the manifest-declared scripts directly so it can inject provenance and enforce deployment policy.

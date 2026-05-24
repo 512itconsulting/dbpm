@@ -6,6 +6,14 @@ Deployment mode describes operator intent. It is separate from Core's deployment
 
 ## Modes
 
+### `bootstrap-core`
+
+Install or initialize Core, the dbpm substrate.
+
+- Used before ordinary package deployments can run.
+- May use Core-specific bootstrap manifests because Core cannot rely on `pkg_application` until after its objects exist.
+- Should be rare compared with ordinary package installs and upgrades.
+
 ### `install`
 
 Install a package that is not already registered in Core.
@@ -42,8 +50,10 @@ Re-run deployment steps for the currently installed version without deleting reg
 
 ## Environment Policy
 
-dbpm should evaluate environment policy before executing destructive modes. A future environment specification should define how environments such as development, test, staging, and production are identified and which modes are allowed.
+dbpm should evaluate environment policy before executing destructive modes. Environment rules are defined in `environment-policy.md`.
 
 ## Relationship To Core
 
 dbpm chooses the deployment mode and then calls Core APIs accordingly. Core remains the source of truth for deployed state and deployment status.
+
+Core deployment type constants should be selected from the requested target version and the currently installed version. They should not be used as a substitute for dbpm's operator-facing deployment mode.
