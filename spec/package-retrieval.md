@@ -21,6 +21,10 @@ dbpm should retrieve package archives over HTTP(S) where possible, using a built
 
 Consumer machines should not require Maven or a JDK solely to resolve and download dbpm packages.
 
+End-user applications should normally install and patch through dbpm when they depend on dbpm packages. The application owns its deployment entry points and lifecycle semantics, while dbpm owns artifact resolution, dependency planning, provenance injection, Core checks, environment policy evaluation, and execution orchestration.
+
+End-user applications should not normally vendor live dependent repositories. They should declare dependencies in the manifest, commit a dependency lockfile for release-oriented workflows, and rely on immutable package artifacts.
+
 ## Repository Compatibility
 
 Maven-compatible repositories remain useful as an artifact publishing and hosting format because they provide:
@@ -31,6 +35,22 @@ Maven-compatible repositories remain useful as an artifact publishing and hostin
 - familiar CI/CD publishing paths for producers
 
 dbpm may support Maven-style coordinates and repository layouts by resolving them to HTTP(S) artifact URLs internally.
+
+## Local Artifact Cache
+
+dbpm should maintain a local artifact cache for resolved package archives.
+
+The cache should be keyed by immutable artifact identity and checksum, not only by package name and version. Cached artifacts may satisfy future deployments when the lockfile requires the same checksum.
+
+The cache improves repeatability and resilience against network outages, but production-oriented workflows should still prefer artifacts that are either already mirrored into an organization-controlled source or verified against a committed lockfile.
+
+## Trusted Mirrors
+
+Production and CI deployments should be able to use organization-controlled mirrors or registries.
+
+When a locked artifact is available from a trusted mirror and its checksum matches the lockfile, dbpm may use the mirror even if the original upstream registry is unavailable or the publisher deleted the version.
+
+If no configured trusted source can provide the locked artifact with the expected checksum, dbpm should fail rather than substituting another artifact.
 
 ## Producer Flexibility
 

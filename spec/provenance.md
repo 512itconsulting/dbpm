@@ -50,3 +50,9 @@ dbpm should pass the resolved 40-character source commit hash to Core through `p
 Future Core/dbpm integration may record richer artifact metadata beyond the commit hash, including artifact coordinates, build time, and dirty-state policy.
 
 Until Core stores richer artifact metadata, dbpm should retain it in the deployment plan and execution logs.
+
+## Lockfile And Cache
+
+When deploying from a lockfile, dbpm should verify that the artifact provenance and checksum match the locked artifact identity before execution.
+
+Artifacts retrieved from a local cache or trusted mirror remain valid only when they match the locked checksum and provenance expectations. dbpm should not treat matching package names or versions alone as sufficient provenance.

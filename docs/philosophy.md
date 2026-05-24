@@ -82,6 +82,10 @@ Rebuilding or mutating released artifacts introduces risk and undermines reprodu
 
 For released artifacts, dbpm should inject deployment provenance from the artifact metadata instead of relying on hard-coded SQL wrapper values.
 
+End-user applications should be installed and patched from immutable artifacts too. They may have richer lifecycle scripts than reusable libraries, but dbpm should still own resolution, planning, Core verification, provenance injection, and execution orchestration.
+
+Applications should commit lockfiles for release-oriented deployments. A lockfile turns dependency constraints into exact artifact identities and protects deployments from mutable upstream state.
+
 ---
 
 # Destructive Actions Require Intent
@@ -125,6 +129,10 @@ dbpm aims to normalize reusable database libraries and shared components.
 That only works if consumption is substantially easier than publication. Package producers may use richer build and publishing tooling, including Maven-compatible repositories, but consumers should be able to install through dbpm without learning Maven or installing a JDK solely for package retrieval.
 
 dbpm should prefer transparent HTTP(S) artifact downloads for consumer installs, while still allowing producer workflows to publish into established artifact repositories.
+
+Consumers should not need to vendor dependent repositories into an application just to make deployments stable. Stability should come from immutable artifacts, lockfiles, local caches, and trusted mirrors.
+
+If a package publisher deletes an artifact, dbpm should continue only when the exact locked artifact is available from a configured trusted source and matches its checksum. Otherwise, failing loudly is safer than silently choosing a substitute.
 
 ---
 

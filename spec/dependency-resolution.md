@@ -30,6 +30,8 @@ dbpm resolves these dependencies into a deployment plan ordered so each dependen
 
 Dependency declarations are read from package manifests and artifact metadata. Core's registry is used to determine what is already installed in the target schema and whether a dependency is already satisfied.
 
+End-user applications should declare dependencies on reusable dbpm packages instead of copying dependent repositories into the application. For release-oriented workflows, dependency resolution should produce or consume a lockfile that pins the exact artifacts selected for deployment.
+
 ## Installed State
 
 Installed state should be read from Core's registry, not from local files. dbpm should use Core as the source of truth for:
@@ -52,6 +54,14 @@ Initial version constraint support should be intentionally small and semver-orie
 
 The resolver should reject ambiguous or unsupported constraints until the syntax is formally specified.
 
+## Lockfile Resolution
+
+When a lockfile is present and the selected workflow requires locked deployments, dbpm should install or upgrade using the exact artifact identities recorded in the lockfile.
+
+The resolver may still validate that the locked graph satisfies the manifest constraints, Core requirement, and environment policy, but it must not silently choose different package versions or rebuilt artifacts.
+
+When a lockfile is absent in a development workflow, dbpm may resolve dependency constraints from configured sources and then write or update a lockfile. CI and production-oriented workflows should require a lockfile for applications with dependencies.
+
 ## Conflicts And Cycles
 
 The resolver should fail the plan when:
@@ -68,6 +78,9 @@ A deployment plan should include:
 - packages to install
 - packages to upgrade
 - packages already satisfied
+- lockfile status for each package
+- artifact source selected for each package
+- artifact checksum for each package
 - detected conflicts
 - execution order
 - required Core version

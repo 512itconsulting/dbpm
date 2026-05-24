@@ -21,6 +21,7 @@ Install a package that is not already registered in Core.
 - Requires no existing application registration.
 - Uses Core's initial deployment type.
 - Must not call `pkg_application.delete_application_p` first.
+- For end-user applications, may install the application package and its locked dependency graph through dbpm.
 
 ### `upgrade`
 
@@ -30,6 +31,7 @@ Move an installed package to a newer semantic version.
 - Uses Core's major, minor, or patch deployment type as appropriate.
 - Should prefer additive schema evolution and forward-only migration scripts.
 - Must not delete and recreate the application registration.
+- For end-user applications, should patch the application and required dependency upgrades through the resolved or locked deployment plan.
 
 ### `reinstall`
 
@@ -57,3 +59,5 @@ dbpm should evaluate environment policy before executing destructive modes. Envi
 dbpm chooses the deployment mode and then calls Core APIs accordingly. Core remains the source of truth for deployed state and deployment status.
 
 Core deployment type constants should be selected from the requested target version and the currently installed version. They should not be used as a substitute for dbpm's operator-facing deployment mode.
+
+End-user applications are ordinary dbpm deployment targets from Core's perspective. dbpm verifies Core as the substrate prerequisite, plans dependencies beyond Core, and executes the application-owned manifest entry points.

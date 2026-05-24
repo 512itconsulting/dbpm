@@ -6,6 +6,8 @@ The package manifest declares the identity, version, dependencies, and deploymen
 
 Core is not declared as a normal package dependency for every application. It is the dbpm substrate and is checked separately through the package's Core requirement.
 
+End-user applications should use the same manifest model as reusable packages. The manifest should describe the application package and its dependencies beyond Core; it should not embed dependent repository contents or mutable source checkout assumptions.
+
 ## Candidate File Names
 
 Possible manifest names:
@@ -55,6 +57,8 @@ scripts:
 - `scripts`: SQL*Plus/SQLcl-compatible entry points. Scripts should accept dbpm-injected provenance parameters instead of hard-coding commit hashes.
 
 Version values should be quoted in YAML so semantic versions are always parsed as strings.
+
+Dependency constraints in the manifest describe acceptable package versions. Exact released deployments should be recorded in a lockfile rather than by rewriting the manifest to include transient repository details.
 
 ## Provenance
 

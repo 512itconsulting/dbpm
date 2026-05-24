@@ -30,6 +30,8 @@ The ecosystem has two important audiences:
 
 Consumers are expected to drastically outnumber producers. dbpm should therefore optimize the everyday install experience for database developers and DBAs who may not be comfortable with Java build tooling.
 
+End-user database applications are consumers and packages at the same time: they consume reusable dbpm packages, but their own install and patch lifecycle should also be orchestrated by dbpm. dbpm should resolve and lock their dependency graph, verify Core, inject provenance, and execute their manifest entry points while leaving application-specific lifecycle semantics inside the application package.
+
 ---
 
 ## Core Vision
@@ -129,6 +131,8 @@ including semantic versioning support.
 
 Core is treated as the substrate prerequisite for dbpm-managed deployments. dbpm should verify that Core exists and satisfies the required minimum version before package deployment begins, while ordinary package manifests should declare dependencies beyond Core.
 
+End-user applications should commit lockfiles for release-oriented workflows so deployment uses exact artifact identities rather than mutable dependency ranges.
+
 ### Schema Evolution
 
 Structured, version-aware schema evolution with support for:
@@ -152,6 +156,8 @@ Producer workflows may use Maven, Gradle, GitHub Actions, or dbpm-native publish
 Deployments should use immutable versioned artifacts rather than mutable collections of scripts.
 
 Deployment provenance should come from artifact metadata whenever possible, including the artifact coordinates, source commit hash, dirty-state marker, and build time. Local source deployments may derive provenance from repository state, but committed deployment scripts should remain parameterized rather than embedding a specific commit hash.
+
+Applications should rely on local artifact caches and organization-controlled mirrors for resilience. If an upstream package is deleted, dbpm may still deploy the locked artifact from a trusted cache or mirror when the checksum matches. If the exact artifact cannot be found, dbpm should fail rather than substitute a different package.
 
 ### Ecosystem Standardization
 

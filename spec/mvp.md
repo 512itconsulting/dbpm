@@ -15,8 +15,11 @@ Define the smallest useful dbpm implementation.
 
 ## Deferred
 - upgrade
+- dependency lockfile generation and enforcement
+- local artifact cache
 - remote HTTP(S) artifact retrieval
 - Maven-compatible/GitHub Packages repository resolution
+- trusted artifact mirrors
 - package publishing
 - signing
 - APEX integration

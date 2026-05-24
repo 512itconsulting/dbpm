@@ -18,12 +18,14 @@ Maven-compatible repositories may be useful for publishing immutable package art
 
 ## Goals
 - Package reusable PL/SQL libraries
+- Deploy end-user Oracle database applications through the same package workflow
 - Resolve dependencies automatically
 - Support semantic versioning
 - Enable repeatable deployments
 - Use Core as the in-database install registry and deployment substrate
 - Support schema evolution
 - Inject deployment provenance from package artifacts
+- Lock deployments to immutable artifact identities
 - Simplify CI/CD integration
 - Reduce fragile hand-managed deployment scripts
 
@@ -35,9 +37,12 @@ dbpm install utl_interval@2.1.4
 
 ## Planned Features
 - Package manifests
+- Dependency lockfiles
 - Dependency resolution
+- Local artifact cache
 - HTTP(S) package retrieval
 - Maven-compatible and GitHub Packages repository resolution
+- Trusted artifact mirrors for production deployments
 - Core-backed install registry
 - Deployment orchestration
 - Roll-forward migrations
