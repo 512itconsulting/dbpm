@@ -1,0 +1,46 @@
+# Deployment Provenance Specification
+
+## Purpose
+
+Deployment provenance connects an installed database application to the artifact and source revision that produced it.
+
+## Preferred Source
+
+For packaged deployments, dbpm should read provenance from immutable artifact metadata, for example:
+
+```text
+META-INF/<artifact>-build.properties
+```
+
+Expected fields include:
+
+```properties
+artifact.groupId=com.512itconsulting.database
+artifact.artifactId=utl_interval
+artifact.version=0.1.0
+git.commit.id=<40-character-sha>
+git.commit.id.abbrev=<short-sha>
+git.branch=main
+git.dirty=false
+build.time=2026-05-22T20:13:18Z
+```
+
+## Local Development Source
+
+For local source deployments, dbpm may derive provenance from repository state. This is useful during active development, but it should be visibly marked when the working tree is dirty.
+
+## Injection
+
+Package deployment scripts should remain parameterized. dbpm should inject the resolved commit hash at execution time, typically by passing it as the first SQL*Plus/SQLcl argument:
+
+```sql
+@Deployment_Manifests/deploy.sql <git.commit.id>
+```
+
+Committed wrappers should not hard-code commit hashes.
+
+## Core Registry
+
+dbpm should pass the resolved 40-character source commit hash to Core through `pkg_application.begin_deployment_p`.
+
+Future Core/dbpm integration may record richer artifact metadata beyond the commit hash, including artifact coordinates, build time, and dirty-state policy.

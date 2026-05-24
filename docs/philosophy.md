@@ -63,6 +63,8 @@ dbpm favors:
 
 over implicit behavior.
 
+One exception is Core itself: Core is the dbpm substrate and should be checked as a platform prerequisite rather than repeated as an ordinary dependency in every package's application dependency list.
+
 ---
 
 # Immutable Artifacts
@@ -77,6 +79,16 @@ A package version should always represent:
 across all environments.
 
 Rebuilding or mutating released artifacts introduces risk and undermines reproducibility.
+
+For released artifacts, dbpm should inject deployment provenance from the artifact metadata instead of relying on hard-coded SQL wrapper values.
+
+---
+
+# Destructive Actions Require Intent
+
+Full reinstall workflows are useful during active development, but they can destroy application-owned objects and usage data.
+
+dbpm should make destructive reinstall a distinct, explicit mode. Normal install and upgrade flows should avoid calling Core cleanup APIs such as `pkg_application.delete_application_p` unless the operator deliberately chose a destructive workflow and the environment policy permits it.
 
 ---
 

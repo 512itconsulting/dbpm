@@ -117,6 +117,8 @@ Automatic dependency resolution similar to:
 
 including semantic versioning support.
 
+Core is treated as the substrate prerequisite for dbpm-managed deployments. dbpm should verify that Core exists and satisfies the required minimum version before package deployment begins, while ordinary package manifests should declare dependencies beyond Core.
+
 ### Schema Evolution
 
 Structured, version-aware schema evolution with support for:
@@ -136,6 +138,8 @@ Integration with modern development workflows including:
 ### Artifact-Based Deployments
 
 Deployments should use immutable versioned artifacts rather than mutable collections of scripts.
+
+Deployment provenance should come from artifact metadata whenever possible, including the artifact coordinates, source commit hash, dirty-state marker, and build time. Local source deployments may derive provenance from repository state, but committed deployment scripts should remain parameterized rather than embedding a specific commit hash.
 
 ### Ecosystem Standardization
 

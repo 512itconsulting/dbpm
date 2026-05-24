@@ -19,14 +19,15 @@ while remaining Oracle-native and deployment-friendly.
 - Resolve dependencies automatically
 - Support semantic versioning
 - Enable repeatable deployments
-- Track installed package versions
+- Use Core as the in-database install registry and deployment substrate
 - Support schema evolution
+- Inject deployment provenance from package artifacts
 - Simplify CI/CD integration
 - Reduce fragile hand-managed deployment scripts
 
 Example
 ```text
-dbpm install core@1.2.0
+dbpm bootstrap core@1.2.0
 dbpm install utl_interval@2.1.4
 ```
 
@@ -34,7 +35,7 @@ dbpm install utl_interval@2.1.4
 - Package manifests
 - Dependency resolution
 - Maven/GitHub Packages integration
-- Install registry
+- Core-backed install registry
 - Deployment orchestration
 - Roll-forward migrations
 - Environment-aware deployment plans
