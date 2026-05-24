@@ -122,6 +122,10 @@ because distributing reusable PL/SQL code is difficult.
 
 dbpm aims to normalize reusable database libraries and shared components.
 
+That only works if consumption is substantially easier than publication. Package producers may use richer build and publishing tooling, including Maven-compatible repositories, but consumers should be able to install through dbpm without learning Maven or installing a JDK solely for package retrieval.
+
+dbpm should prefer transparent HTTP(S) artifact downloads for consumer installs, while still allowing producer workflows to publish into established artifact repositories.
+
 ---
 
 # Deployment State Matters

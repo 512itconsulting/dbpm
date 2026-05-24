@@ -85,6 +85,8 @@ dbpm borrows several concepts from Maven:
 - versioned dependencies
 - transitive dependency resolution
 
+dbpm may also support Maven-compatible repository layouts as an artifact hosting and publishing convention.
+
 ## dbpm Differences
 
 Unlike Maven:
@@ -93,6 +95,9 @@ Unlike Maven:
 - runtime state exists inside the database
 - installation order may depend on schema conditions
 - deployments may involve data migration
+- ordinary consumers should not need Maven or a JDK installed just to retrieve packages
+
+For dbpm, Maven is a useful model and possible repository format, not the required consumer-facing client. dbpm should be able to resolve coordinates to HTTP(S) artifact URLs and retrieve package archives directly where possible.
 
 ---
 

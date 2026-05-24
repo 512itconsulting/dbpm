@@ -14,6 +14,8 @@ dbpm aims to make Oracle database development feel more like modern software eng
 
 while remaining Oracle-native and deployment-friendly.
 
+Maven-compatible repositories may be useful for publishing immutable package artifacts, but dbpm should not require ordinary package consumers to understand Maven or install a JDK. Consumer installs should use dbpm's own CLI and plain HTTP(S) artifact retrieval where possible.
+
 ## Goals
 - Package reusable PL/SQL libraries
 - Resolve dependencies automatically
@@ -34,7 +36,8 @@ dbpm install utl_interval@2.1.4
 ## Planned Features
 - Package manifests
 - Dependency resolution
-- Maven/GitHub Packages integration
+- HTTP(S) package retrieval
+- Maven-compatible and GitHub Packages repository resolution
 - Core-backed install registry
 - Deployment orchestration
 - Roll-forward migrations
