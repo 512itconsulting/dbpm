@@ -37,7 +37,19 @@ Define the smallest useful dbpm implementation.
 - utl_interval
 - one small dependency-order test package later
 
+## Runtime Decision
+
+The MVP implementation will use Python.
+
+Rationale:
+- strong standard library support for ZIP files, JSON, subprocess execution, filesystem paths, and testing
+- straightforward CLI implementation
+- broad contributor familiarity
+- practical CI/CD and packaging path
+
+Initial third-party dependency:
+- PyYAML for `dbpm.yaml` parsing
+
 ## Open Decisions
-- Python vs other runtime
 - SQLPlus vs SQLcl default
 - exact plan JSON shape
