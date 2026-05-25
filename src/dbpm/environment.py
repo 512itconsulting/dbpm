@@ -49,6 +49,18 @@ MODE_POLICY = {
         "staging": "block",
         "production": "block",
     },
+    "resume": {
+        "development": "allow",
+        "test": "allow",
+        "staging": "require-approval",
+        "production": "require-approval",
+    },
+    "validate": {
+        "development": "allow",
+        "test": "allow",
+        "staging": "allow",
+        "production": "allow",
+    },
 }
 
 

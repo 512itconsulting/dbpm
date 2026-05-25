@@ -26,6 +26,7 @@ core:
 
 scripts:
   install: Deployment_Manifests/deploy.sql
+  validate: Tests/smoke_test.sql
 """,
         encoding="utf-8",
     )
@@ -66,6 +67,61 @@ scripts:
     assert plan["installed_state"]["application_name"] == "UTL_INTERVAL"
     assert plan["policy"]["result"] == "allowed"
     assert plan["execution"]["arguments"] == ["1234567890123456789012345678901234567890"]
+
+
+def test_resume_uses_install_script(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: demo
+  version: "0.1.0"
+
+scripts:
+  install: deploy.sql
+""",
+        encoding="utf-8",
+    )
+
+    source = load_package_source(str(package))
+    plan = create_plan(
+        mode="resume",
+        source=source,
+        provenance=resolve_provenance(source),
+        environment=resolve_environment("development"),
+    )
+
+    assert plan["execution"]["script"] == "deploy.sql"
+    assert plan["pre_actions"] == []
+
+
+def test_validate_uses_validate_script_without_commit_argument(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: demo
+  version: "0.1.0"
+
+scripts:
+  install: deploy.sql
+  validate: smoke.sql
+""",
+        encoding="utf-8",
+    )
+
+    source = load_package_source(str(package))
+    plan = create_plan(
+        mode="validate",
+        source=source,
+        provenance=resolve_provenance(source),
+        environment=resolve_environment("development"),
+    )
+
+    assert plan["execution"]["script"] == "smoke.sql"
+    assert plan["execution"]["arguments"] == []
 
 
 def test_reinstall_requires_destructive_flag(tmp_path: Path):

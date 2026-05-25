@@ -27,7 +27,7 @@ def create_plan(
         approve=approve,
     )
     script = _script_for_mode(mode, manifest)
-    if mode in {"bootstrap-core", "install", "reinstall", "upgrade", "validate"} and not script:
+    if mode in {"bootstrap-core", "install", "reinstall", "resume", "upgrade", "validate"} and not script:
         raise ManifestError(f"No script is declared for deployment mode `{mode}`")
 
     return {
@@ -53,7 +53,7 @@ def create_plan(
         "execution": {
             "script": script,
             "script_ref": str(source.resolve_script_path(script)) if script else None,
-            "arguments": [provenance.commit] if script else [],
+            "arguments": _script_arguments_for_mode(mode, provenance) if script else [],
         },
     }
 
@@ -74,13 +74,19 @@ def _package_dict(manifest: PackageManifest) -> dict[str, object]:
 
 
 def _script_for_mode(mode: str, manifest: PackageManifest) -> str | None:
-    if mode in {"install", "reinstall", "bootstrap-core"}:
+    if mode in {"install", "reinstall", "resume", "bootstrap-core"}:
         return manifest.scripts.install
     if mode == "upgrade":
         return manifest.scripts.upgrade
     if mode == "validate":
         return manifest.scripts.validate
     return None
+
+
+def _script_arguments_for_mode(mode: str, provenance: Provenance) -> list[str]:
+    if mode == "validate":
+        return []
+    return [provenance.commit]
 
 
 def _pre_actions_for_mode(mode: str, manifest: PackageManifest) -> list[dict[str, str]]:

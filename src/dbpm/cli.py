@@ -31,7 +31,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(result.stdout.strip())
             return 0
-        if args.command in {"bootstrap-core", "install", "reinstall"}:
+        if args.command in {"bootstrap-core", "install", "reinstall", "resume", "validate"}:
             plan = _build_plan(args.command, args, include_installed_state=not args.dry_run)
             if args.dry_run:
                 _print_json(plan)
@@ -58,7 +58,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_common_args(plan)
     plan.add_argument(
         "--mode",
-        choices=("bootstrap-core", "install", "upgrade", "reinstall", "repair"),
+        choices=("bootstrap-core", "install", "upgrade", "reinstall", "resume", "validate"),
         default="install",
         help="Deployment mode to plan",
     )
@@ -80,6 +80,14 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Allow destructive reinstall planning/execution",
     )
+
+    resume = subparsers.add_parser("resume", help="Resume a running or failed deployment")
+    _add_common_args(resume)
+    _add_execution_args(resume)
+
+    validate = subparsers.add_parser("validate", help="Run a package validation script")
+    _add_common_args(validate)
+    _add_execution_args(validate)
 
     return parser
 
@@ -161,11 +169,34 @@ def _enforce_installed_state(plan: dict[str, object]) -> None:
     if isinstance(package, dict):
         app_name = package.get("application_name")
 
-    if mode == "install" and state is not None:
-        raise DbpmError(f"{app_name} is already installed; use reinstall or upgrade")
+    status = state.get("deploy_status") if isinstance(state, dict) else None
 
-    if isinstance(state, dict) and state.get("deploy_status") != "C":
-        raise DbpmError(f"{app_name} deployment status is {state.get('deploy_status')}; expected C")
+    if mode == "install":
+        if state is None:
+            return
+        if status == "C":
+            raise DbpmError(f"{app_name} is already installed; use reinstall or upgrade")
+        raise DbpmError(f"{app_name} deployment status is {status}; use resume or reinstall")
+
+    if mode == "resume":
+        if state is None:
+            raise DbpmError(f"{app_name} is not installed; use install")
+        if status not in {"R", "F"}:
+            raise DbpmError(f"{app_name} deployment status is {status}; resume requires R or F")
+        return
+
+    if mode == "validate":
+        if state is None:
+            raise DbpmError(f"{app_name} is not installed; use install")
+        if status != "C":
+            raise DbpmError(f"{app_name} deployment status is {status}; validate requires C")
+        return
+
+    if mode == "reinstall":
+        return
+
+    if isinstance(state, dict) and status != "C":
+        raise DbpmError(f"{app_name} deployment status is {status}; expected C")
 
 
 def _connect_string(args: argparse.Namespace) -> str:

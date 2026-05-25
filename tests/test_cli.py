@@ -18,6 +18,7 @@ core:
 
 scripts:
   install: Deployment_Manifests/deploy.sql
+  validate: Tests/smoke_test.sql
 """,
         encoding="utf-8",
     )
@@ -99,9 +100,9 @@ def test_install_blocks_incomplete_existing_deployment(tmp_path: Path, monkeypat
         ),
     )
 
-    assert cli.main(["reinstall", str(package), "--connect", "user/pass@db", "--allow-destructive"]) == 2
+    assert cli.main(["install", str(package), "--connect", "user/pass@db"]) == 2
 
-    assert "DEMO deployment status is R; expected C" in capsys.readouterr().err
+    assert "DEMO deployment status is R; use resume or reinstall" in capsys.readouterr().err
 
 
 def test_reinstall_allows_existing_complete_package(tmp_path: Path, monkeypatch):
@@ -132,6 +133,114 @@ def test_reinstall_allows_existing_complete_package(tmp_path: Path, monkeypatch)
         )
         == 0
     )
+
+
+def test_reinstall_allows_incomplete_existing_package(tmp_path: Path, monkeypatch):
+    package = tmp_path / "package"
+    _write_package(package)
+
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState(
+            application_name="DEMO",
+            version="0.1.0",
+            deploy_status="R",
+            deploy_commit_hash="abc",
+        ),
+    )
+    monkeypatch.setattr(cli, "execute_plan", lambda *args, **kwargs: 0)
+
+    assert (
+        cli.main(
+            [
+                "reinstall",
+                str(package),
+                "--connect",
+                "user/pass@db",
+                "--allow-destructive",
+            ]
+        )
+        == 0
+    )
+
+
+def test_resume_allows_running_deployment(tmp_path: Path, monkeypatch):
+    package = tmp_path / "package"
+    _write_package(package)
+
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState(
+            application_name="DEMO",
+            version="0.1.0",
+            deploy_status="R",
+            deploy_commit_hash="abc",
+        ),
+    )
+    monkeypatch.setattr(cli, "execute_plan", lambda *args, **kwargs: 0)
+
+    assert cli.main(["resume", str(package), "--connect", "user/pass@db"]) == 0
+
+
+def test_resume_blocks_complete_deployment(tmp_path: Path, monkeypatch, capsys):
+    package = tmp_path / "package"
+    _write_package(package)
+
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState(
+            application_name="DEMO",
+            version="0.1.0",
+            deploy_status="C",
+            deploy_commit_hash="abc",
+        ),
+    )
+
+    assert cli.main(["resume", str(package), "--connect", "user/pass@db"]) == 2
+
+    assert "DEMO deployment status is C; resume requires R or F" in capsys.readouterr().err
+
+
+def test_validate_requires_complete_deployment(tmp_path: Path, monkeypatch):
+    package = tmp_path / "package"
+    _write_package(package)
+
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState(
+            application_name="DEMO",
+            version="0.1.0",
+            deploy_status="C",
+            deploy_commit_hash="abc",
+        ),
+    )
+    monkeypatch.setattr(cli, "execute_plan", lambda *args, **kwargs: 0)
+
+    assert cli.main(["validate", str(package), "--connect", "user/pass@db"]) == 0
+
+
+def test_validate_blocks_running_deployment(tmp_path: Path, monkeypatch, capsys):
+    package = tmp_path / "package"
+    _write_package(package)
+
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState(
+            application_name="DEMO",
+            version="0.1.0",
+            deploy_status="R",
+            deploy_commit_hash="abc",
+        ),
+    )
+
+    assert cli.main(["validate", str(package), "--connect", "user/pass@db"]) == 2
+
+    assert "DEMO deployment status is R; validate requires C" in capsys.readouterr().err
 
 
 def test_check_core_uses_environment_connect_and_runner(monkeypatch, capsys):
