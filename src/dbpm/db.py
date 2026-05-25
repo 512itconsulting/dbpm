@@ -100,6 +100,23 @@ def get_application_state(
     return _parse_application_state(result.stdout)
 
 
+def get_reverse_dependencies(
+    *,
+    connect: str,
+    runner: str,
+    application_name: str,
+) -> list[str]:
+    result = run_sql_script(
+        sql=_reverse_dependencies_sql(application_name),
+        connect=connect,
+        runner=runner,
+        label="dbpm-reverse-dependencies",
+    )
+    if result.returncode != 0:
+        raise ExecutionError(_format_sql_failure(f"Reverse dependency query failed for {application_name}", result))
+    return _parse_reverse_dependencies(result.stdout)
+
+
 def _write_temp_script(sql: str, label: str) -> Path:
     handle = tempfile.NamedTemporaryFile(
         mode="w",
@@ -197,6 +214,25 @@ EXIT SUCCESS
 """
 
 
+def _reverse_dependencies_sql(application_name: str) -> str:
+    app_name = _sql_literal(application_name.upper())
+    return f"""
+SET HEADING OFF
+SET FEEDBACK OFF
+SET PAGESIZE 0
+SET VERIFY OFF
+SET SERVEROUTPUT ON
+WHENEVER SQLERROR EXIT FAILURE
+WHENEVER OSERROR EXIT FAILURE
+
+SELECT 'DBPM_REVERSE_DEPENDENCY|' || application_name
+  FROM app_dependency
+ WHERE depends_on = {app_name}
+ ORDER BY application_name;
+EXIT SUCCESS
+"""
+
+
 def _parse_application_state(output: str) -> ApplicationState | None:
     for raw_line in output.splitlines():
         line = raw_line.strip()
@@ -212,6 +248,15 @@ def _parse_application_state(output: str) -> ApplicationState | None:
             deploy_commit_hash=parts[4],
         )
     return None
+
+
+def _parse_reverse_dependencies(output: str) -> list[str]:
+    dependencies: list[str] = []
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if line.startswith("DBPM_REVERSE_DEPENDENCY|"):
+            dependencies.append(line.split("|", 1)[1])
+    return dependencies
 
 
 def _parse_semver(value: str) -> tuple[int, int, int]:

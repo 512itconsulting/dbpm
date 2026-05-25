@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from dbpm import cli
 from dbpm.db import ApplicationState, SqlResult
 
@@ -22,6 +24,11 @@ scripts:
 """,
         encoding="utf-8",
     )
+
+
+@pytest.fixture(autouse=True)
+def _no_reverse_dependencies(monkeypatch):
+    monkeypatch.setattr(cli, "get_reverse_dependencies", lambda **kwargs: [])
 
 
 def test_plan_prints_json(tmp_path: Path, capsys):
@@ -119,6 +126,7 @@ def test_reinstall_allows_existing_complete_package(tmp_path: Path, monkeypatch)
             deploy_commit_hash="abc",
         ),
     )
+    monkeypatch.setattr(cli, "get_reverse_dependencies", lambda **kwargs: [])
     monkeypatch.setattr(cli, "execute_plan", lambda *args, **kwargs: 0)
 
     assert (
@@ -149,6 +157,7 @@ def test_reinstall_allows_incomplete_existing_package(tmp_path: Path, monkeypatc
             deploy_commit_hash="abc",
         ),
     )
+    monkeypatch.setattr(cli, "get_reverse_dependencies", lambda **kwargs: [])
     monkeypatch.setattr(cli, "execute_plan", lambda *args, **kwargs: 0)
 
     assert (
@@ -162,6 +171,41 @@ def test_reinstall_allows_incomplete_existing_package(tmp_path: Path, monkeypatc
             ]
         )
         == 0
+    )
+
+
+def test_reinstall_blocks_when_dependents_exist(tmp_path: Path, monkeypatch, capsys):
+    package = tmp_path / "package"
+    _write_package(package)
+
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState(
+            application_name="DEMO",
+            version="0.1.0",
+            deploy_status="C",
+            deploy_commit_hash="abc",
+        ),
+    )
+    monkeypatch.setattr(cli, "get_reverse_dependencies", lambda **kwargs: ["JOB_CONTROL", "MY_APP"])
+
+    assert (
+        cli.main(
+            [
+                "reinstall",
+                str(package),
+                "--connect",
+                "user/pass@db",
+                "--allow-destructive",
+            ]
+        )
+        == 2
+    )
+
+    assert (
+        "Cannot reinstall DEMO; installed applications depend on it: JOB_CONTROL, MY_APP"
+        in capsys.readouterr().err
     )
 
 

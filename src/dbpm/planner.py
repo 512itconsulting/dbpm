@@ -16,6 +16,7 @@ def create_plan(
     provenance: Provenance,
     environment: EnvironmentPolicy,
     installed_state: dict[str, str] | None = None,
+    reverse_dependencies: list[str] | None = None,
     allow_destructive: bool = False,
     approve: bool = False,
 ) -> dict[str, object]:
@@ -46,6 +47,7 @@ def create_plan(
             "bootstrap": mode == "bootstrap-core",
         },
         "dependencies": [asdict(dependency) for dependency in manifest.dependencies],
+        "reverse_dependencies": reverse_dependencies or [],
         "installed_state": installed_state,
         "provenance": provenance.as_dict(),
         "policy": policy,

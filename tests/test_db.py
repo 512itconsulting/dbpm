@@ -4,7 +4,9 @@ from dbpm.db import (
     _core_check_sql,
     _delete_application_sql,
     _parse_application_state,
+    _parse_reverse_dependencies,
     _parse_semver,
+    _reverse_dependencies_sql,
 )
 
 
@@ -55,3 +57,19 @@ def test_parse_application_state():
 
 def test_parse_application_state_not_found():
     assert _parse_application_state("") is None
+
+
+def test_reverse_dependencies_sql_queries_app_dependency():
+    sql = _reverse_dependencies_sql("utl_interval")
+
+    assert "DBPM_REVERSE_DEPENDENCY|" in sql
+    assert "FROM app_dependency" in sql
+    assert "WHERE depends_on = 'UTL_INTERVAL'" in sql
+
+
+def test_parse_reverse_dependencies():
+    dependencies = _parse_reverse_dependencies(
+        "\nDBPM_REVERSE_DEPENDENCY|JOB_CONTROL\nDBPM_REVERSE_DEPENDENCY|MY_APP\n"
+    )
+
+    assert dependencies == ["JOB_CONTROL", "MY_APP"]

@@ -5,7 +5,7 @@ import json
 import os
 import sys
 
-from .db import check_core, get_application_state
+from .db import check_core, get_application_state, get_reverse_dependencies
 from .environment import resolve_environment
 from .errors import DbpmError
 from .executor import execute_plan
@@ -127,14 +127,17 @@ def _build_plan(
     environment = resolve_environment(args.env)
     allow_destructive = bool(getattr(args, "allow_destructive", False))
     installed_state = None
+    reverse_dependencies = None
     if include_installed_state and not source.manifest.is_core:
         installed_state = _get_installed_state(args, source.manifest.application_name)
+        reverse_dependencies = _get_reverse_dependencies(args, source.manifest.application_name)
     return create_plan(
         mode=mode,
         source=source,
         provenance=provenance,
         environment=environment,
         installed_state=installed_state,
+        reverse_dependencies=reverse_dependencies,
         allow_destructive=allow_destructive,
         approve=args.approve,
     )
@@ -159,6 +162,14 @@ def _get_installed_state(args: argparse.Namespace, application_name: str) -> dic
         application_name=application_name,
     )
     return None if state is None else state.as_dict()
+
+
+def _get_reverse_dependencies(args: argparse.Namespace, application_name: str) -> list[str]:
+    return get_reverse_dependencies(
+        connect=_connect_string(args),
+        runner=args.runner,
+        application_name=application_name,
+    )
 
 
 def _enforce_installed_state(plan: dict[str, object]) -> None:
@@ -193,6 +204,10 @@ def _enforce_installed_state(plan: dict[str, object]) -> None:
         return
 
     if mode == "reinstall":
+        reverse_dependencies = plan.get("reverse_dependencies", [])
+        if reverse_dependencies:
+            names = ", ".join(str(name) for name in reverse_dependencies)
+            raise DbpmError(f"Cannot reinstall {app_name}; installed applications depend on it: {names}")
         return
 
     if isinstance(state, dict) and status != "C":

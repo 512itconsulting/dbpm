@@ -58,6 +58,7 @@ scripts:
             "deploy_status": "C",
             "deploy_commit_hash": "abc",
         },
+        reverse_dependencies=["JOB_CONTROL"],
     )
 
     assert plan["schema_version"] == "dbpm.plan.v0"
@@ -65,6 +66,7 @@ scripts:
     assert plan["core"]["required"] is True
     assert plan["provenance"]["source"] == "artifact-metadata"
     assert plan["installed_state"]["application_name"] == "UTL_INTERVAL"
+    assert plan["reverse_dependencies"] == ["JOB_CONTROL"]
     assert plan["policy"]["result"] == "allowed"
     assert plan["execution"]["arguments"] == ["1234567890123456789012345678901234567890"]
 
