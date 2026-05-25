@@ -53,6 +53,20 @@ def check_core(*, connect: str, runner: str, minimum_version: str | None = None)
     return result
 
 
+def delete_application(
+    *,
+    connect: str,
+    runner: str,
+    application_name: str,
+    fail_on_not_found: str = "N",
+) -> SqlResult:
+    sql = _delete_application_sql(application_name, fail_on_not_found)
+    result = run_sql_script(sql=sql, connect=connect, runner=runner, label="dbpm-delete-application")
+    if result.returncode != 0:
+        raise ExecutionError(_format_sql_failure(f"Delete application failed for {application_name}", result))
+    return result
+
+
 def _write_temp_script(sql: str, label: str) -> Path:
     handle = tempfile.NamedTemporaryFile(
         mode="w",
@@ -103,6 +117,31 @@ EXIT SUCCESS
 """
 
 
+def _delete_application_sql(application_name: str, fail_on_not_found: str) -> str:
+    if fail_on_not_found not in {"Y", "N"}:
+        raise ExecutionError("fail_on_not_found must be Y or N")
+    app_name = _sql_literal(application_name.upper())
+    fail_flag = _sql_literal(fail_on_not_found)
+    return f"""
+SET HEADING OFF
+SET FEEDBACK OFF
+SET VERIFY OFF
+SET SERVEROUTPUT ON
+WHENEVER SQLERROR EXIT FAILURE
+WHENEVER OSERROR EXIT FAILURE
+
+BEGIN
+   pkg_application.delete_application_p(
+      ip_application_name    => {app_name},
+      ip_fail_on_not_found  => {fail_flag}
+   );
+   DBMS_OUTPUT.PUT_LINE('DELETED_APPLICATION=' || {app_name});
+END;
+/
+EXIT SUCCESS
+"""
+
+
 def _parse_semver(value: str) -> tuple[int, int, int]:
     parts = value.split(".")
     if len(parts) != 3:
@@ -116,3 +155,7 @@ def _parse_semver(value: str) -> tuple[int, int, int]:
 def _format_sql_failure(message: str, result: SqlResult) -> str:
     details = "\n".join(part for part in (result.stdout.strip(), result.stderr.strip()) if part)
     return f"{message} with exit code {result.returncode}" + (f":\n{details}" if details else "")
+
+
+def _sql_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"

@@ -1,4 +1,4 @@
-from dbpm.db import _core_check_sql, _parse_semver
+from dbpm.db import _core_check_sql, _delete_application_sql, _parse_semver
 
 
 def test_core_check_sql_includes_version_check():
@@ -14,3 +14,12 @@ def test_core_check_sql_includes_version_check():
 
 def test_parse_semver():
     assert _parse_semver("1.2.3") == (1, 2, 3)
+
+
+def test_delete_application_sql_uses_core_api():
+    sql = _delete_application_sql("utl_interval", "N")
+
+    assert "pkg_application.delete_application_p" in sql
+    assert "ip_application_name    => 'UTL_INTERVAL'" in sql
+    assert "ip_fail_on_not_found  => 'N'" in sql
+    assert "DELETED_APPLICATION=" in sql

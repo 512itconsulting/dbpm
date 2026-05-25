@@ -87,6 +87,13 @@ scripts:
 
     assert plan["policy"]["result"] == "requires-approval"
     assert "`reinstall` requires --allow-destructive" in plan["policy"]["required_approvals"]
+    assert plan["pre_actions"] == [
+        {
+            "type": "delete_application",
+            "application_name": "DEMO",
+            "fail_on_not_found": "N",
+        }
+    ]
 
 
 def test_bootstrap_core_does_not_require_core(tmp_path: Path):

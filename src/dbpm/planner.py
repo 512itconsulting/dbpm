@@ -47,6 +47,7 @@ def create_plan(
         "dependencies": [asdict(dependency) for dependency in manifest.dependencies],
         "provenance": provenance.as_dict(),
         "policy": policy,
+        "pre_actions": _pre_actions_for_mode(mode, manifest),
         "execution": {
             "script": script,
             "script_ref": str(source.resolve_script_path(script)) if script else None,
@@ -78,3 +79,15 @@ def _script_for_mode(mode: str, manifest: PackageManifest) -> str | None:
     if mode == "validate":
         return manifest.scripts.validate
     return None
+
+
+def _pre_actions_for_mode(mode: str, manifest: PackageManifest) -> list[dict[str, str]]:
+    if mode == "reinstall":
+        return [
+            {
+                "type": "delete_application",
+                "application_name": manifest.application_name,
+                "fail_on_not_found": "N",
+            }
+        ]
+    return []
