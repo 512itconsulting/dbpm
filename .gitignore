@@ -34,3 +34,7 @@ venv/
 build/
 dist/
 *.egg-info/
+
+# Local database environment helpers may contain credentials.
+setenv.ps1
+setenv.sh

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 
 from .environment import EnvironmentPolicy
+from .errors import ManifestError
 from .manifest import PackageManifest
 from .provenance import Provenance
 from .source import PackageSource
@@ -25,6 +26,8 @@ def create_plan(
         approve=approve,
     )
     script = _script_for_mode(mode, manifest)
+    if mode in {"bootstrap-core", "install", "reinstall", "upgrade", "validate"} and not script:
+        raise ManifestError(f"No script is declared for deployment mode `{mode}`")
 
     return {
         "schema_version": "dbpm.plan.v0",

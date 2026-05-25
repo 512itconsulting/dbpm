@@ -1,5 +1,8 @@
 from pathlib import Path
 
+import pytest
+
+from dbpm.errors import ManifestError
 from dbpm.environment import resolve_environment
 from dbpm.planner import create_plan
 from dbpm.provenance import resolve_provenance
@@ -84,3 +87,52 @@ scripts:
 
     assert plan["policy"]["result"] == "requires-approval"
     assert "`reinstall` requires --allow-destructive" in plan["policy"]["required_approvals"]
+
+
+def test_bootstrap_core_does_not_require_core(tmp_path: Path):
+    package = tmp_path / "core"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: core
+  version: "3.0.0"
+
+scripts:
+  install: Deployment_Manifests/deploy.sql
+""",
+        encoding="utf-8",
+    )
+
+    source = load_package_source(str(package))
+    plan = create_plan(
+        mode="bootstrap-core",
+        source=source,
+        provenance=resolve_provenance(source),
+        environment=resolve_environment("development"),
+    )
+
+    assert plan["core"]["required"] is False
+    assert plan["core"]["bootstrap"] is True
+
+
+def test_missing_install_script_fails(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: demo
+  version: "0.1.0"
+""",
+        encoding="utf-8",
+    )
+    source = load_package_source(str(package))
+
+    with pytest.raises(ManifestError, match="No script"):
+        create_plan(
+            mode="install",
+            source=source,
+            provenance=resolve_provenance(source),
+            environment=resolve_environment("development"),
+        )

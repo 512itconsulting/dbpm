@@ -1,3 +1,6 @@
+import pytest
+
+from dbpm.errors import ManifestError
 from dbpm.manifest import parse_manifest
 
 
@@ -35,3 +38,49 @@ scripts:
     assert manifest.core_minimum_version == "3.0.0"
     assert manifest.dependencies[0].name == "utl_interval"
     assert manifest.scripts.install == "Deployment_Manifests/deploy.sql"
+
+
+def test_parse_json_manifest():
+    manifest = parse_manifest(
+        """
+{
+  "package": {
+    "name": "demo",
+    "version": "0.1.0"
+  },
+  "scripts": {
+    "install": "deploy.sql"
+  }
+}
+""",
+        "dbpm.json",
+    )
+
+    assert manifest.application_name == "DEMO"
+    assert manifest.scripts.install == "deploy.sql"
+
+
+def test_missing_package_name_fails():
+    with pytest.raises(ManifestError, match="`name` is required"):
+        parse_manifest(
+            """
+package:
+  version: "0.1.0"
+""",
+            "dbpm.yaml",
+        )
+
+
+def test_invalid_dependency_shape_fails():
+    with pytest.raises(ManifestError, match="dependencies"):
+        parse_manifest(
+            """
+package:
+  name: demo
+  version: "0.1.0"
+
+dependencies:
+  name: utl_interval
+""",
+            "dbpm.yaml",
+        )
