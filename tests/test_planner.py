@@ -51,12 +51,19 @@ scripts:
         source=source,
         provenance=provenance,
         environment=resolve_environment("development"),
+        installed_state={
+            "application_name": "UTL_INTERVAL",
+            "version": "1.0.0",
+            "deploy_status": "C",
+            "deploy_commit_hash": "abc",
+        },
     )
 
     assert plan["schema_version"] == "dbpm.plan.v0"
     assert plan["package"]["application_name"] == "UTL_INTERVAL"
     assert plan["core"]["required"] is True
     assert plan["provenance"]["source"] == "artifact-metadata"
+    assert plan["installed_state"]["application_name"] == "UTL_INTERVAL"
     assert plan["policy"]["result"] == "allowed"
     assert plan["execution"]["arguments"] == ["1234567890123456789012345678901234567890"]
 

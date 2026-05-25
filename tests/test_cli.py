@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from dbpm import cli
-from dbpm.db import SqlResult
+from dbpm.db import ApplicationState, SqlResult
 
 
 def _write_package(path: Path) -> None:
@@ -62,6 +62,76 @@ def test_install_without_connect_fails(tmp_path: Path, capsys):
     assert cli.main(["install", str(package)]) == 2
 
     assert "Database access requires --connect or DBPM_CONNECT" in capsys.readouterr().err
+
+
+def test_install_blocks_when_package_already_installed(tmp_path: Path, monkeypatch, capsys):
+    package = tmp_path / "package"
+    _write_package(package)
+
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState(
+            application_name="DEMO",
+            version="0.1.0",
+            deploy_status="C",
+            deploy_commit_hash="abc",
+        ),
+    )
+
+    assert cli.main(["install", str(package), "--connect", "user/pass@db"]) == 2
+
+    assert "DEMO is already installed; use reinstall or upgrade" in capsys.readouterr().err
+
+
+def test_install_blocks_incomplete_existing_deployment(tmp_path: Path, monkeypatch, capsys):
+    package = tmp_path / "package"
+    _write_package(package)
+
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState(
+            application_name="DEMO",
+            version="0.1.0",
+            deploy_status="R",
+            deploy_commit_hash="abc",
+        ),
+    )
+
+    assert cli.main(["reinstall", str(package), "--connect", "user/pass@db", "--allow-destructive"]) == 2
+
+    assert "DEMO deployment status is R; expected C" in capsys.readouterr().err
+
+
+def test_reinstall_allows_existing_complete_package(tmp_path: Path, monkeypatch):
+    package = tmp_path / "package"
+    _write_package(package)
+
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState(
+            application_name="DEMO",
+            version="0.1.0",
+            deploy_status="C",
+            deploy_commit_hash="abc",
+        ),
+    )
+    monkeypatch.setattr(cli, "execute_plan", lambda *args, **kwargs: 0)
+
+    assert (
+        cli.main(
+            [
+                "reinstall",
+                str(package),
+                "--connect",
+                "user/pass@db",
+                "--allow-destructive",
+            ]
+        )
+        == 0
+    )
 
 
 def test_check_core_uses_environment_connect_and_runner(monkeypatch, capsys):

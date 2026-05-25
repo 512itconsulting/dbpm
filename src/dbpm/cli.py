@@ -5,7 +5,7 @@ import json
 import os
 import sys
 
-from .db import check_core
+from .db import check_core, get_application_state
 from .environment import resolve_environment
 from .errors import DbpmError
 from .executor import execute_plan
@@ -20,7 +20,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.command == "plan":
-            plan = _build_plan(args.mode, args)
+            plan = _build_plan(args.mode, args, include_installed_state=bool(args.connect))
             _print_json(plan)
             return 0
         if args.command == "check-core":
@@ -32,7 +32,7 @@ def main(argv: list[str] | None = None) -> int:
             print(result.stdout.strip())
             return 0
         if args.command in {"bootstrap-core", "install", "reinstall"}:
-            plan = _build_plan(args.command, args)
+            plan = _build_plan(args.command, args, include_installed_state=not args.dry_run)
             if args.dry_run:
                 _print_json(plan)
                 return 0
@@ -62,6 +62,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default="install",
         help="Deployment mode to plan",
     )
+    _add_database_args(plan)
 
     bootstrap = subparsers.add_parser("bootstrap-core", help="Bootstrap Core")
     _add_common_args(bootstrap)
@@ -107,16 +108,25 @@ def _add_database_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _build_plan(mode: str, args: argparse.Namespace) -> dict[str, object]:
+def _build_plan(
+    mode: str,
+    args: argparse.Namespace,
+    *,
+    include_installed_state: bool = False,
+) -> dict[str, object]:
     source = load_package_source(args.source)
     provenance = resolve_provenance(source)
     environment = resolve_environment(args.env)
     allow_destructive = bool(getattr(args, "allow_destructive", False))
+    installed_state = None
+    if include_installed_state and not source.manifest.is_core:
+        installed_state = _get_installed_state(args, source.manifest.application_name)
     return create_plan(
         mode=mode,
         source=source,
         provenance=provenance,
         environment=environment,
+        installed_state=installed_state,
         allow_destructive=allow_destructive,
         approve=args.approve,
     )
@@ -130,7 +140,32 @@ def _execute_or_explain(plan: dict[str, object], args: argparse.Namespace) -> No
         reasons = [*blocked, *approvals] if isinstance(blocked, list) and isinstance(approvals, list) else []
         raise DbpmError("; ".join(str(reason) for reason in reasons) or "Policy blocks execution")
 
+    _enforce_installed_state(plan)
     execute_plan(plan, connect=_connect_string(args), runner=args.runner)
+
+
+def _get_installed_state(args: argparse.Namespace, application_name: str) -> dict[str, str] | None:
+    state = get_application_state(
+        connect=_connect_string(args),
+        runner=args.runner,
+        application_name=application_name,
+    )
+    return None if state is None else state.as_dict()
+
+
+def _enforce_installed_state(plan: dict[str, object]) -> None:
+    mode = plan.get("mode")
+    state = plan.get("installed_state")
+    package = plan.get("package")
+    app_name = None
+    if isinstance(package, dict):
+        app_name = package.get("application_name")
+
+    if mode == "install" and state is not None:
+        raise DbpmError(f"{app_name} is already installed; use reinstall or upgrade")
+
+    if isinstance(state, dict) and state.get("deploy_status") != "C":
+        raise DbpmError(f"{app_name} deployment status is {state.get('deploy_status')}; expected C")
 
 
 def _connect_string(args: argparse.Namespace) -> str:

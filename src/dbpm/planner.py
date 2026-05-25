@@ -15,6 +15,7 @@ def create_plan(
     source: PackageSource,
     provenance: Provenance,
     environment: EnvironmentPolicy,
+    installed_state: dict[str, str] | None = None,
     allow_destructive: bool = False,
     approve: bool = False,
 ) -> dict[str, object]:
@@ -45,6 +46,7 @@ def create_plan(
             "bootstrap": mode == "bootstrap-core",
         },
         "dependencies": [asdict(dependency) for dependency in manifest.dependencies],
+        "installed_state": installed_state,
         "provenance": provenance.as_dict(),
         "policy": policy,
         "pre_actions": _pre_actions_for_mode(mode, manifest),

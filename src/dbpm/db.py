@@ -15,6 +15,22 @@ class SqlResult:
     stderr: str
 
 
+@dataclass(frozen=True)
+class ApplicationState:
+    application_name: str
+    version: str
+    deploy_status: str
+    deploy_commit_hash: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {
+            "application_name": self.application_name,
+            "version": self.version,
+            "deploy_status": self.deploy_status,
+            "deploy_commit_hash": self.deploy_commit_hash,
+        }
+
+
 def run_sql_script(
     *,
     sql: str,
@@ -65,6 +81,23 @@ def delete_application(
     if result.returncode != 0:
         raise ExecutionError(_format_sql_failure(f"Delete application failed for {application_name}", result))
     return result
+
+
+def get_application_state(
+    *,
+    connect: str,
+    runner: str,
+    application_name: str,
+) -> ApplicationState | None:
+    result = run_sql_script(
+        sql=_application_state_sql(application_name),
+        connect=connect,
+        runner=runner,
+        label="dbpm-application-state",
+    )
+    if result.returncode != 0:
+        raise ExecutionError(_format_sql_failure(f"Application state query failed for {application_name}", result))
+    return _parse_application_state(result.stdout)
 
 
 def _write_temp_script(sql: str, label: str) -> Path:
@@ -140,6 +173,45 @@ END;
 /
 EXIT SUCCESS
 """
+
+
+def _application_state_sql(application_name: str) -> str:
+    app_name = _sql_literal(application_name.upper())
+    return f"""
+SET HEADING OFF
+SET FEEDBACK OFF
+SET PAGESIZE 0
+SET VERIFY OFF
+SET SERVEROUTPUT ON
+WHENEVER SQLERROR EXIT FAILURE
+WHENEVER OSERROR EXIT FAILURE
+
+SELECT 'DBPM_APPLICATION_STATE|'
+       || application_name || '|'
+       || major_version || '.' || minor_version || '.' || patch_version || '|'
+       || deploy_status || '|'
+       || deploy_commit_hash
+  FROM application
+ WHERE application_name = {app_name};
+EXIT SUCCESS
+"""
+
+
+def _parse_application_state(output: str) -> ApplicationState | None:
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line.startswith("DBPM_APPLICATION_STATE|"):
+            continue
+        parts = line.split("|")
+        if len(parts) != 5:
+            raise ExecutionError(f"Unexpected application state output: {line}")
+        return ApplicationState(
+            application_name=parts[1],
+            version=parts[2],
+            deploy_status=parts[3],
+            deploy_commit_hash=parts[4],
+        )
+    return None
 
 
 def _parse_semver(value: str) -> tuple[int, int, int]:
