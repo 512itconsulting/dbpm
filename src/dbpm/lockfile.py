@@ -90,6 +90,28 @@ def assert_database_matches_lockfile(
         raise LockfileError("; ".join(errors))
 
 
+def assert_database_states_match_lockfile(
+    lockfile: dict[str, object],
+    states_by_app: dict[str, dict[str, str] | None],
+) -> None:
+    errors: list[str] = []
+    for app_name, locked_package in _locked_packages_by_app(lockfile).items():
+        state = states_by_app.get(app_name)
+        version = locked_package.get("version")
+        if state is None:
+            errors.append(f"{app_name} is not installed")
+            continue
+        installed_version = state.get("version")
+        deploy_status = state.get("deploy_status")
+        if deploy_status != "C":
+            errors.append(f"{app_name} deploy_status is {deploy_status}; expected C")
+        if installed_version != version:
+            errors.append(f"{app_name} installed version is {installed_version}; expected {version}")
+
+    if errors:
+        raise LockfileError("; ".join(errors))
+
+
 def assert_database_provenance_matches_lockfile(
     lockfile: dict[str, object],
     provenances_by_app: dict[str, dict[str, object] | None],

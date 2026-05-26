@@ -1,0 +1,86 @@
+{
+  "execution_order": [
+    "UTL_INTERVAL",
+    "SIMPLE_SCHEDULER"
+  ],
+  "packages": [
+    {
+      "application_name": "UTL_INTERVAL",
+      "artifact": {
+        "artifact_id": "utl_interval",
+        "artifact_version": "1.0.0",
+        "checksum": "<sha256-of-utl_interval-1.0.0.zip>",
+        "checksum_alg": "SHA-256",
+        "classifier": null,
+        "coordinate": "com.512itconsulting.database:utl_interval:1.0.0",
+        "extension": "zip",
+        "file_name": "utl_interval-1.0.0.zip",
+        "group_id": "com.512itconsulting.database",
+        "repository_type": "file",
+        "uri": "https://maven.pkg.github.com/rsantmyer/utl_interval/com/512itconsulting/database/utl_interval/1.0.0/utl_interval-1.0.0.zip"
+      },
+      "dependencies": [],
+      "name": "utl_interval",
+      "provenance": {
+        "build_id": null,
+        "build_time": "<artifact-build-time>",
+        "build_url": null,
+        "commit": "<source-commit-hash>",
+        "dirty": false,
+        "source": "artifact-metadata",
+        "source_commit_hash": "<source-commit-hash>",
+        "source_repository_url": null
+      },
+      "source": {
+        "manifest": "utl_interval-1.0.0/dbpm.yaml",
+        "path": "https://maven.pkg.github.com/rsantmyer/utl_interval/com/512itconsulting/database/utl_interval/1.0.0/utl_interval-1.0.0.zip",
+        "root": "utl_interval-1.0.0",
+        "type": "zip"
+      },
+      "version": "1.0.0"
+    },
+    {
+      "application_name": "SIMPLE_SCHEDULER",
+      "artifact": {
+        "artifact_id": "simple_scheduler",
+        "artifact_version": "1.1.0",
+        "checksum": "<sha256-of-simple_scheduler-1.1.0.zip>",
+        "checksum_alg": "SHA-256",
+        "classifier": null,
+        "coordinate": "com.512itconsulting.database:simple_scheduler:1.1.0",
+        "extension": "zip",
+        "file_name": "simple_scheduler-1.1.0.zip",
+        "group_id": "com.512itconsulting.database",
+        "repository_type": "file",
+        "uri": "https://maven.pkg.github.com/rsantmyer/simple_scheduler/com/512itconsulting/database/simple_scheduler/1.1.0/simple_scheduler-1.1.0.zip"
+      },
+      "dependencies": [
+        {
+          "name": "utl_interval",
+          "version": "^1.0.0"
+        }
+      ],
+      "name": "simple_scheduler",
+      "provenance": {
+        "build_id": null,
+        "build_time": "<artifact-build-time>",
+        "build_url": null,
+        "commit": "<source-commit-hash>",
+        "dirty": false,
+        "source": "artifact-metadata",
+        "source_commit_hash": "<source-commit-hash>",
+        "source_repository_url": null
+      },
+      "source": {
+        "manifest": "simple_scheduler-1.1.0/dbpm.yaml",
+        "path": "https://maven.pkg.github.com/rsantmyer/simple_scheduler/com/512itconsulting/database/simple_scheduler/1.1.0/simple_scheduler-1.1.0.zip",
+        "root": "simple_scheduler-1.1.0",
+        "type": "zip"
+      },
+      "version": "1.1.0"
+    }
+  ],
+  "root_application_name": "SIMPLE_SCHEDULER",
+  "satisfied_dependencies": [],
+  "schema_version": "dbpm.lock.v0"
+}

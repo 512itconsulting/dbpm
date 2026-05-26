@@ -194,6 +194,105 @@ def test_lock_check_db_reconciles_installed_state(tmp_path: Path, monkeypatch, c
     assert f"LOCKFILE_OK={lockfile}" in capsys.readouterr().out
 
 
+def test_lock_check_db_keeps_dependency_sources_when_dependency_is_installed(
+    tmp_path: Path,
+    monkeypatch,
+):
+    base = tmp_path / "base"
+    consumer = tmp_path / "consumer"
+    lockfile = tmp_path / "dbpm-lock.json"
+    _write_package(base)
+    consumer.mkdir()
+    (consumer / "dbpm.yaml").write_text(
+        """
+package:
+  name: consumer
+  version: "0.1.0"
+
+dependencies:
+  - name: demo
+    version: "0.1.0"
+
+scripts:
+  install: deploy.sql
+""",
+        encoding="utf-8",
+    )
+
+    def fake_get_application_state(**kwargs):
+        return ApplicationState(
+            application_name=kwargs["application_name"],
+            version="0.1.0",
+            deploy_status="C",
+            deploy_commit_hash="abc",
+        )
+
+    monkeypatch.setattr(cli, "get_application_state", fake_get_application_state)
+    monkeypatch.setattr(cli, "get_deployment_provenance", lambda **kwargs: _matching_provenance_from_lock(lockfile, kwargs["application_name"]))
+
+    assert (
+        cli.main(
+            [
+                "lock",
+                str(consumer),
+                "--dependency-source",
+                str(base),
+                "--output",
+                str(lockfile),
+            ]
+        )
+        == 0
+    )
+
+    output = json.loads(lockfile.read_text(encoding="utf-8"))
+    assert output["execution_order"] == ["DEMO", "CONSUMER"]
+    assert (
+        cli.main(
+            [
+                "lock",
+                str(consumer),
+                "--dependency-source",
+                str(base),
+                "--output",
+                str(lockfile),
+                "--check",
+                "--check-db",
+                "--connect",
+                "user/pass@db",
+            ]
+        )
+        == 0
+    )
+
+
+def _matching_provenance_from_lock(lockfile: Path, application_name: str) -> dict[str, object]:
+    data = json.loads(lockfile.read_text(encoding="utf-8"))
+    package = next(item for item in data["packages"] if item["application_name"] == application_name)
+    major, minor, patch = package["version"].split(".")
+    return {
+        "major_version": int(major),
+        "minor_version": int(minor),
+        "patch_version": int(patch),
+        "artifact_uri": package["artifact"]["uri"],
+        "artifact_checksum": package["artifact"]["checksum"],
+        "artifact_checksum_alg": package["artifact"]["checksum_alg"],
+        "artifact_file_name": package["artifact"]["file_name"],
+        "artifact_repository_type": package["artifact"]["repository_type"],
+        "artifact_group_id": package["artifact"]["group_id"],
+        "artifact_id": package["artifact"]["artifact_id"],
+        "artifact_version": package["artifact"]["artifact_version"],
+        "artifact_classifier": package["artifact"]["classifier"],
+        "artifact_extension": package["artifact"]["extension"],
+        "package_coordinate": package["artifact"]["coordinate"],
+        "source_repository_url": package["provenance"]["source_repository_url"],
+        "source_commit_hash": package["provenance"]["source_commit_hash"],
+        "source_path": package["artifact"]["uri"],
+        "build_id": package["provenance"]["build_id"],
+        "build_url": package["provenance"]["build_url"],
+        "build_time": package["provenance"]["build_time"],
+    }
+
+
 def test_lock_check_db_requires_check(tmp_path: Path, capsys):
     package = tmp_path / "package"
     _write_package(package)

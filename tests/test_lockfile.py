@@ -8,6 +8,7 @@ import pytest
 from dbpm.lockfile import (
     assert_database_matches_lockfile,
     assert_database_provenance_matches_lockfile,
+    assert_database_states_match_lockfile,
     assert_lockfile_matches_plan,
     create_lockfile,
     deployment_provenance_requests,
@@ -115,6 +116,35 @@ def test_database_match_rejects_missing_install(tmp_path: Path, monkeypatch):
 
     with pytest.raises(Exception, match="DEMO is not installed"):
         assert_database_matches_lockfile(lockfile, plan)
+
+
+def test_database_states_match_lockfile(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("DBPM_CACHE_DIR", str(tmp_path / "cache"))
+    artifact = tmp_path / "demo.zip"
+    _write_zip(artifact)
+    lockfile = create_lockfile(_plan_for_zip(artifact))
+
+    assert_database_states_match_lockfile(
+        lockfile,
+        {
+            "DEMO": {
+                "application_name": "DEMO",
+                "version": "0.1.0",
+                "deploy_status": "C",
+                "deploy_commit_hash": "abc",
+            }
+        },
+    )
+
+
+def test_database_states_match_lockfile_rejects_missing_install(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("DBPM_CACHE_DIR", str(tmp_path / "cache"))
+    artifact = tmp_path / "demo.zip"
+    _write_zip(artifact)
+    lockfile = create_lockfile(_plan_for_zip(artifact))
+
+    with pytest.raises(Exception, match="DEMO is not installed"):
+        assert_database_states_match_lockfile(lockfile, {"DEMO": None})
 
 
 def test_deployment_provenance_requests(tmp_path: Path, monkeypatch):

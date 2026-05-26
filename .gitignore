@@ -34,7 +34,8 @@ venv/
 build/
 dist/
 *.egg-info/
-.dbpm-cache/
+.dbpm-cache*/
+dbpm-live-test-lock.json
 
 # Local database environment helpers may contain credentials.
 setenv.ps1

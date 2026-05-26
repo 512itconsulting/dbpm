@@ -14,6 +14,7 @@ from .lockfile import (
     LOCKFILE_NAME,
     assert_database_matches_lockfile,
     assert_database_provenance_matches_lockfile,
+    assert_database_states_match_lockfile,
     assert_lockfile_matches_plan,
     create_lockfile,
     deployment_provenance_requests,
@@ -39,7 +40,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "lock":
             if args.check_db and not args.check:
                 raise DbpmError("--check-db requires --check")
-            plan = _build_plan("install", args, include_installed_state=bool(args.connect))
+            plan = _build_plan("install", args, include_installed_state=False)
             lockfile_path = Path(args.output)
             if args.check:
                 lockfile = load_lockfile(lockfile_path)
@@ -47,7 +48,11 @@ def main(argv: list[str] | None = None) -> int:
                 if args.check_db:
                     if not args.connect:
                         raise DbpmError("Database lockfile check requires --connect or DBPM_CONNECT")
-                    assert_database_matches_lockfile(lockfile, plan)
+                    states = {
+                        app_name: _get_installed_state(args, app_name)
+                        for app_name, _ in deployment_provenance_requests(lockfile)
+                    }
+                    assert_database_states_match_lockfile(lockfile, states)
                     provenances = {
                         app_name: get_deployment_provenance(
                             connect=_connect_string(args),
