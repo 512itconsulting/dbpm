@@ -4,10 +4,13 @@
 Define the smallest useful dbpm implementation.
 
 ## MVP Commands
+- check-core
 - bootstrap-core
 - plan
 - install
 - reinstall
+- resume
+- validate
 
 ## Supported Sources
 - local package directory
@@ -35,6 +38,10 @@ Define the smallest useful dbpm implementation.
 - execute SQLPlus/SQLcl manifest scripts
 - pass commit hash into deployment scripts
 - read installed state from Core
+- block normal install when the package is already installed
+- block destructive reinstall when installed applications depend on the target
+- resume running or failed deployments without deleting application state
+- run package validation scripts after successful deployment
 
 ## Fixtures
 - core
@@ -63,3 +70,4 @@ Maven-compatible repository layouts can remain a publishing and hosting option. 
 ## Open Decisions
 - SQLPlus vs SQLcl default
 - exact plan JSON shape
+- dbpm-managed artifact deployment argument contract for `pkg_application.begin_artifact_deployment_p`
