@@ -8,6 +8,7 @@ Define the smallest useful dbpm implementation.
 - bootstrap-core
 - plan
 - install
+- upgrade
 - reinstall
 - resume
 - validate
@@ -17,7 +18,6 @@ Define the smallest useful dbpm implementation.
 - local built ZIP
 
 ## Deferred
-- upgrade
 - dependency lockfile generation and enforcement
 - local artifact cache
 - remote HTTP(S) artifact retrieval
@@ -40,6 +40,7 @@ Define the smallest useful dbpm implementation.
 - stage artifact provenance in Core before running package deployment scripts
 - read installed state from Core
 - block normal install when the package is already installed
+- upgrade complete installed applications to a higher semantic version
 - block destructive reinstall when installed applications depend on the target
 - resume running or failed deployments without deleting application state
 - run package validation scripts after successful deployment

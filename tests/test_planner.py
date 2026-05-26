@@ -136,6 +136,102 @@ scripts:
     assert plan["execution"]["arguments"] == []
 
 
+def test_upgrade_deployment_type_uses_version_delta(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: demo
+  version: "2.0.0"
+
+scripts:
+  upgrade: upgrade.sql
+""",
+        encoding="utf-8",
+    )
+
+    source = load_package_source(str(package))
+    plan = create_plan(
+        mode="upgrade",
+        source=source,
+        provenance=resolve_provenance(source),
+        environment=resolve_environment("development"),
+        installed_state={
+            "application_name": "DEMO",
+            "version": "1.9.9",
+            "deploy_status": "C",
+            "deploy_commit_hash": "abc",
+        },
+    )
+
+    assert plan["pre_actions"][0]["payload"]["deployment_type"] == "V"
+
+
+def test_upgrade_deployment_type_detects_minor_delta(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: demo
+  version: "1.2.0"
+
+scripts:
+  upgrade: upgrade.sql
+""",
+        encoding="utf-8",
+    )
+
+    source = load_package_source(str(package))
+    plan = create_plan(
+        mode="upgrade",
+        source=source,
+        provenance=resolve_provenance(source),
+        environment=resolve_environment("development"),
+        installed_state={
+            "application_name": "DEMO",
+            "version": "1.1.9",
+            "deploy_status": "C",
+            "deploy_commit_hash": "abc",
+        },
+    )
+
+    assert plan["pre_actions"][0]["payload"]["deployment_type"] == "M"
+
+
+def test_upgrade_deployment_type_detects_patch_delta(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: demo
+  version: "1.2.3"
+
+scripts:
+  upgrade: upgrade.sql
+""",
+        encoding="utf-8",
+    )
+
+    source = load_package_source(str(package))
+    plan = create_plan(
+        mode="upgrade",
+        source=source,
+        provenance=resolve_provenance(source),
+        environment=resolve_environment("development"),
+        installed_state={
+            "application_name": "DEMO",
+            "version": "1.2.2",
+            "deploy_status": "C",
+            "deploy_commit_hash": "abc",
+        },
+    )
+
+    assert plan["pre_actions"][0]["payload"]["deployment_type"] == "P"
+
+
 def test_reinstall_requires_destructive_flag(tmp_path: Path):
     package = tmp_path / "pkg"
     package.mkdir()

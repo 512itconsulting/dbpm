@@ -52,7 +52,7 @@ def create_plan(
         "installed_state": installed_state,
         "provenance": provenance.as_dict(),
         "policy": policy,
-        "pre_actions": _pre_actions_for_mode(mode, manifest, source, provenance),
+        "pre_actions": _pre_actions_for_mode(mode, manifest, source, provenance, installed_state),
         "execution": {
             "script": script,
             "script_ref": str(source.resolve_script_path(script)) if script else None,
@@ -97,6 +97,7 @@ def _pre_actions_for_mode(
     manifest: PackageManifest,
     source: PackageSource,
     provenance: Provenance,
+    installed_state: dict[str, str] | None,
 ) -> list[dict[str, object]]:
     actions: list[dict[str, object]] = []
     if mode == "reinstall":
@@ -116,6 +117,7 @@ def _pre_actions_for_mode(
                     manifest=manifest,
                     source=source,
                     provenance=provenance,
+                    installed_state=installed_state,
                 ),
             }
         )
@@ -128,13 +130,14 @@ def _deployment_provenance_payload(
     manifest: PackageManifest,
     source: PackageSource,
     provenance: Provenance,
+    installed_state: dict[str, str] | None,
 ) -> dict[str, object]:
     artifact = provenance.artifact
     coordinate = _package_coordinate(artifact)
     payload: dict[str, object] = {
         "application_name": manifest.application_name,
         "version": manifest.version,
-        "deployment_type": _deployment_type_for_mode(mode),
+        "deployment_type": _deployment_type_for_mode(mode, manifest, installed_state),
         "deploy_commit_hash": provenance.commit,
         "artifact_uri": source.display_path,
         "artifact_checksum": None,
@@ -162,10 +165,33 @@ def _deployment_provenance_payload(
     return payload
 
 
-def _deployment_type_for_mode(mode: str) -> str:
+def _deployment_type_for_mode(
+    mode: str,
+    manifest: PackageManifest,
+    installed_state: dict[str, str] | None,
+) -> str:
     if mode in {"install", "reinstall", "resume"}:
         return "I"
+    if mode == "upgrade" and installed_state:
+        installed_version = installed_state.get("version")
+        if installed_version:
+            installed_major, installed_minor, _ = _parse_semver(installed_version)
+            target_major, target_minor, _ = _parse_semver(manifest.version)
+            if target_major > installed_major:
+                return "V"
+            if target_minor > installed_minor:
+                return "M"
     return "P"
+
+
+def _parse_semver(value: str) -> tuple[int, int, int]:
+    parts = value.split(".")
+    if len(parts) != 3:
+        raise ManifestError(f"Version must be major.minor.patch: {value}")
+    try:
+        return int(parts[0]), int(parts[1]), int(parts[2])
+    except ValueError as exc:
+        raise ManifestError(f"Version must be numeric: {value}") from exc
 
 
 def _package_coordinate(artifact: dict[str, str]) -> str | None:
