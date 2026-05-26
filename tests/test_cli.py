@@ -287,6 +287,126 @@ def test_validate_blocks_running_deployment(tmp_path: Path, monkeypatch, capsys)
     assert "DEMO deployment status is R; validate requires C" in capsys.readouterr().err
 
 
+def _write_package_with_upgrade(path: Path) -> None:
+    path.mkdir()
+    (path / "dbpm.yaml").write_text(
+        """
+package:
+  name: demo
+  version: "1.0.1"
+
+core:
+  minimum_version: "3.0.0"
+
+scripts:
+  install: Deployment_Manifests/deploy.sql
+  upgrade: Deployment_Manifests/upgrade.sql
+  validate: Tests/smoke_test.sql
+""",
+        encoding="utf-8",
+    )
+
+
+def test_upgrade_allows_complete_installed_package(tmp_path: Path, monkeypatch):
+    package = tmp_path / "package"
+    _write_package_with_upgrade(package)
+
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState(
+            application_name="DEMO",
+            version="1.0.0",
+            deploy_status="C",
+            deploy_commit_hash="abc",
+        ),
+    )
+    monkeypatch.setattr(cli, "execute_plan", lambda *args, **kwargs: 0)
+
+    assert cli.main(["upgrade", str(package), "--connect", "user/pass@db"]) == 0
+
+
+def test_upgrade_blocks_when_not_installed(tmp_path: Path, monkeypatch, capsys):
+    package = tmp_path / "package"
+    _write_package_with_upgrade(package)
+
+    monkeypatch.setattr(cli, "get_application_state", lambda **kwargs: None)
+
+    assert cli.main(["upgrade", str(package), "--connect", "user/pass@db"]) == 2
+
+    assert "DEMO is not installed; use install" in capsys.readouterr().err
+
+
+def test_upgrade_blocks_incomplete_deployment(tmp_path: Path, monkeypatch, capsys):
+    package = tmp_path / "package"
+    _write_package_with_upgrade(package)
+
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState(
+            application_name="DEMO",
+            version="1.0.0",
+            deploy_status="R",
+            deploy_commit_hash="abc",
+        ),
+    )
+
+    assert cli.main(["upgrade", str(package), "--connect", "user/pass@db"]) == 2
+
+    assert "DEMO deployment status is R; upgrade requires C" in capsys.readouterr().err
+
+
+def test_upgrade_blocks_same_version(tmp_path: Path, monkeypatch, capsys):
+    package = tmp_path / "package"
+    _write_package_with_upgrade(package)
+
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState(
+            application_name="DEMO",
+            version="1.0.1",
+            deploy_status="C",
+            deploy_commit_hash="abc",
+        ),
+    )
+
+    assert cli.main(["upgrade", str(package), "--connect", "user/pass@db"]) == 2
+
+    assert "DEMO version 1.0.1 is already installed; no upgrade needed" in capsys.readouterr().err
+
+
+def test_upgrade_blocks_downgrade(tmp_path: Path, monkeypatch, capsys):
+    package = tmp_path / "package"
+    _write_package_with_upgrade(package)
+
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState(
+            application_name="DEMO",
+            version="2.0.0",
+            deploy_status="C",
+            deploy_commit_hash="abc",
+        ),
+    )
+
+    assert cli.main(["upgrade", str(package), "--connect", "user/pass@db"]) == 2
+
+    assert "Cannot downgrade DEMO from 2.0.0 to 1.0.1" in capsys.readouterr().err
+
+
+def test_upgrade_dry_run_prints_plan(tmp_path: Path, capsys):
+    package = tmp_path / "package"
+    _write_package_with_upgrade(package)
+
+    assert cli.main(["upgrade", str(package), "--dry-run"]) == 0
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["mode"] == "upgrade"
+
+
 def test_check_core_uses_environment_connect_and_runner(monkeypatch, capsys):
     calls = {}
 

@@ -31,7 +31,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(result.stdout.strip())
             return 0
-        if args.command in {"bootstrap-core", "install", "reinstall", "resume", "validate"}:
+        if args.command in {"bootstrap-core", "install", "upgrade", "reinstall", "resume", "validate"}:
             plan = _build_plan(args.command, args, include_installed_state=not args.dry_run)
             if args.dry_run:
                 _print_json(plan)
@@ -71,6 +71,10 @@ def _build_parser() -> argparse.ArgumentParser:
     install = subparsers.add_parser("install", help="Install a package")
     _add_common_args(install)
     _add_execution_args(install)
+
+    upgrade = subparsers.add_parser("upgrade", help="Upgrade an installed package to a new version")
+    _add_common_args(upgrade)
+    _add_execution_args(upgrade)
 
     reinstall = subparsers.add_parser("reinstall", help="Destructively reinstall a package")
     _add_common_args(reinstall)
@@ -203,6 +207,25 @@ def _enforce_installed_state(plan: dict[str, object]) -> None:
             raise DbpmError(f"{app_name} deployment status is {status}; validate requires C")
         return
 
+    if mode == "upgrade":
+        if state is None:
+            raise DbpmError(f"{app_name} is not installed; use install")
+        if status != "C":
+            raise DbpmError(f"{app_name} deployment status is {status}; upgrade requires C")
+        installed_version = state.get("version") if isinstance(state, dict) else None
+        target_version = package.get("version") if isinstance(package, dict) else None
+        if installed_version and target_version:
+            cmp = _compare_versions(installed_version, target_version)
+            if cmp == 0:
+                raise DbpmError(
+                    f"{app_name} version {target_version} is already installed; no upgrade needed"
+                )
+            if cmp > 0:
+                raise DbpmError(
+                    f"Cannot downgrade {app_name} from {installed_version} to {target_version}"
+                )
+        return
+
     if mode == "reinstall":
         reverse_dependencies = plan.get("reverse_dependencies", [])
         if reverse_dependencies:
@@ -218,6 +241,24 @@ def _connect_string(args: argparse.Namespace) -> str:
     if not args.connect:
         raise DbpmError("Database access requires --connect or DBPM_CONNECT")
     return args.connect
+
+
+def _compare_versions(a: str, b: str) -> int:
+    """Return negative if a < b, 0 if equal, positive if a > b."""
+    def _parts(v: str) -> tuple[int, ...]:
+        try:
+            return tuple(int(x) for x in v.split("."))
+        except ValueError:
+            return (0,)
+
+    pa, pb = _parts(a), _parts(b)
+    length = max(len(pa), len(pb))
+    pa = pa + (0,) * (length - len(pa))
+    pb = pb + (0,) * (length - len(pb))
+    for x, y in zip(pa, pb):
+        if x != y:
+            return x - y
+    return 0
 
 
 def _print_json(value: dict[str, object]) -> None:
