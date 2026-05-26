@@ -11,6 +11,7 @@ from .errors import DbpmError
 from .executor import execute_plan
 from .planner import create_plan
 from .provenance import resolve_provenance
+from .resolver import create_multi_package_plan
 from .source import load_package_source
 
 
@@ -61,6 +62,12 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=("bootstrap-core", "install", "upgrade", "reinstall", "resume", "validate"),
         default="install",
         help="Deployment mode to plan",
+    )
+    plan.add_argument(
+        "--dependency-source",
+        action="append",
+        default=[],
+        help="Local package directory or ZIP that may satisfy a manifest dependency",
     )
     _add_database_args(plan)
 
@@ -127,6 +134,10 @@ def _build_plan(
     include_installed_state: bool = False,
 ) -> dict[str, object]:
     source = load_package_source(args.source)
+    dependency_sources = [
+        load_package_source(raw_path)
+        for raw_path in getattr(args, "dependency_source", [])
+    ]
     provenance = resolve_provenance(source)
     environment = resolve_environment(args.env)
     allow_destructive = bool(getattr(args, "allow_destructive", False))
@@ -135,6 +146,30 @@ def _build_plan(
     if include_installed_state and not source.manifest.is_core:
         installed_state = _get_installed_state(args, source.manifest.application_name)
         reverse_dependencies = _get_reverse_dependencies(args, source.manifest.application_name)
+
+    if args.command == "plan" and (dependency_sources or source.manifest.dependencies):
+        installed_states = {source.manifest.application_name: installed_state}
+        reverse_dependencies_by_app = {source.manifest.application_name: reverse_dependencies or []}
+        if include_installed_state:
+            for dependency in source.manifest.dependencies:
+                app_name = _application_name(dependency.name)
+                installed_states[app_name] = _get_installed_state(args, app_name)
+                reverse_dependencies_by_app[app_name] = _get_reverse_dependencies(args, app_name)
+            for dependency_source in dependency_sources:
+                app_name = dependency_source.manifest.application_name
+                installed_states[app_name] = _get_installed_state(args, app_name)
+                reverse_dependencies_by_app[app_name] = _get_reverse_dependencies(args, app_name)
+        return create_multi_package_plan(
+            mode=mode,
+            source=source,
+            dependency_sources=dependency_sources,
+            environment=environment,
+            installed_states=installed_states,
+            reverse_dependencies=reverse_dependencies_by_app,
+            allow_destructive=allow_destructive,
+            approve=args.approve,
+        )
+
     return create_plan(
         mode=mode,
         source=source,
@@ -241,6 +276,10 @@ def _connect_string(args: argparse.Namespace) -> str:
     if not args.connect:
         raise DbpmError("Database access requires --connect or DBPM_CONNECT")
     return args.connect
+
+
+def _application_name(name: str) -> str:
+    return name.replace("-", "_").upper()
 
 
 def _compare_versions(a: str, b: str) -> int:

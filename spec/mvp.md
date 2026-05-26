@@ -35,6 +35,7 @@ Define the smallest useful dbpm implementation.
 - verify Core for non-Core packages
 - read provenance from artifact metadata or local git
 - generate a deployment plan
+- generate an ordered multi-package plan from local dependency sources
 - enforce environment policy
 - execute SQLPlus/SQLcl manifest scripts
 - pass commit hash into deployment scripts
@@ -43,6 +44,7 @@ Define the smallest useful dbpm implementation.
 - read installed state from Core
 - block normal install when the package is already installed
 - upgrade complete installed applications to a higher semantic version
+- fail clearly when local dependency planning cannot resolve a required package
 - block destructive reinstall when installed applications depend on the target
 - resume running or failed deployments without deleting application state
 - run package validation scripts after successful deployment

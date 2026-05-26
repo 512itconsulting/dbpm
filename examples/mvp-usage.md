@@ -52,6 +52,16 @@ Generate a connected plan that includes Core installed state and reverse depende
 .\.venv\Scripts\dbpm.exe plan C:\Local_Exe\Repos\utl_interval --mode install --env development --connect $env:DBPM_CONNECT
 ```
 
+## Plan Local Dependencies
+
+When a package manifest declares dependencies, provide local package sources that may satisfy them:
+
+```powershell
+.\.venv\Scripts\dbpm.exe plan C:\path\to\consumer --mode install --dependency-source C:\path\to\dependency
+```
+
+The resulting multi-package plan orders dependencies before consumers. If a required dependency is not already installed in Core and no matching local source is provided, planning fails before deployment.
+
 ## Install A Package
 
 Install a package that is not already registered in Core:

@@ -54,6 +54,8 @@ Initial version constraint support should be intentionally small and semver-orie
 
 The resolver should reject ambiguous or unsupported constraints until the syntax is formally specified.
 
+The MVP resolver supports exact `major.minor.patch` versions first. Compatible ranges and minimum-version constraints remain specified direction but should fail clearly until implemented.
+
 ## Lockfile Resolution
 
 When a lockfile is present and the selected workflow requires locked deployments, dbpm should install or upgrade using the exact artifact identities recorded in the lockfile.

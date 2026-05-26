@@ -42,6 +42,68 @@ def test_plan_prints_json(tmp_path: Path, capsys):
     assert output["package"]["application_name"] == "DEMO"
 
 
+def test_plan_with_dependency_source_prints_multi_package_plan(tmp_path: Path, capsys):
+    base = tmp_path / "base"
+    consumer = tmp_path / "consumer"
+    _write_package(base)
+    consumer.mkdir()
+    (consumer / "dbpm.yaml").write_text(
+        """
+package:
+  name: consumer
+  version: "0.1.0"
+
+dependencies:
+  - name: demo
+    version: "0.1.0"
+
+scripts:
+  install: deploy.sql
+""",
+        encoding="utf-8",
+    )
+
+    assert (
+        cli.main(
+            [
+                "plan",
+                str(consumer),
+                "--dependency-source",
+                str(base),
+            ]
+        )
+        == 0
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["schema_version"] == "dbpm.multi-plan.v0"
+    assert output["execution_order"] == ["DEMO", "CONSUMER"]
+
+
+def test_plan_with_missing_dependency_source_fails(tmp_path: Path, capsys):
+    consumer = tmp_path / "consumer"
+    consumer.mkdir()
+    (consumer / "dbpm.yaml").write_text(
+        """
+package:
+  name: consumer
+  version: "0.1.0"
+
+dependencies:
+  - name: demo
+    version: "0.1.0"
+
+scripts:
+  install: deploy.sql
+""",
+        encoding="utf-8",
+    )
+
+    assert cli.main(["plan", str(consumer)]) == 2
+
+    assert "Missing dependency source for CONSUMER: DEMO 0.1.0" in capsys.readouterr().err
+
+
 def test_install_dry_run_prints_plan(tmp_path: Path, capsys):
     package = tmp_path / "package"
     _write_package(package)

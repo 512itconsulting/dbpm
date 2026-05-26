@@ -14,5 +14,9 @@ class PolicyError(DbpmError):
     """Raised when environment policy blocks a requested action."""
 
 
+class DependencyError(DbpmError):
+    """Raised when package dependencies cannot be resolved."""
+
+
 class ExecutionError(DbpmError):
     """Raised when a deployment command fails."""
