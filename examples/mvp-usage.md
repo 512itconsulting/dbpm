@@ -60,6 +60,8 @@ Install a package that is not already registered in Core:
 .\.venv\Scripts\dbpm.exe install C:\Local_Exe\Repos\utl_interval --env development
 ```
 
+Before running the package deployment script, dbpm stages resolved provenance in Core with `pkg_application.stage_deployment_provenance_p`. The existing deploy script still receives the commit hash argument and calls `begin_deployment_p`; Core consumes the matching staged provenance when that deployment starts.
+
 If the package is already installed, dbpm fails before running the deployment script:
 
 ```text

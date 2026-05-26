@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -80,6 +81,25 @@ def delete_application(
     result = run_sql_script(sql=sql, connect=connect, runner=runner, label="dbpm-delete-application")
     if result.returncode != 0:
         raise ExecutionError(_format_sql_failure(f"Delete application failed for {application_name}", result))
+    return result
+
+
+def stage_deployment_provenance(
+    *,
+    connect: str,
+    runner: str,
+    payload: dict[str, object],
+) -> SqlResult:
+    sql = _stage_deployment_provenance_sql(payload)
+    application_name = str(payload.get("application_name", ""))
+    result = run_sql_script(
+        sql=sql,
+        connect=connect,
+        runner=runner,
+        label="dbpm-stage-provenance",
+    )
+    if result.returncode != 0:
+        raise ExecutionError(_format_sql_failure(f"Stage provenance failed for {application_name}", result))
     return result
 
 
@@ -192,6 +212,57 @@ EXIT SUCCESS
 """
 
 
+def _stage_deployment_provenance_sql(payload: dict[str, object]) -> str:
+    application_name = _required_payload_str(payload, "application_name").upper()
+    major, minor, patch = _parse_semver(_required_payload_str(payload, "version"))
+    deployment_type = str(payload.get("deployment_type", "I"))
+    deploy_commit_hash = _required_payload_str(payload, "deploy_commit_hash")
+    build_metadata_json = payload.get("build_metadata_json")
+    if build_metadata_json is not None and not isinstance(build_metadata_json, str):
+        build_metadata_json = json.dumps(build_metadata_json, sort_keys=True, separators=(",", ":"))
+
+    return f"""
+SET HEADING OFF
+SET FEEDBACK OFF
+SET VERIFY OFF
+SET SERVEROUTPUT ON
+WHENEVER SQLERROR EXIT FAILURE
+WHENEVER OSERROR EXIT FAILURE
+
+BEGIN
+   pkg_application.stage_deployment_provenance_p(
+      ip_application_name         => {_sql_literal(application_name)},
+      ip_major_version            => {major},
+      ip_minor_version            => {minor},
+      ip_patch_version            => {patch},
+      ip_deployment_type          => {_sql_literal(deployment_type)},
+      ip_deploy_commit_hash       => {_sql_literal(deploy_commit_hash)},
+      ip_artifact_uri             => {_nullable_sql_literal(payload.get("artifact_uri"))},
+      ip_artifact_checksum        => {_nullable_sql_literal(payload.get("artifact_checksum"))},
+      ip_artifact_checksum_alg    => {_nullable_sql_literal(payload.get("artifact_checksum_alg", "SHA-256"))},
+      ip_artifact_file_name       => {_nullable_sql_literal(payload.get("artifact_file_name"))},
+      ip_artifact_repository_type => {_nullable_sql_literal(payload.get("artifact_repository_type"))},
+      ip_artifact_group_id        => {_nullable_sql_literal(payload.get("artifact_group_id"))},
+      ip_artifact_id              => {_nullable_sql_literal(payload.get("artifact_id"))},
+      ip_artifact_version         => {_nullable_sql_literal(payload.get("artifact_version"))},
+      ip_artifact_classifier      => {_nullable_sql_literal(payload.get("artifact_classifier"))},
+      ip_artifact_extension       => {_nullable_sql_literal(payload.get("artifact_extension"))},
+      ip_package_coordinate       => {_nullable_sql_literal(payload.get("package_coordinate"))},
+      ip_source_repository_url    => {_nullable_sql_literal(payload.get("source_repository_url"))},
+      ip_source_commit_hash       => {_nullable_sql_literal(payload.get("source_commit_hash"))},
+      ip_source_path              => {_nullable_sql_literal(payload.get("source_path"))},
+      ip_build_id                 => {_nullable_sql_literal(payload.get("build_id"))},
+      ip_build_url                => {_nullable_sql_literal(payload.get("build_url"))},
+      ip_build_time               => {_nullable_sql_literal(payload.get("build_time"))},
+      ip_build_metadata_json      => {_nullable_sql_literal(build_metadata_json)}
+   );
+   DBMS_OUTPUT.PUT_LINE('STAGED_DEPLOYMENT_PROVENANCE=' || {_sql_literal(application_name)});
+END;
+/
+EXIT SUCCESS
+"""
+
+
 def _application_state_sql(application_name: str) -> str:
     app_name = _sql_literal(application_name.upper())
     return f"""
@@ -276,3 +347,19 @@ def _format_sql_failure(message: str, result: SqlResult) -> str:
 
 def _sql_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
+
+
+def _nullable_sql_literal(value: object) -> str:
+    if value is None:
+        return "NULL"
+    text = str(value)
+    if text == "":
+        return "NULL"
+    return _sql_literal(text)
+
+
+def _required_payload_str(payload: dict[str, object], key: str) -> str:
+    value = payload.get(key)
+    if value is None or str(value).strip() == "":
+        raise ExecutionError(f"stage_deployment_provenance requires {key}")
+    return str(value)

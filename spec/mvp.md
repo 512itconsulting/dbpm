@@ -37,6 +37,7 @@ Define the smallest useful dbpm implementation.
 - enforce environment policy
 - execute SQLPlus/SQLcl manifest scripts
 - pass commit hash into deployment scripts
+- stage artifact provenance in Core before running package deployment scripts
 - read installed state from Core
 - block normal install when the package is already installed
 - block destructive reinstall when installed applications depend on the target
@@ -70,4 +71,4 @@ Maven-compatible repository layouts can remain a publishing and hosting option. 
 ## Open Decisions
 - SQLPlus vs SQLcl default
 - exact plan JSON shape
-- dbpm-managed artifact deployment argument contract for `pkg_application.begin_artifact_deployment_p`
+- checksum strategy for local directory deployments

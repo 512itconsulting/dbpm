@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from pathlib import Path
 
 from .environment import EnvironmentPolicy
 from .errors import ManifestError
@@ -51,7 +52,7 @@ def create_plan(
         "installed_state": installed_state,
         "provenance": provenance.as_dict(),
         "policy": policy,
-        "pre_actions": _pre_actions_for_mode(mode, manifest),
+        "pre_actions": _pre_actions_for_mode(mode, manifest, source, provenance),
         "execution": {
             "script": script,
             "script_ref": str(source.resolve_script_path(script)) if script else None,
@@ -91,13 +92,86 @@ def _script_arguments_for_mode(mode: str, provenance: Provenance) -> list[str]:
     return [provenance.commit]
 
 
-def _pre_actions_for_mode(mode: str, manifest: PackageManifest) -> list[dict[str, str]]:
+def _pre_actions_for_mode(
+    mode: str,
+    manifest: PackageManifest,
+    source: PackageSource,
+    provenance: Provenance,
+) -> list[dict[str, object]]:
+    actions: list[dict[str, object]] = []
     if mode == "reinstall":
-        return [
+        actions.append(
             {
                 "type": "delete_application",
                 "application_name": manifest.application_name,
                 "fail_on_not_found": "N",
             }
-        ]
-    return []
+        )
+    if mode in {"install", "reinstall", "resume", "upgrade"} and not manifest.is_core:
+        actions.append(
+            {
+                "type": "stage_deployment_provenance",
+                "payload": _deployment_provenance_payload(
+                    mode=mode,
+                    manifest=manifest,
+                    source=source,
+                    provenance=provenance,
+                ),
+            }
+        )
+    return actions
+
+
+def _deployment_provenance_payload(
+    *,
+    mode: str,
+    manifest: PackageManifest,
+    source: PackageSource,
+    provenance: Provenance,
+) -> dict[str, object]:
+    artifact = provenance.artifact
+    coordinate = _package_coordinate(artifact)
+    payload: dict[str, object] = {
+        "application_name": manifest.application_name,
+        "version": manifest.version,
+        "deployment_type": _deployment_type_for_mode(mode),
+        "deploy_commit_hash": provenance.commit,
+        "artifact_uri": source.display_path,
+        "artifact_checksum": None,
+        "artifact_checksum_alg": "SHA-256",
+        "artifact_file_name": source.path.name if source.is_zip else None,
+        "artifact_repository_type": "file" if source.is_zip else "local",
+        "artifact_group_id": artifact.get("artifact.groupId"),
+        "artifact_id": artifact.get("artifact.artifactId"),
+        "artifact_version": artifact.get("artifact.version"),
+        "artifact_classifier": artifact.get("artifact.classifier"),
+        "artifact_extension": artifact.get("artifact.extension") or ("zip" if source.is_zip else None),
+        "package_coordinate": coordinate,
+        "source_repository_url": artifact.get("git.remote.origin.url"),
+        "source_commit_hash": provenance.commit,
+        "source_path": str(Path(source.display_path)),
+        "build_id": artifact.get("build.id"),
+        "build_url": artifact.get("build.url"),
+        "build_time": artifact.get("build.time"),
+        "build_metadata_json": {
+            "source": provenance.source,
+            "dirty": provenance.dirty,
+            "artifact": artifact,
+        },
+    }
+    return payload
+
+
+def _deployment_type_for_mode(mode: str) -> str:
+    if mode in {"install", "reinstall", "resume"}:
+        return "I"
+    return "P"
+
+
+def _package_coordinate(artifact: dict[str, str]) -> str | None:
+    group_id = artifact.get("artifact.groupId")
+    artifact_id = artifact.get("artifact.artifactId")
+    version = artifact.get("artifact.version")
+    if group_id and artifact_id and version:
+        return f"{group_id}:{artifact_id}:{version}"
+    return None

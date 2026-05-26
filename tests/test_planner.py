@@ -69,6 +69,16 @@ scripts:
     assert plan["reverse_dependencies"] == ["JOB_CONTROL"]
     assert plan["policy"]["result"] == "allowed"
     assert plan["execution"]["arguments"] == ["1234567890123456789012345678901234567890"]
+    assert plan["pre_actions"][0]["type"] == "stage_deployment_provenance"
+    payload = plan["pre_actions"][0]["payload"]
+    assert payload["application_name"] == "UTL_INTERVAL"
+    assert payload["version"] == "1.0.0"
+    assert payload["deployment_type"] == "I"
+    assert payload["deploy_commit_hash"] == "1234567890123456789012345678901234567890"
+    assert payload["artifact_group_id"] == "com.512itconsulting.database"
+    assert payload["artifact_id"] == "utl_interval"
+    assert payload["artifact_version"] == "1.0.0"
+    assert payload["package_coordinate"] == "com.512itconsulting.database:utl_interval:1.0.0"
 
 
 def test_resume_uses_install_script(tmp_path: Path):
@@ -95,7 +105,7 @@ scripts:
     )
 
     assert plan["execution"]["script"] == "deploy.sql"
-    assert plan["pre_actions"] == []
+    assert plan["pre_actions"][0]["type"] == "stage_deployment_provenance"
 
 
 def test_validate_uses_validate_script_without_commit_argument(tmp_path: Path):
@@ -157,8 +167,13 @@ scripts:
             "type": "delete_application",
             "application_name": "DEMO",
             "fail_on_not_found": "N",
-        }
+        },
+        {
+            "type": "stage_deployment_provenance",
+            "payload": plan["pre_actions"][1]["payload"],
+        },
     ]
+    assert plan["pre_actions"][1]["payload"]["application_name"] == "DEMO"
 
 
 def test_bootstrap_core_does_not_require_core(tmp_path: Path):
@@ -186,6 +201,7 @@ scripts:
 
     assert plan["core"]["required"] is False
     assert plan["core"]["bootstrap"] is True
+    assert plan["pre_actions"] == []
 
 
 def test_missing_install_script_fails(tmp_path: Path):

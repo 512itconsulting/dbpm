@@ -7,6 +7,7 @@ from dbpm.db import (
     _parse_reverse_dependencies,
     _parse_semver,
     _reverse_dependencies_sql,
+    _stage_deployment_provenance_sql,
 )
 
 
@@ -32,6 +33,35 @@ def test_delete_application_sql_uses_core_api():
     assert "ip_application_name    => 'UTL_INTERVAL'" in sql
     assert "ip_fail_on_not_found  => 'N'" in sql
     assert "DELETED_APPLICATION=" in sql
+
+
+def test_stage_deployment_provenance_sql_uses_core_api():
+    sql = _stage_deployment_provenance_sql(
+        {
+            "application_name": "utl_interval",
+            "version": "1.0.0",
+            "deployment_type": "I",
+            "deploy_commit_hash": "1234567890123456789012345678901234567890",
+            "artifact_uri": "C:\\packages\\utl_interval.zip",
+            "artifact_checksum": "abc123",
+            "artifact_group_id": "com.example",
+            "artifact_id": "utl_interval",
+            "artifact_version": "1.0.0",
+            "package_coordinate": "com.example:utl_interval:1.0.0",
+            "build_metadata_json": {"source": "artifact-metadata"},
+        }
+    )
+
+    assert "pkg_application.stage_deployment_provenance_p" in sql
+    assert "ip_application_name         => 'UTL_INTERVAL'" in sql
+    assert "ip_major_version            => 1" in sql
+    assert "ip_minor_version            => 0" in sql
+    assert "ip_patch_version            => 0" in sql
+    assert "ip_deploy_commit_hash       => '1234567890123456789012345678901234567890'" in sql
+    assert "ip_artifact_uri             => 'C:\\packages\\utl_interval.zip'" in sql
+    assert "ip_artifact_checksum        => 'abc123'" in sql
+    assert "ip_build_metadata_json      => '{\"source\":\"artifact-metadata\"}'" in sql
+    assert "STAGED_DEPLOYMENT_PROVENANCE=" in sql
 
 
 def test_application_state_sql_queries_application_table():

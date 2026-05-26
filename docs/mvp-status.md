@@ -21,6 +21,7 @@ This document tracks what the current dbpm MVP can do and what remains before th
 - `reinstall` command with explicit destructive pre-action.
 - `resume` command for running or failed deployments.
 - `validate` command for package smoke/validation scripts.
+- Core provenance staging pre-action using `pkg_application.stage_deployment_provenance_p`.
 - Install preflight blocks already-installed applications.
 - Reinstall preflight blocks applications with installed dependents.
 - Opt-in live database integration test for Core.
@@ -40,8 +41,7 @@ dbpm validate
 
 ## Known Gaps
 
-- dbpm does not yet generate artifact-aware deployment SQL arguments for `pkg_application.begin_artifact_deployment_p`.
-- Existing package deployment scripts still need to be updated to use `begin_artifact_deployment_p` for dbpm-managed deployments.
+- Local directory deployments do not yet calculate a stable source-tree checksum.
 - `upgrade` is not implemented.
 - Multi-package dependency resolution is not implemented.
 - Lockfile generation and enforcement are not implemented.
@@ -52,9 +52,8 @@ dbpm validate
 
 ## Next Recommended Work
 
-1. Define the dbpm artifact deployment argument contract.
-2. Update `utl_interval` to use `pkg_application.begin_artifact_deployment_p`.
-3. Pass artifact URI, checksum, package coordinate, source path, and build metadata from dbpm to package deployment scripts.
-4. Verify `APP_DEPLOY_PROVENANCE` records dbpm-managed deployments.
-5. Add minimal `upgrade` support.
-6. Add a small multi-package fixture for dependency ordering.
+1. Deploy the latest Core provenance-staging change to the development database.
+2. Verify `APP_DEPLOY_PROVENANCE` records dbpm-managed deployments through staged provenance.
+3. Add minimal `upgrade` support.
+4. Add a small multi-package fixture for dependency ordering.
+5. Define lockfile generation and database reconciliation behavior.

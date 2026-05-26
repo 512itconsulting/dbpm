@@ -45,11 +45,11 @@ Local convenience wrappers may exist, but they are not the authoritative dbpm ex
 
 ## Core Registry
 
-dbpm should pass the resolved 40-character source commit hash to Core through `pkg_application.begin_deployment_p`.
+For Core versions that support staged artifact provenance, dbpm should call `pkg_application.stage_deployment_provenance_p` before executing the package deployment script. The staged row must match the application name, semantic version, deployment type, and deploy commit hash that the script passes to `pkg_application.begin_deployment_p`.
 
-Future Core/dbpm integration may record richer artifact metadata beyond the commit hash, including artifact coordinates, build time, and dirty-state policy.
+When `begin_deployment_p` starts the deployment, Core consumes the matching pending provenance row into `APP_DEPLOY_PROVENANCE`. This keeps package deployment scripts unchanged for manual and dbpm-managed execution while allowing dbpm to persist artifact URI, artifact coordinates, source commit, build metadata, and related provenance.
 
-Until Core stores richer artifact metadata, dbpm should retain it in the deployment plan and execution logs.
+dbpm should also retain resolved provenance in the deployment plan and execution logs.
 
 ## Lockfile And Cache
 

@@ -88,8 +88,13 @@ def _artifact_metadata(metadata: dict[str, str]) -> dict[str, str]:
         "artifact.groupId",
         "artifact.artifactId",
         "artifact.version",
+        "artifact.classifier",
+        "artifact.extension",
         "git.commit.id.abbrev",
         "git.branch",
+        "git.remote.origin.url",
+        "build.id",
+        "build.url",
         "build.time",
     )
     return {key: metadata[key] for key in keys if key in metadata}

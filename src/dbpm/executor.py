@@ -3,7 +3,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from .db import delete_application
+from .db import delete_application, stage_deployment_provenance
 from .errors import ExecutionError
 
 
@@ -50,6 +50,11 @@ def _execute_pre_actions(plan: dict[str, object], *, connect: str, runner: str) 
                 application_name=str(application_name),
                 fail_on_not_found=str(action.get("fail_on_not_found", "N")),
             )
+        elif action_type == "stage_deployment_provenance":
+            payload = action.get("payload")
+            if not isinstance(payload, dict):
+                raise ExecutionError("stage_deployment_provenance pre-action requires payload")
+            stage_deployment_provenance(connect=connect, runner=runner, payload=payload)
         else:
             raise ExecutionError(f"Unsupported pre-action: {action_type}")
 
