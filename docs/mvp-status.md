@@ -8,6 +8,7 @@ This document tracks what the current dbpm MVP can do and what remains before th
 - `dbpm.yaml` parsing for YAML and JSON manifests.
 - Local package directory support.
 - Local built ZIP support.
+- Direct GitHub Maven ZIP package download support.
 - SHA-256 checksum capture for local built ZIP artifacts.
 - Artifact metadata provenance from `META-INF/*-build.properties`.
 - Local git provenance fallback.
@@ -50,10 +51,10 @@ dbpm validate
 
 - Local directory deployments do not yet calculate a stable source-tree checksum.
 - Multi-package dependency execution is install-only.
-- Dependency resolution supports only exact `major.minor.patch` constraints.
+- Dependency resolution supports exact `major.minor.patch` and caret-compatible constraints.
 - Lockfile generation and enforcement are not implemented.
-- Remote artifact retrieval is not implemented.
-- Local artifact cache is not implemented.
+- Remote retrieval is GitHub Maven ZIP-only.
+- Local artifact cache exists for downloaded and extracted ZIP artifacts, but is not lockfile-aware.
 - Execution logs are not yet captured into dbpm-managed log files.
 - `bootstrap-core` exists as a command but has not been recently tested end-to-end against an empty schema.
 
@@ -63,4 +64,4 @@ dbpm validate
 2. Extend ordered multi-package execution beyond install.
 3. Decide checksum strategy for local directory deployments.
 4. Add dbpm-managed execution log capture.
-5. Add remote artifact retrieval.
+5. Add generic Maven repository retrieval.

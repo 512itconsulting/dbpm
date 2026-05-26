@@ -34,6 +34,7 @@ venv/
 build/
 dist/
 *.egg-info/
+.dbpm-cache/
 
 # Local database environment helpers may contain credentials.
 setenv.ps1

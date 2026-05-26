@@ -62,6 +62,22 @@ SQLcl project artifacts should be treated as producer output, not as a replaceme
 
 ## MVP Status
 
-Remote retrieval is outside the current MVP implementation. The MVP supports local package directories and local built ZIP files.
+The MVP supports local package directories, local built ZIP files, and direct GitHub Maven package downloads for ZIP artifacts.
 
-When remote retrieval is added, the first consumer-facing implementation should prioritize direct HTTP(S) archive download over shelling out to Maven.
+GitHub Maven package sources use this form:
+
+```text
+gh-maven:owner/repo:group:artifact:version[:extension]
+```
+
+For example:
+
+```text
+gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:0.1.0-SNAPSHOT
+```
+
+The default extension is `zip`. dbpm resolves the coordinate to the standard Maven repository path under `https://maven.pkg.github.com/<owner>/<repo>/`, downloads the archive over HTTP(S), calculates its SHA-256 checksum, extracts it into the local dbpm cache, and then treats it like any other ZIP source.
+
+For `-SNAPSHOT` versions, dbpm reads the version-level `maven-metadata.xml` and resolves the requested extension to the timestamped artifact filename before downloading.
+
+If GitHub Packages requires authentication, dbpm reads `DBPM_GITHUB_TOKEN` or `GITHUB_TOKEN`. The username comes from `DBPM_GITHUB_USER`, `GITHUB_ACTOR`, or `x-access-token`.

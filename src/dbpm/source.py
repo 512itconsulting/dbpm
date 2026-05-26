@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+import base64
 import hashlib
+import json
+import os
+import shutil
+import urllib.parse
+import urllib.error
+import urllib.request
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+from xml.etree import ElementTree
 
 from .errors import SourceError
 from .manifest import MANIFEST_NAMES, PackageManifest, parse_manifest
@@ -19,10 +27,12 @@ class PackageSource:
     metadata: dict[str, str]
     artifact_checksum: str | None = None
     artifact_checksum_alg: str | None = None
+    artifact_uri: str | None = None
+    work_path: Path | None = None
 
     @property
     def display_path(self) -> str:
-        return str(self.path)
+        return self.artifact_uri or str(self.path)
 
     @property
     def is_directory(self) -> bool:
@@ -35,10 +45,15 @@ class PackageSource:
     def resolve_script_path(self, script_path: str) -> Path | str:
         if self.is_directory:
             return self.path / script_path
-        return f"{self.root.rstrip('/') + '/' if self.root else ''}{script_path}"
+        if self.work_path is None:
+            return f"{self.root.rstrip('/') + '/' if self.root else ''}{script_path}"
+        return self.work_path / script_path
 
 
 def load_package_source(raw_path: str) -> PackageSource:
+    if raw_path.startswith("gh-maven:"):
+        return _load_github_maven_source(raw_path)
+
     path = Path(raw_path).resolve()
     if path.is_dir():
         return _load_directory_source(path)
@@ -66,15 +81,25 @@ def _load_directory_source(path: Path) -> PackageSource:
 
 
 def _load_zip_source(path: Path) -> PackageSource:
+    artifact_checksum = _sha256(path)
     with zipfile.ZipFile(path) as archive:
         names = archive.namelist()
         manifest_member = _find_zip_manifest(names)
         if manifest_member is None:
-            raise SourceError(f"No dbpm manifest found in {path}")
-        text = archive.read(manifest_member).decode("utf-8")
-        manifest = parse_manifest(text, Path(manifest_member).name)
+            manifest_member = _find_zip_pom(names)
+            if manifest_member is None:
+                raise SourceError(f"No dbpm manifest found in {path}")
+            manifest = _manifest_from_pom(
+                archive.read(manifest_member).decode("utf-8"),
+                manifest_member,
+                names,
+            )
+        else:
+            text = archive.read(manifest_member).decode("utf-8")
+            manifest = parse_manifest(text, Path(manifest_member).name)
         metadata = _read_zip_metadata(archive)
         root = _zip_root(manifest_member)
+        work_path = _extract_zip(archive, artifact_checksum, root)
 
     return PackageSource(
         path=path,
@@ -83,8 +108,92 @@ def _load_zip_source(path: Path) -> PackageSource:
         manifest_name=manifest_member,
         manifest=manifest,
         metadata=metadata,
-        artifact_checksum=_sha256(path),
+        artifact_checksum=artifact_checksum,
         artifact_checksum_alg="SHA-256",
+        work_path=work_path,
+    )
+
+
+def _load_github_maven_source(raw_source: str) -> PackageSource:
+    coordinate = _parse_github_maven_source(raw_source)
+    artifact_url = _github_maven_artifact_url(coordinate)
+    cache_path = _artifact_cache_dir() / "maven" / coordinate["owner"] / coordinate["repo"]
+    cache_path = cache_path / coordinate["group"].replace(".", "/") / coordinate["artifact"]
+    artifact_file_name = Path(urllib.parse.urlparse(artifact_url).path).name
+    cache_path = cache_path / coordinate["version"] / artifact_file_name
+    if not cache_path.exists():
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        _download(artifact_url, cache_path)
+
+    source = _load_zip_source(cache_path)
+    return PackageSource(
+        path=source.path,
+        source_type=source.source_type,
+        root=source.root,
+        manifest_name=source.manifest_name,
+        manifest=source.manifest,
+        metadata=source.metadata,
+        artifact_checksum=source.artifact_checksum,
+        artifact_checksum_alg=source.artifact_checksum_alg,
+        artifact_uri=artifact_url,
+        work_path=source.work_path,
+    )
+
+
+def _parse_github_maven_source(raw_source: str) -> dict[str, str]:
+    value = raw_source.removeprefix("gh-maven:")
+    parts = value.split(":")
+    if len(parts) not in {4, 5}:
+        raise SourceError(
+            "GitHub Maven sources must use "
+            "gh-maven:owner/repo:group:artifact:version[:extension]"
+        )
+    owner_repo, group, artifact, version = parts[:4]
+    if "/" not in owner_repo:
+        raise SourceError("GitHub Maven source owner/repo is required")
+    owner, repo = owner_repo.split("/", 1)
+    extension = parts[4] if len(parts) == 5 else "zip"
+    return {
+        "owner": owner,
+        "repo": repo,
+        "group": group,
+        "artifact": artifact,
+        "version": version,
+        "extension": extension,
+    }
+
+
+def _github_maven_artifact_url(coordinate: dict[str, str]) -> str:
+    group_path = coordinate["group"].replace(".", "/")
+    artifact_version = coordinate["version"]
+    if coordinate["version"].endswith("-SNAPSHOT"):
+        artifact_version = _github_maven_snapshot_version(coordinate, group_path)
+    file_name = f"{coordinate['artifact']}-{artifact_version}.{coordinate['extension']}"
+    return (
+        f"https://maven.pkg.github.com/{coordinate['owner']}/{coordinate['repo']}/"
+        f"{group_path}/{coordinate['artifact']}/{coordinate['version']}/{file_name}"
+    )
+
+
+def _github_maven_snapshot_version(coordinate: dict[str, str], group_path: str) -> str:
+    metadata_url = (
+        f"https://maven.pkg.github.com/{coordinate['owner']}/{coordinate['repo']}/"
+        f"{group_path}/{coordinate['artifact']}/{coordinate['version']}/maven-metadata.xml"
+    )
+    metadata = _download_text(metadata_url)
+    try:
+        root = ElementTree.fromstring(metadata)
+    except ElementTree.ParseError as exc:
+        raise SourceError(f"Invalid Maven snapshot metadata: {metadata_url}") from exc
+
+    extension = coordinate["extension"]
+    for snapshot_version in root.findall("./versioning/snapshotVersions/snapshotVersion"):
+        version_extension = snapshot_version.findtext("extension")
+        value = snapshot_version.findtext("value")
+        if version_extension == extension and value:
+            return value
+    raise SourceError(
+        f"No Maven snapshot artifact found for extension {extension}: {metadata_url}"
     )
 
 
@@ -96,9 +205,94 @@ def _find_zip_manifest(names: list[str]) -> str | None:
     return candidates[0]
 
 
+def _find_zip_pom(names: list[str]) -> str | None:
+    candidates = [name for name in names if Path(name).name == "pom.xml"]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda name: (name.count("/"), name))
+    return candidates[0]
+
+
+def _manifest_from_pom(pom_text: str, pom_member: str, names: list[str]) -> PackageManifest:
+    try:
+        root = ElementTree.fromstring(pom_text)
+    except ElementTree.ParseError as exc:
+        raise SourceError(f"Invalid pom.xml in {pom_member}") from exc
+
+    namespace = {"m": "http://maven.apache.org/POM/4.0.0"}
+
+    def text(path: str) -> str | None:
+        value = root.findtext(path, namespaces=namespace)
+        return value.strip() if value and value.strip() else None
+
+    artifact_id = text("m:artifactId")
+    version = text("m:version")
+    if not artifact_id or not version:
+        raise SourceError(f"pom.xml is missing artifactId or version: {pom_member}")
+
+    base = _zip_root(pom_member)
+
+    def has_member(relative_path: str) -> bool:
+        return f"{base.rstrip('/') + '/' if base else ''}{relative_path}" in names
+
+    install = "Deployment_Manifests/deploy.sql" if has_member("Deployment_Manifests/deploy.sql") else None
+    upgrade = "Deployment_Manifests/upgrade.sql" if has_member("Deployment_Manifests/upgrade.sql") else None
+    validate = "Tests/smoke_test.sql" if has_member("Tests/smoke_test.sql") else None
+
+    dependencies = []
+    for dependency in root.findall("m:dependencies/m:dependency", namespace):
+        dep_artifact = dependency.findtext("m:artifactId", namespaces=namespace)
+        dep_version = dependency.findtext("m:version", namespaces=namespace)
+        if dep_artifact and dep_version and dep_artifact.strip().lower() != "core":
+            dependencies.append(
+                {
+                    "name": dep_artifact.strip(),
+                    "version": dep_version.strip(),
+                }
+            )
+
+    manifest_text = {
+        "package": {
+            "name": artifact_id,
+            "version": version,
+            "description": text("m:description"),
+        },
+        "scripts": {
+            "install": install,
+            "upgrade": upgrade,
+            "validate": validate,
+        },
+        "dependencies": dependencies,
+    }
+    return parse_manifest(_json_dump_manifest(manifest_text), "pom-derived.dbpm.json")
+
+
+def _json_dump_manifest(value: dict[str, object]) -> str:
+    return json.dumps(value)
+
+
 def _zip_root(member: str) -> str | None:
     parts = member.split("/")
     return None if len(parts) == 1 else "/".join(parts[:-1])
+
+
+def _extract_zip(
+    archive: zipfile.ZipFile,
+    artifact_checksum: str,
+    root: str | None,
+) -> Path:
+    extract_root = _artifact_cache_dir() / "extract" / artifact_checksum
+    script_root = extract_root / root if root else extract_root
+    if not script_root.exists():
+        temp_root = extract_root.with_name(f"{extract_root.name}.tmp")
+        if temp_root.exists():
+            shutil.rmtree(temp_root)
+        temp_root.mkdir(parents=True, exist_ok=True)
+        archive.extractall(temp_root)
+        if extract_root.exists():
+            shutil.rmtree(extract_root)
+        temp_root.rename(extract_root)
+    return script_root
 
 
 def _read_directory_metadata(path: Path) -> dict[str, str]:
@@ -138,3 +332,46 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _artifact_cache_dir() -> Path:
+    return Path(os.environ.get("DBPM_CACHE_DIR", Path.home() / ".dbpm" / "cache")).resolve()
+
+
+def _download(url: str, destination: Path) -> None:
+    request = _github_request(url)
+    try:
+        with urllib.request.urlopen(request) as response:
+            with destination.open("wb") as handle:
+                shutil.copyfileobj(response, handle)
+    except urllib.error.HTTPError as exc:
+        raise SourceError(
+            f"Failed to download package artifact: {url} "
+            f"(HTTP {exc.code} {exc.reason})"
+        ) from exc
+    except OSError as exc:
+        raise SourceError(f"Failed to download package artifact: {url} ({exc})") from exc
+
+
+def _download_text(url: str) -> str:
+    request = _github_request(url)
+    try:
+        with urllib.request.urlopen(request) as response:
+            return response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        raise SourceError(
+            f"Failed to download package metadata: {url} "
+            f"(HTTP {exc.code} {exc.reason})"
+        ) from exc
+    except OSError as exc:
+        raise SourceError(f"Failed to download package metadata: {url} ({exc})") from exc
+
+
+def _github_request(url: str) -> urllib.request.Request:
+    request = urllib.request.Request(url)
+    token = os.environ.get("DBPM_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if token:
+        user = os.environ.get("DBPM_GITHUB_USER") or os.environ.get("GITHUB_ACTOR") or "x-access-token"
+        credential = base64.b64encode(f"{user}:{token}".encode("utf-8")).decode("ascii")
+        request.add_header("Authorization", f"Basic {credential}")
+    return request

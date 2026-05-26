@@ -62,6 +62,19 @@ When a package manifest declares dependencies, provide local package sources tha
 
 The resulting multi-package plan orders dependencies before consumers. If a required dependency is not already installed in Core and no matching local source is provided, planning fails before deployment.
 
+GitHub Maven ZIP artifacts can be used as package sources:
+
+```powershell
+$env:DBPM_GITHUB_TOKEN = "<token-if-required>"
+.\.venv\Scripts\dbpm.exe plan gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:<version> --mode install --dependency-source gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:0.1.0-SNAPSHOT
+```
+
+The coordinate format is:
+
+```text
+gh-maven:owner/repo:group:artifact:version[:extension]
+```
+
 ## Install A Package
 
 Install a package that is not already registered in Core:

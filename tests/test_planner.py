@@ -109,7 +109,8 @@ scripts:
     assert plan["pre_actions"][0]["type"] == "stage_deployment_provenance"
 
 
-def test_zip_plan_stages_artifact_checksum(tmp_path: Path):
+def test_zip_plan_stages_artifact_checksum(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("DBPM_CACHE_DIR", str(tmp_path / "cache"))
     archive_path = tmp_path / "demo.zip"
     with ZipFile(archive_path, "w") as archive:
         archive.writestr(

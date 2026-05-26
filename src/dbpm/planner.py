@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from pathlib import Path
-
 from .environment import EnvironmentPolicy
 from .errors import ManifestError
 from .manifest import PackageManifest
@@ -152,7 +150,7 @@ def _deployment_provenance_payload(
         "package_coordinate": coordinate,
         "source_repository_url": artifact.get("git.remote.origin.url"),
         "source_commit_hash": provenance.commit,
-        "source_path": str(Path(source.display_path)),
+        "source_path": source.display_path,
         "build_id": artifact.get("build.id"),
         "build_url": artifact.get("build.url"),
         "build_time": artifact.get("build.time"),

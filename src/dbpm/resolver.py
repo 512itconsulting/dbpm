@@ -99,7 +99,7 @@ def _resolve_dependency_order(
                     f"Missing dependency source for {item.manifest.application_name}: "
                     f"{dep_app} {dependency.version}"
                 )
-            if dep_source.manifest.version != dependency.version:
+            if not _version_satisfies(dep_source.manifest.version, dependency.version):
                 raise DependencyError(
                     f"Dependency source {dep_app} version {dep_source.manifest.version} "
                     f"does not satisfy required version {dependency.version}"
@@ -114,13 +114,38 @@ def _resolve_dependency_order(
 
 
 def _state_satisfies_dependency(state: dict[str, str], version: str) -> bool:
-    return state.get("deploy_status") == "C" and state.get("version") == version
+    installed_version = state.get("version")
+    return (
+        state.get("deploy_status") == "C"
+        and installed_version is not None
+        and _version_satisfies(installed_version, version)
+    )
 
 
 def _assert_supported_constraint(version: str) -> None:
-    parts = version.split(".")
+    normalized = version.removeprefix("^")
+    parts = normalized.split(".")
     if len(parts) != 3 or not all(part.isdigit() for part in parts):
         raise DependencyError(f"Unsupported dependency version constraint: {version}")
+
+
+def _version_satisfies(candidate: str, constraint: str) -> bool:
+    _assert_supported_constraint(constraint)
+    if constraint.startswith("^"):
+        candidate_version = _parse_version(candidate)
+        base_version = _parse_version(constraint[1:])
+        if candidate_version < base_version:
+            return False
+        next_major = (base_version[0] + 1, 0, 0)
+        return candidate_version < next_major
+    return candidate == constraint
+
+
+def _parse_version(value: str) -> tuple[int, int, int]:
+    parts = value.split(".")
+    if len(parts) != 3 or not all(part.isdigit() for part in parts):
+        raise DependencyError(f"Unsupported dependency version constraint: {value}")
+    return int(parts[0]), int(parts[1]), int(parts[2])
 
 
 def _application_name(name: str) -> str:
