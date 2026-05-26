@@ -43,3 +43,38 @@ def test_execute_plan_runs_delete_pre_action_before_script():
     stage.assert_called_once_with(connect="user/pass@db", runner="sql", payload=payload)
     run.assert_called_once()
     assert run.call_args.args[0] == ["sql", "-L", "user/pass@db", "@deploy.sql", "123"]
+
+
+def test_execute_plan_runs_multi_package_children_in_order():
+    plan = {
+        "packages": [
+            {
+                "pre_actions": [],
+                "execution": {
+                    "script_ref": "base.sql",
+                    "arguments": [],
+                },
+            },
+            {
+                "pre_actions": [],
+                "execution": {
+                    "script_ref": "consumer.sql",
+                    "arguments": ["abc"],
+                },
+            },
+        ]
+    }
+
+    with patch("dbpm.executor.subprocess.run") as run:
+        run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
+        assert execute_plan(plan, connect="user/pass@db", runner="sql") == 0
+
+    assert run.call_count == 2
+    assert run.call_args_list[0].args[0] == ["sql", "-L", "user/pass@db", "@base.sql"]
+    assert run.call_args_list[1].args[0] == [
+        "sql",
+        "-L",
+        "user/pass@db",
+        "@consumer.sql",
+        "abc",
+    ]

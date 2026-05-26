@@ -78,6 +78,14 @@ If the package is already installed, dbpm fails before running the deployment sc
 dbpm: UTL_INTERVAL is already installed; use reinstall or upgrade
 ```
 
+Install can use the same local dependency sources:
+
+```powershell
+.\.venv\Scripts\dbpm.exe install C:\path\to\consumer --env development --dependency-source C:\path\to\dependency
+```
+
+dbpm executes each package in dependency order and stops on the first failed package.
+
 ## Reinstall A Package
 
 Destructive reinstall requires explicit intent:

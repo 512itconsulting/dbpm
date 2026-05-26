@@ -13,6 +13,7 @@ This document tracks what the current dbpm MVP can do and what remains before th
 - Local git provenance fallback.
 - `dbpm.plan.v0` JSON plan generation.
 - `dbpm.multi-plan.v0` JSON plan generation for local dependency-source planning.
+- Ordered multi-package execution for local dependency-source installs.
 - Environment policy evaluation for development, test, staging, and production classes.
 - SQLcl/SQLPlus runner configuration through `--runner` or `DBPM_SQL_RUNNER`.
 - Database connection configuration through `--connect` or `DBPM_CONNECT`.
@@ -28,7 +29,7 @@ This document tracks what the current dbpm MVP can do and what remains before th
 - Install preflight blocks already-installed applications.
 - Upgrade preflight blocks missing, incomplete, same-version, and downgrade targets.
 - Reinstall preflight blocks applications with installed dependents.
-- Local multi-package planning orders dependency sources before consumers and fails clearly for missing, mismatched, unsupported, or cyclic dependencies.
+- Local multi-package installs order dependency sources before consumers and fail clearly for missing, mismatched, unsupported, or cyclic dependencies.
 - Opt-in live database integration test for Core.
 - Dev database proof with `utl_interval` install, upgrade, reinstall, and validate.
 
@@ -48,7 +49,7 @@ dbpm validate
 ## Known Gaps
 
 - Local directory deployments do not yet calculate a stable source-tree checksum.
-- Multi-package dependency execution is not implemented.
+- Multi-package dependency execution is install-only.
 - Dependency resolution supports only exact `major.minor.patch` constraints.
 - Lockfile generation and enforcement are not implemented.
 - Remote artifact retrieval is not implemented.
@@ -59,7 +60,7 @@ dbpm validate
 ## Next Recommended Work
 
 1. Define lockfile generation and database reconciliation behavior.
-2. Execute ordered multi-package plans.
+2. Extend ordered multi-package execution beyond install.
 3. Decide checksum strategy for local directory deployments.
 4. Add dbpm-managed execution log capture.
 5. Add remote artifact retrieval.

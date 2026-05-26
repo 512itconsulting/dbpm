@@ -38,6 +38,7 @@ Define the smallest useful dbpm implementation.
 - generate an ordered multi-package plan from local dependency sources
 - enforce environment policy
 - execute SQLPlus/SQLcl manifest scripts
+- execute ordered local dependency-source install plans
 - pass commit hash into deployment scripts
 - stage artifact provenance in Core before running package deployment scripts
 - include artifact checksum in staged Core provenance when deploying a ZIP artifact

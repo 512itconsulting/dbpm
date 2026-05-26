@@ -8,6 +8,16 @@ from .errors import ExecutionError
 
 
 def execute_plan(plan: dict[str, object], *, connect: str, runner: str) -> int:
+    packages = plan.get("packages")
+    if packages is not None:
+        if not isinstance(packages, list):
+            raise ExecutionError("Multi-package plan packages must be a list")
+        for child_plan in packages:
+            if not isinstance(child_plan, dict):
+                raise ExecutionError("Multi-package plan entries must be objects")
+            execute_plan(child_plan, connect=connect, runner=runner)
+        return 0
+
     execution = plan.get("execution")
     if not isinstance(execution, dict):
         raise ExecutionError("Plan does not contain execution details")

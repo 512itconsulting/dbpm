@@ -63,12 +63,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default="install",
         help="Deployment mode to plan",
     )
-    plan.add_argument(
-        "--dependency-source",
-        action="append",
-        default=[],
-        help="Local package directory or ZIP that may satisfy a manifest dependency",
-    )
+    _add_dependency_source_args(plan)
     _add_database_args(plan)
 
     bootstrap = subparsers.add_parser("bootstrap-core", help="Bootstrap Core")
@@ -78,6 +73,7 @@ def _build_parser() -> argparse.ArgumentParser:
     install = subparsers.add_parser("install", help="Install a package")
     _add_common_args(install)
     _add_execution_args(install)
+    _add_dependency_source_args(install)
 
     upgrade = subparsers.add_parser("upgrade", help="Upgrade an installed package to a new version")
     _add_common_args(upgrade)
@@ -114,6 +110,15 @@ def _add_execution_args(parser: argparse.ArgumentParser) -> None:
     _add_database_args(parser)
 
 
+def _add_dependency_source_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--dependency-source",
+        action="append",
+        default=[],
+        help="Local package directory or ZIP that may satisfy a manifest dependency",
+    )
+
+
 def _add_database_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--connect",
@@ -147,7 +152,7 @@ def _build_plan(
         installed_state = _get_installed_state(args, source.manifest.application_name)
         reverse_dependencies = _get_reverse_dependencies(args, source.manifest.application_name)
 
-    if args.command == "plan" and (dependency_sources or source.manifest.dependencies):
+    if args.command in {"plan", "install"} and (dependency_sources or source.manifest.dependencies):
         installed_states = {source.manifest.application_name: installed_state}
         reverse_dependencies_by_app = {source.manifest.application_name: reverse_dependencies or []}
         if include_installed_state:
@@ -183,15 +188,28 @@ def _build_plan(
 
 
 def _execute_or_explain(plan: dict[str, object], args: argparse.Namespace) -> None:
+    packages = plan.get("packages")
+    if isinstance(packages, list):
+        for child_plan in packages:
+            if not isinstance(child_plan, dict):
+                raise DbpmError("Multi-package plan entries must be objects")
+            _execute_or_explain_policy(child_plan)
+            _enforce_installed_state(child_plan)
+        execute_plan(plan, connect=_connect_string(args), runner=args.runner)
+        return
+
+    _execute_or_explain_policy(plan)
+    _enforce_installed_state(plan)
+    execute_plan(plan, connect=_connect_string(args), runner=args.runner)
+
+
+def _execute_or_explain_policy(plan: dict[str, object]) -> None:
     policy = plan.get("policy")
     if isinstance(policy, dict) and policy.get("result") != "allowed":
         blocked = policy.get("blocked", [])
         approvals = policy.get("required_approvals", [])
         reasons = [*blocked, *approvals] if isinstance(blocked, list) and isinstance(approvals, list) else []
         raise DbpmError("; ".join(str(reason) for reason in reasons) or "Policy blocks execution")
-
-    _enforce_installed_state(plan)
-    execute_plan(plan, connect=_connect_string(args), runner=args.runner)
 
 
 def _get_installed_state(args: argparse.Namespace, application_name: str) -> dict[str, str] | None:
