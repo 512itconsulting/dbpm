@@ -54,6 +54,7 @@ Define the smallest useful dbpm implementation.
 - install from locked artifact sources recorded in `dbpm-lock.json`
 - pass commit hash into deployment scripts
 - stage artifact provenance in Core before running package deployment scripts
+- stage Core upgrade provenance when installed Core is 3.2.0 or newer
 - include artifact checksum in staged Core provenance when deploying a ZIP artifact
 - read installed state from Core
 - resolve exact semantic version dependencies

@@ -175,6 +175,16 @@ uv run dbpm install --lockfile --env development
 
 dbpm reloads the locked artifact URLs or local paths, verifies the resolved artifacts still match the lockfile, and then executes the ordered install plan.
 
+## Upgrade Core
+
+Core initial deployment is a bootstrap exception, but Core upgrades can use the normal dbpm upgrade flow once Core is installed:
+
+```powershell
+uv run dbpm upgrade C:\Local_Exe\Repos\core --env development
+```
+
+For installed Core `3.2.0` or newer, dbpm stages resolved provenance before running the manifest-declared update script.
+
 ## Reinstall A Package
 
 Destructive reinstall requires explicit intent:

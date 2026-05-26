@@ -32,6 +32,7 @@ This document tracks what the current dbpm MVP can do and what remains before th
 - `resume` command for running or failed deployments.
 - `validate` command for package smoke/validation scripts.
 - Core provenance staging pre-action using `pkg_application.stage_deployment_provenance_p`.
+- Core upgrade planning/execution reads installed Core state and stages provenance when installed Core is 3.2.0 or newer.
 - Install preflight blocks already-installed applications.
 - Upgrade preflight blocks missing, incomplete, same-version, and downgrade targets.
 - Reinstall preflight blocks applications with installed dependents.

@@ -333,6 +333,76 @@ scripts:
     assert plan["pre_actions"] == []
 
 
+def test_core_upgrade_stages_provenance_when_installed_core_supports_it(tmp_path: Path):
+    package = tmp_path / "core"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: core
+  version: "3.3.0"
+
+scripts:
+  install: Deployment_Manifests/deploy.sql
+  upgrade: Deployment_Manifests/update.sql
+""",
+        encoding="utf-8",
+    )
+
+    source = load_package_source(str(package))
+    plan = create_plan(
+        mode="upgrade",
+        source=source,
+        provenance=resolve_provenance(source),
+        environment=resolve_environment("development"),
+        installed_state={
+            "application_name": "CORE",
+            "version": "3.2.0",
+            "deploy_status": "C",
+            "deploy_commit_hash": "abc",
+        },
+    )
+
+    assert plan["core"]["required"] is False
+    assert plan["execution"]["script"] == "Deployment_Manifests/update.sql"
+    assert plan["pre_actions"][0]["type"] == "stage_deployment_provenance"
+    assert plan["pre_actions"][0]["payload"]["application_name"] == "CORE"
+    assert plan["pre_actions"][0]["payload"]["deployment_type"] == "M"
+
+
+def test_core_upgrade_skips_provenance_when_installed_core_is_too_old(tmp_path: Path):
+    package = tmp_path / "core"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: core
+  version: "3.2.0"
+
+scripts:
+  install: Deployment_Manifests/deploy.sql
+  upgrade: Deployment_Manifests/update.sql
+""",
+        encoding="utf-8",
+    )
+
+    source = load_package_source(str(package))
+    plan = create_plan(
+        mode="upgrade",
+        source=source,
+        provenance=resolve_provenance(source),
+        environment=resolve_environment("development"),
+        installed_state={
+            "application_name": "CORE",
+            "version": "3.1.0",
+            "deploy_status": "C",
+            "deploy_commit_hash": "abc",
+        },
+    )
+
+    assert plan["pre_actions"] == []
+
+
 def test_missing_install_script_fails(tmp_path: Path):
     package = tmp_path / "pkg"
     package.mkdir()

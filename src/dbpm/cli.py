@@ -202,9 +202,10 @@ def _build_plan(
     allow_destructive = bool(getattr(args, "allow_destructive", False))
     installed_state = None
     reverse_dependencies = None
-    if include_installed_state and not source.manifest.is_core:
+    if include_installed_state and _should_read_installed_state(mode, source.manifest.is_core):
         installed_state = _get_installed_state(args, source.manifest.application_name)
-        reverse_dependencies = _get_reverse_dependencies(args, source.manifest.application_name)
+        if not source.manifest.is_core:
+            reverse_dependencies = _get_reverse_dependencies(args, source.manifest.application_name)
 
     if args.command in {"plan", "install", "lock"} and (dependency_sources or source.manifest.dependencies):
         installed_states = {source.manifest.application_name: installed_state}
@@ -299,6 +300,12 @@ def _get_installed_state(args: argparse.Namespace, application_name: str) -> dic
         application_name=application_name,
     )
     return None if state is None else state.as_dict()
+
+
+def _should_read_installed_state(mode: str, is_core: bool) -> bool:
+    if not is_core:
+        return True
+    return mode in {"upgrade", "resume", "validate"}
 
 
 def _get_reverse_dependencies(args: argparse.Namespace, application_name: str) -> list[str]:

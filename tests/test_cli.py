@@ -553,6 +553,22 @@ scripts:
     )
 
 
+def _write_core_package_with_upgrade(path: Path) -> None:
+    path.mkdir()
+    (path / "dbpm.yaml").write_text(
+        """
+package:
+  name: core
+  version: "3.3.0"
+
+scripts:
+  install: Deployment_Manifests/deploy.sql
+  upgrade: Deployment_Manifests/update.sql
+""",
+        encoding="utf-8",
+    )
+
+
 def test_upgrade_allows_complete_installed_package(tmp_path: Path, monkeypatch):
     package = tmp_path / "package"
     _write_package_with_upgrade(package)
@@ -570,6 +586,37 @@ def test_upgrade_allows_complete_installed_package(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(cli, "execute_plan", lambda *args, **kwargs: 0)
 
     assert cli.main(["upgrade", str(package), "--connect", "user/pass@db"]) == 0
+
+
+def test_core_upgrade_reads_installed_state_and_executes(tmp_path: Path, monkeypatch):
+    package = tmp_path / "core"
+    _write_core_package_with_upgrade(package)
+    calls = {}
+
+    def fake_get_application_state(**kwargs):
+        calls["state_application_name"] = kwargs["application_name"]
+        return ApplicationState(
+            application_name="CORE",
+            version="3.2.0",
+            deploy_status="C",
+            deploy_commit_hash="abc",
+        )
+
+    def fake_execute_plan(plan, *, connect: str, runner: str):
+        calls["plan"] = plan
+        calls["connect"] = connect
+        calls["runner"] = runner
+        return 0
+
+    monkeypatch.setattr(cli, "get_application_state", fake_get_application_state)
+    monkeypatch.setattr(cli, "execute_plan", fake_execute_plan)
+
+    assert cli.main(["upgrade", str(package), "--connect", "user/pass@db"]) == 0
+
+    assert calls["state_application_name"] == "CORE"
+    assert calls["connect"] == "user/pass@db"
+    assert calls["plan"]["installed_state"]["version"] == "3.2.0"
+    assert calls["plan"]["pre_actions"][0]["type"] == "stage_deployment_provenance"
 
 
 def test_upgrade_blocks_when_not_installed(tmp_path: Path, monkeypatch, capsys):

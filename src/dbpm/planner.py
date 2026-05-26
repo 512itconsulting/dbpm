@@ -106,7 +106,11 @@ def _pre_actions_for_mode(
                 "fail_on_not_found": "N",
             }
         )
-    if mode in {"install", "reinstall", "resume", "upgrade"} and not manifest.is_core:
+    if mode in {"install", "reinstall", "resume", "upgrade"} and _can_stage_provenance(
+        mode,
+        manifest,
+        installed_state,
+    ):
         actions.append(
             {
                 "type": "stage_deployment_provenance",
@@ -120,6 +124,21 @@ def _pre_actions_for_mode(
             }
         )
     return actions
+
+
+def _can_stage_provenance(
+    mode: str,
+    manifest: PackageManifest,
+    installed_state: dict[str, str] | None,
+) -> bool:
+    if not manifest.is_core:
+        return True
+    if mode != "upgrade" or installed_state is None:
+        return False
+    installed_version = installed_state.get("version")
+    if installed_version is None:
+        return False
+    return _parse_semver(installed_version) >= (3, 2, 0)
 
 
 def _deployment_provenance_payload(
