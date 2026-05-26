@@ -34,7 +34,7 @@ Example
 uv run dbpm check-core --minimum-version 3.2.0
 uv run dbpm plan gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --mode install --dependency-source gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
 uv run dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --dependency-source gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
-uv run dbpm install gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --env development --dependency-source gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
+uv run dbpm install --lockfile dbpm-lock.json --env development
 ```
 
 ## Current MVP
@@ -42,12 +42,14 @@ uv run dbpm install gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.data
 - Local package directory sources
 - Local ZIP package sources
 - GitHub Maven ZIP package sources with `gh-maven:owner/repo:group:artifact:version[:extension]`
+- HTTPS ZIP artifact sources for lockfile installs
 - Maven snapshot ZIP resolution through `maven-metadata.xml`
 - SHA-256 checksum capture for ZIP artifacts
 - Local cache for downloaded and extracted ZIP artifacts
 - Exact and caret-compatible dependency constraints
 - Ordered multi-package install for dependency sources
 - Dependency lockfile generation and verification through `dbpm lock`
+- Lockfile-driven install without restating package sources
 - Core-backed installed-state lookup
 - Core-backed reverse-dependency lookup
 - Core provenance staging through `pkg_application.stage_deployment_provenance_p`
@@ -55,7 +57,6 @@ uv run dbpm install gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.data
 - Install, upgrade, reinstall, resume, and validate workflows
 
 ## Still Planned
-- Lockfile-driven install without restating sources on the command line
 - Lockfile-aware trusted artifact mirrors
 - Generic Maven-compatible repository configuration beyond GitHub Packages
 - Roll-forward migrations

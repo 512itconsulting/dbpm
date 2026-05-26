@@ -18,6 +18,7 @@ Define the smallest useful dbpm implementation.
 - local package directory
 - local built ZIP
 - GitHub Maven ZIP artifact coordinate: `gh-maven:owner/repo:group:artifact:version[:extension]`
+- HTTPS ZIP artifact URL loaded from a lockfile
 - Maven snapshot ZIP artifacts resolved through `maven-metadata.xml`
 - SHA-256 checksum capture for local built ZIP artifacts
 - SHA-256 checksum capture for downloaded GitHub Maven ZIP artifacts
@@ -25,9 +26,9 @@ Define the smallest useful dbpm implementation.
 - lockfile generation for resolved install plans
 - lockfile verification against current resolution
 - lockfile/database reconciliation for installed versions and complete Core status
+- lockfile-driven install without restating package sources
 
 ## Deferred
-- lockfile-driven install without restating package sources
 - lockfile Core provenance-row reconciliation
 - generic Maven repository resolution beyond GitHub Packages
 - trusted artifact mirrors
@@ -50,6 +51,7 @@ Define the smallest useful dbpm implementation.
 - write a lockfile for resolved package artifacts
 - fail clearly when the current source resolution differs from the lockfile
 - verify locked package versions are installed with complete Core status
+- install from locked artifact sources recorded in `dbpm-lock.json`
 - pass commit hash into deployment scripts
 - stage artifact provenance in Core before running package deployment scripts
 - include artifact checksum in staged Core provenance when deploying a ZIP artifact
@@ -93,5 +95,4 @@ Maven-compatible repository layouts can remain a publishing and hosting option. 
 - SQLPlus vs SQLcl default
 - exact plan JSON shape
 - checksum strategy for local directory deployments
-- lockfile-driven install behavior
 - generic Maven repository configuration beyond GitHub Packages

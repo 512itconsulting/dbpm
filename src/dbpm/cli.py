@@ -16,6 +16,7 @@ from .lockfile import (
     assert_lockfile_matches_plan,
     create_lockfile,
     load_lockfile,
+    package_sources_from_lockfile,
     write_lockfile,
 )
 from .planner import create_plan
@@ -60,7 +61,12 @@ def main(argv: list[str] | None = None) -> int:
             print(result.stdout.strip())
             return 0
         if args.command in {"bootstrap-core", "install", "upgrade", "reinstall", "resume", "validate"}:
-            plan = _build_plan(args.command, args, include_installed_state=not args.dry_run)
+            if args.command == "install" and args.lockfile:
+                plan = _build_plan_from_lockfile(args, include_installed_state=not args.dry_run)
+            else:
+                if args.command == "install" and args.source is None:
+                    raise DbpmError("install requires a source or --lockfile")
+                plan = _build_plan(args.command, args, include_installed_state=not args.dry_run)
             if args.dry_run:
                 _print_json(plan)
                 return 0
@@ -110,9 +116,15 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_execution_args(bootstrap)
 
     install = subparsers.add_parser("install", help="Install a package")
-    _add_common_args(install)
+    _add_common_args(install, source_required=False)
     _add_execution_args(install)
     _add_dependency_source_args(install)
+    install.add_argument(
+        "--lockfile",
+        nargs="?",
+        const=LOCKFILE_NAME,
+        help=f"Install from a resolved lockfile, default when no value is provided: {LOCKFILE_NAME}",
+    )
 
     upgrade = subparsers.add_parser("upgrade", help="Upgrade an installed package to a new version")
     _add_common_args(upgrade)
@@ -138,8 +150,11 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _add_common_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("source", help="Local package directory or built ZIP")
+def _add_common_args(parser: argparse.ArgumentParser, *, source_required: bool = True) -> None:
+    if source_required:
+        parser.add_argument("source", help="Local package directory or built ZIP")
+    else:
+        parser.add_argument("source", nargs="?", help="Local package directory or built ZIP")
     parser.add_argument("--env", default="development", help="Target environment name")
     parser.add_argument("--approve", action="store_true", help="Approve policy-gated actions")
 
@@ -224,6 +239,32 @@ def _build_plan(
         allow_destructive=allow_destructive,
         approve=args.approve,
     )
+
+
+def _build_plan_from_lockfile(
+    args: argparse.Namespace,
+    *,
+    include_installed_state: bool = False,
+) -> dict[str, object]:
+    if args.source is not None or getattr(args, "dependency_source", []):
+        raise DbpmError("--lockfile cannot be combined with source or --dependency-source")
+
+    lockfile_path = Path(args.lockfile)
+    lockfile = load_lockfile(lockfile_path)
+    source, dependency_sources = package_sources_from_lockfile(lockfile)
+    lock_args = argparse.Namespace(
+        command="install",
+        source=source,
+        dependency_source=dependency_sources,
+        env=args.env,
+        approve=args.approve,
+        connect=args.connect,
+        runner=args.runner,
+        allow_destructive=False,
+    )
+    plan = _build_plan("install", lock_args, include_installed_state=include_installed_state)
+    assert_lockfile_matches_plan(lockfile, plan)
+    return plan
 
 
 def _execute_or_explain(plan: dict[str, object], args: argparse.Namespace) -> None:

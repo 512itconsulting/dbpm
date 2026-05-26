@@ -53,6 +53,8 @@ class PackageSource:
 def load_package_source(raw_path: str) -> PackageSource:
     if raw_path.startswith("gh-maven:"):
         return _load_github_maven_source(raw_path)
+    if raw_path.startswith(("http://", "https://")):
+        return _load_url_zip_source(raw_path)
 
     path = Path(raw_path).resolve()
     if path.is_dir():
@@ -136,6 +138,31 @@ def _load_github_maven_source(raw_source: str) -> PackageSource:
         artifact_checksum=source.artifact_checksum,
         artifact_checksum_alg=source.artifact_checksum_alg,
         artifact_uri=artifact_url,
+        work_path=source.work_path,
+    )
+
+
+def _load_url_zip_source(url: str) -> PackageSource:
+    artifact_file_name = Path(urllib.parse.urlparse(url).path).name
+    if not artifact_file_name.lower().endswith(".zip"):
+        raise SourceError(f"URL package sources must reference a ZIP artifact: {url}")
+    cache_path = _artifact_cache_dir() / "url" / hashlib.sha256(url.encode("utf-8")).hexdigest()
+    cache_path = cache_path / artifact_file_name
+    if not cache_path.exists():
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        _download(url, cache_path)
+
+    source = _load_zip_source(cache_path)
+    return PackageSource(
+        path=source.path,
+        source_type=source.source_type,
+        root=source.root,
+        manifest_name=source.manifest_name,
+        manifest=source.manifest,
+        metadata=source.metadata,
+        artifact_checksum=source.artifact_checksum,
+        artifact_checksum_alg=source.artifact_checksum_alg,
+        artifact_uri=url,
         work_path=source.work_path,
     )
 

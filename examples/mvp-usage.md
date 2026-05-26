@@ -161,6 +161,20 @@ uv run dbpm install C:\path\to\consumer --env development --dependency-source C:
 
 dbpm executes each package in dependency order and stops on the first failed package.
 
+Install can also use a previously written lockfile without restating the root package or dependency sources:
+
+```powershell
+uv run dbpm install --lockfile dbpm-lock.json --env development
+```
+
+When no lockfile path is provided, `--lockfile` defaults to `dbpm-lock.json`:
+
+```powershell
+uv run dbpm install --lockfile --env development
+```
+
+dbpm reloads the locked artifact URLs or local paths, verifies the resolved artifacts still match the lockfile, and then executes the ordered install plan.
+
 ## Reinstall A Package
 
 Destructive reinstall requires explicit intent:

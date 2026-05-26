@@ -227,6 +227,67 @@ scripts:
     assert calls["plan"]["execution_order"] == ["DEMO", "CONSUMER"]
 
 
+def test_install_from_lockfile_executes_locked_plan(tmp_path: Path, monkeypatch):
+    package = tmp_path / "package"
+    lockfile = tmp_path / "dbpm-lock.json"
+    _write_package(package)
+    calls = {}
+
+    monkeypatch.setattr(cli, "get_application_state", lambda **kwargs: None)
+
+    def fake_execute_plan(plan, *, connect: str, runner: str):
+        calls["plan"] = plan
+        calls["connect"] = connect
+        calls["runner"] = runner
+        return 0
+
+    monkeypatch.setattr(cli, "execute_plan", fake_execute_plan)
+
+    assert cli.main(["lock", str(package), "--output", str(lockfile)]) == 0
+    assert cli.main(["install", "--lockfile", str(lockfile), "--connect", "user/pass@db"]) == 0
+
+    assert calls["connect"] == "user/pass@db"
+    assert calls["plan"]["package"]["application_name"] == "DEMO"
+
+
+def test_install_from_default_lockfile_path(tmp_path: Path, monkeypatch):
+    package = tmp_path / "package"
+    _write_package(package)
+    calls = {}
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "get_application_state", lambda **kwargs: None)
+    monkeypatch.setattr(cli, "execute_plan", lambda plan, **kwargs: calls.setdefault("plan", plan))
+
+    assert cli.main(["lock", str(package)]) == 0
+    assert cli.main(["install", "--lockfile", "--connect", "user/pass@db"]) == 0
+
+    assert calls["plan"]["package"]["application_name"] == "DEMO"
+
+
+def test_install_from_lockfile_rejects_extra_sources(tmp_path: Path, capsys):
+    package = tmp_path / "package"
+    lockfile = tmp_path / "dbpm-lock.json"
+    _write_package(package)
+
+    assert cli.main(["lock", str(package), "--output", str(lockfile)]) == 0
+    assert (
+        cli.main(
+            [
+                "install",
+                str(package),
+                "--lockfile",
+                str(lockfile),
+                "--connect",
+                "user/pass@db",
+            ]
+        )
+        == 2
+    )
+
+    assert "--lockfile cannot be combined with source or --dependency-source" in capsys.readouterr().err
+
+
 def test_install_dry_run_prints_plan(tmp_path: Path, capsys):
     package = tmp_path / "package"
     _write_package(package)

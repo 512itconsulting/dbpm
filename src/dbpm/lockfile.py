@@ -90,6 +90,29 @@ def assert_database_matches_lockfile(
         raise LockfileError("; ".join(errors))
 
 
+def package_sources_from_lockfile(lockfile: dict[str, object]) -> tuple[str, list[str]]:
+    packages = lockfile.get("packages", [])
+    execution_order = lockfile.get("execution_order", [])
+    root_application_name = lockfile.get("root_application_name")
+    if not isinstance(packages, list):
+        raise LockfileError("Lockfile packages must be a list")
+    if not isinstance(execution_order, list):
+        raise LockfileError("Lockfile execution_order must be a list")
+    if not isinstance(root_application_name, str):
+        raise LockfileError("Lockfile is missing root_application_name")
+
+    packages_by_app = _locked_packages_by_app(lockfile)
+    if root_application_name not in packages_by_app:
+        raise LockfileError(f"Lockfile root package is missing: {root_application_name}")
+    root_source = _package_source_reference(packages_by_app[root_application_name])
+    dependency_sources = [
+        _package_source_reference(packages_by_app[app_name])
+        for app_name in execution_order
+        if isinstance(app_name, str) and app_name != root_application_name
+    ]
+    return root_source, dependency_sources
+
+
 def _compare_lockfiles(
     actual: dict[str, object],
     expected: dict[str, object],
@@ -128,6 +151,16 @@ def _compare_lockfiles(
             errors.append(f"{app_name} is present in lockfile but not in current resolution")
 
     return errors
+
+
+def _package_source_reference(package: dict[str, object]) -> str:
+    artifact = _dict(package.get("artifact"))
+    source = _dict(package.get("source"))
+    value = artifact.get("uri") or source.get("path")
+    if not isinstance(value, str) or not value:
+        app_name = package.get("application_name") or "<unknown>"
+        raise LockfileError(f"{app_name} lockfile entry has no usable source URI")
+    return value
 
 
 def _package_plans(plan: dict[str, object]) -> list[dict[str, object]]:
