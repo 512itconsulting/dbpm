@@ -8,6 +8,7 @@ This document tracks what the current dbpm MVP can do and what remains before th
 - `dbpm.yaml` parsing for YAML and JSON manifests.
 - Local package directory support.
 - Local built ZIP support.
+- SHA-256 checksum capture for local built ZIP artifacts.
 - Artifact metadata provenance from `META-INF/*-build.properties`.
 - Local git provenance fallback.
 - `dbpm.plan.v0` JSON plan generation.
@@ -56,6 +57,6 @@ dbpm validate
 
 1. Add a small multi-package fixture for dependency ordering.
 2. Define lockfile generation and database reconciliation behavior.
-3. Add artifact checksum capture for ZIP artifacts.
-4. Decide checksum strategy for local directory deployments.
-5. Add dbpm-managed execution log capture.
+3. Decide checksum strategy for local directory deployments.
+4. Add dbpm-managed execution log capture.
+5. Add remote artifact retrieval.

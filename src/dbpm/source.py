@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +17,8 @@ class PackageSource:
     manifest_name: str
     manifest: PackageManifest
     metadata: dict[str, str]
+    artifact_checksum: str | None = None
+    artifact_checksum_alg: str | None = None
 
     @property
     def display_path(self) -> str:
@@ -80,6 +83,8 @@ def _load_zip_source(path: Path) -> PackageSource:
         manifest_name=manifest_member,
         manifest=manifest,
         metadata=metadata,
+        artifact_checksum=_sha256(path),
+        artifact_checksum_alg="SHA-256",
     )
 
 
@@ -125,3 +130,11 @@ def _parse_properties(text: str) -> dict[str, str]:
         key, value = line.split("=", 1)
         values[key.strip()] = value.strip()
     return values
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()

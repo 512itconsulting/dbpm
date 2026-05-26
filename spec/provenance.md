@@ -51,6 +51,8 @@ When `begin_deployment_p` starts the deployment, Core consumes the matching pend
 
 dbpm should also retain resolved provenance in the deployment plan and execution logs.
 
+For built ZIP artifacts, dbpm should calculate the SHA-256 checksum from the exact archive bytes and stage it with Core. Local directory deployments should not claim an artifact checksum until dbpm defines a stable source-tree hashing strategy.
+
 ## Lockfile And Cache
 
 When deploying from a lockfile, dbpm should verify that the artifact provenance and checksum match the locked artifact identity before execution.

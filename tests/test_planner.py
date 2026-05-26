@@ -1,4 +1,5 @@
 from pathlib import Path
+from zipfile import ZipFile
 
 import pytest
 
@@ -106,6 +107,37 @@ scripts:
 
     assert plan["execution"]["script"] == "deploy.sql"
     assert plan["pre_actions"][0]["type"] == "stage_deployment_provenance"
+
+
+def test_zip_plan_stages_artifact_checksum(tmp_path: Path):
+    archive_path = tmp_path / "demo.zip"
+    with ZipFile(archive_path, "w") as archive:
+        archive.writestr(
+            "demo/dbpm.yaml",
+            """
+package:
+  name: demo
+  version: "0.1.0"
+
+scripts:
+  install: deploy.sql
+""",
+        )
+        archive.writestr("demo/deploy.sql", "PROMPT deploy\n")
+
+    source = load_package_source(str(archive_path))
+    plan = create_plan(
+        mode="install",
+        source=source,
+        provenance=resolve_provenance(source),
+        environment=resolve_environment("development"),
+    )
+
+    payload = plan["pre_actions"][0]["payload"]
+    assert payload["artifact_checksum"] == source.artifact_checksum
+    assert payload["artifact_checksum_alg"] == "SHA-256"
+    assert payload["artifact_file_name"] == "demo.zip"
+    assert payload["artifact_extension"] == "zip"
 
 
 def test_validate_uses_validate_script_without_commit_argument(tmp_path: Path):

@@ -16,6 +16,7 @@ Define the smallest useful dbpm implementation.
 ## Supported Sources
 - local package directory
 - local built ZIP
+- SHA-256 checksum capture for local built ZIP artifacts
 
 ## Deferred
 - dependency lockfile generation and enforcement
@@ -38,6 +39,7 @@ Define the smallest useful dbpm implementation.
 - execute SQLPlus/SQLcl manifest scripts
 - pass commit hash into deployment scripts
 - stage artifact provenance in Core before running package deployment scripts
+- include artifact checksum in staged Core provenance when deploying a ZIP artifact
 - read installed state from Core
 - block normal install when the package is already installed
 - upgrade complete installed applications to a higher semantic version
