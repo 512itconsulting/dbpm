@@ -7,6 +7,7 @@ Define the smallest useful dbpm implementation.
 - check-core
 - bootstrap-core
 - plan
+- lock
 - install
 - upgrade
 - reinstall
@@ -21,9 +22,13 @@ Define the smallest useful dbpm implementation.
 - SHA-256 checksum capture for local built ZIP artifacts
 - SHA-256 checksum capture for downloaded GitHub Maven ZIP artifacts
 - local cache for downloaded and extracted ZIP artifacts
+- lockfile generation for resolved install plans
+- lockfile verification against current resolution
+- lockfile/database reconciliation for installed versions and complete Core status
 
 ## Deferred
-- dependency lockfile generation and enforcement
+- lockfile-driven install without restating package sources
+- lockfile Core provenance-row reconciliation
 - generic Maven repository resolution beyond GitHub Packages
 - trusted artifact mirrors
 - package publishing
@@ -42,6 +47,9 @@ Define the smallest useful dbpm implementation.
 - execute SQLPlus/SQLcl manifest scripts
 - execute ordered local dependency-source install plans
 - execute ordered GitHub Maven dependency-source install plans
+- write a lockfile for resolved package artifacts
+- fail clearly when the current source resolution differs from the lockfile
+- verify locked package versions are installed with complete Core status
 - pass commit hash into deployment scripts
 - stage artifact provenance in Core before running package deployment scripts
 - include artifact checksum in staged Core provenance when deploying a ZIP artifact
@@ -85,5 +93,5 @@ Maven-compatible repository layouts can remain a publishing and hosting option. 
 - SQLPlus vs SQLcl default
 - exact plan JSON shape
 - checksum strategy for local directory deployments
-- lockfile format and database reconciliation behavior
+- lockfile-driven install behavior
 - generic Maven repository configuration beyond GitHub Packages

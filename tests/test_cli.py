@@ -104,6 +104,78 @@ scripts:
     assert "Missing dependency source for CONSUMER: DEMO 0.1.0" in capsys.readouterr().err
 
 
+def test_lock_writes_lockfile(tmp_path: Path, capsys):
+    package = tmp_path / "package"
+    lockfile = tmp_path / "dbpm-lock.json"
+    _write_package(package)
+
+    assert cli.main(["lock", str(package), "--output", str(lockfile)]) == 0
+
+    output = json.loads(lockfile.read_text(encoding="utf-8"))
+    assert output["schema_version"] == "dbpm.lock.v0"
+    assert output["execution_order"] == ["DEMO"]
+    assert f"WROTE_LOCKFILE={lockfile}" in capsys.readouterr().out
+
+
+def test_lock_check_rejects_mismatch(tmp_path: Path, capsys):
+    package = tmp_path / "package"
+    lockfile = tmp_path / "dbpm-lock.json"
+    _write_package(package)
+
+    assert cli.main(["lock", str(package), "--output", str(lockfile)]) == 0
+    data = json.loads(lockfile.read_text(encoding="utf-8"))
+    data["packages"][0]["version"] = "9.9.9"
+    lockfile.write_text(json.dumps(data), encoding="utf-8")
+
+    assert cli.main(["lock", str(package), "--output", str(lockfile), "--check"]) == 2
+
+    assert "DEMO version mismatch" in capsys.readouterr().err
+
+
+def test_lock_check_db_reconciles_installed_state(tmp_path: Path, monkeypatch, capsys):
+    package = tmp_path / "package"
+    lockfile = tmp_path / "dbpm-lock.json"
+    _write_package(package)
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState(
+            application_name="DEMO",
+            version="0.1.0",
+            deploy_status="C",
+            deploy_commit_hash="abc",
+        ),
+    )
+
+    assert cli.main(["lock", str(package), "--output", str(lockfile)]) == 0
+    assert (
+        cli.main(
+            [
+                "lock",
+                str(package),
+                "--output",
+                str(lockfile),
+                "--check",
+                "--check-db",
+                "--connect",
+                "user/pass@db",
+            ]
+        )
+        == 0
+    )
+
+    assert f"LOCKFILE_OK={lockfile}" in capsys.readouterr().out
+
+
+def test_lock_check_db_requires_check(tmp_path: Path, capsys):
+    package = tmp_path / "package"
+    _write_package(package)
+
+    assert cli.main(["lock", str(package), "--check-db"]) == 2
+
+    assert "--check-db requires --check" in capsys.readouterr().err
+
+
 def test_install_with_dependency_source_executes_multi_package_plan(tmp_path: Path, monkeypatch):
     base = tmp_path / "base"
     consumer = tmp_path / "consumer"

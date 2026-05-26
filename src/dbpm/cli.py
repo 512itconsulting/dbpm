@@ -4,11 +4,20 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 
 from .db import check_core, get_application_state, get_reverse_dependencies
 from .environment import resolve_environment
 from .errors import DbpmError
 from .executor import execute_plan
+from .lockfile import (
+    LOCKFILE_NAME,
+    assert_database_matches_lockfile,
+    assert_lockfile_matches_plan,
+    create_lockfile,
+    load_lockfile,
+    write_lockfile,
+)
 from .planner import create_plan
 from .provenance import resolve_provenance
 from .resolver import create_multi_package_plan
@@ -23,6 +32,24 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "plan":
             plan = _build_plan(args.mode, args, include_installed_state=bool(args.connect))
             _print_json(plan)
+            return 0
+        if args.command == "lock":
+            if args.check_db and not args.check:
+                raise DbpmError("--check-db requires --check")
+            plan = _build_plan("install", args, include_installed_state=bool(args.connect))
+            lockfile_path = Path(args.output)
+            if args.check:
+                lockfile = load_lockfile(lockfile_path)
+                assert_lockfile_matches_plan(lockfile, plan)
+                if args.check_db:
+                    if not args.connect:
+                        raise DbpmError("Database lockfile check requires --connect or DBPM_CONNECT")
+                    assert_database_matches_lockfile(lockfile, plan)
+                print(f"LOCKFILE_OK={lockfile_path}")
+                return 0
+            lockfile = create_lockfile(plan)
+            write_lockfile(lockfile, lockfile_path)
+            print(f"WROTE_LOCKFILE={lockfile_path}")
             return 0
         if args.command == "check-core":
             result = check_core(
@@ -65,6 +92,18 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_dependency_source_args(plan)
     _add_database_args(plan)
+
+    lock = subparsers.add_parser("lock", help="Write or verify a dependency lockfile")
+    _add_common_args(lock)
+    _add_dependency_source_args(lock)
+    _add_database_args(lock)
+    lock.add_argument("--output", default=LOCKFILE_NAME, help=f"Lockfile path, default: {LOCKFILE_NAME}")
+    lock.add_argument("--check", action="store_true", help="Verify the current resolution matches the lockfile")
+    lock.add_argument(
+        "--check-db",
+        action="store_true",
+        help="With --check, verify installed database versions match the lockfile",
+    )
 
     bootstrap = subparsers.add_parser("bootstrap-core", help="Bootstrap Core")
     _add_common_args(bootstrap)
@@ -152,7 +191,7 @@ def _build_plan(
         installed_state = _get_installed_state(args, source.manifest.application_name)
         reverse_dependencies = _get_reverse_dependencies(args, source.manifest.application_name)
 
-    if args.command in {"plan", "install"} and (dependency_sources or source.manifest.dependencies):
+    if args.command in {"plan", "install", "lock"} and (dependency_sources or source.manifest.dependencies):
         installed_states = {source.manifest.application_name: installed_state}
         reverse_dependencies_by_app = {source.manifest.application_name: reverse_dependencies or []}
         if include_installed_state:

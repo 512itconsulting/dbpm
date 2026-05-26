@@ -15,6 +15,9 @@ This document tracks what the current dbpm MVP can do and what remains before th
 - `dbpm.plan.v0` JSON plan generation.
 - `dbpm.multi-plan.v0` JSON plan generation for local dependency-source planning.
 - Ordered multi-package execution for local dependency-source installs.
+- `dbpm-lock.json` generation for resolved install plans.
+- Lockfile verification against the current source resolution.
+- Lockfile/database reconciliation for installed package versions and complete Core status.
 - Environment policy evaluation for development, test, staging, and production classes.
 - SQLcl/SQLPlus runner configuration through `--runner` or `DBPM_SQL_RUNNER`.
 - Database connection configuration through `--connect` or `DBPM_CONNECT`.
@@ -39,6 +42,7 @@ This document tracks what the current dbpm MVP can do and what remains before th
 ```text
 dbpm check-core
 dbpm plan
+dbpm lock
 dbpm bootstrap-core
 dbpm install
 dbpm upgrade
@@ -52,7 +56,8 @@ dbpm validate
 - Local directory deployments do not yet calculate a stable source-tree checksum.
 - Multi-package dependency execution is install-only.
 - Dependency resolution supports exact `major.minor.patch` and caret-compatible constraints.
-- Lockfile generation and enforcement are not implemented.
+- Lockfile-driven install without restating package sources is not implemented.
+- Lockfile database reconciliation checks installed version and Core status, but does not yet compare Core provenance rows.
 - Remote retrieval is GitHub Maven ZIP-only.
 - Local artifact cache exists for downloaded and extracted ZIP artifacts, but is not lockfile-aware.
 - Execution logs are not yet captured into dbpm-managed log files.
@@ -60,8 +65,8 @@ dbpm validate
 
 ## Next Recommended Work
 
-1. Define lockfile generation and database reconciliation behavior.
-2. Extend ordered multi-package execution beyond install.
-3. Decide checksum strategy for local directory deployments.
+1. Extend ordered multi-package execution beyond install.
+2. Decide checksum strategy for local directory deployments.
+3. Add lockfile-driven install from trusted artifact sources.
 4. Add dbpm-managed execution log capture.
 5. Add generic Maven repository retrieval.

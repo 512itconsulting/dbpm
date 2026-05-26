@@ -115,6 +115,28 @@ The coordinate format is:
 gh-maven:owner/repo:group:artifact:version[:extension]
 ```
 
+## Lock Resolved Artifacts
+
+Write a lockfile for an install resolution:
+
+```powershell
+uv run dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --dependency-source gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
+```
+
+This writes `dbpm-lock.json` with the ordered package list, resolved artifact URLs, SHA-256 checksums for ZIP artifacts, provenance fields, and dependency metadata.
+
+Verify that the current resolution still matches the lockfile:
+
+```powershell
+uv run dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --dependency-source gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:1.0.0 --check
+```
+
+Verify that the connected database has the locked package versions installed with complete Core deployment status:
+
+```powershell
+uv run dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --dependency-source gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:1.0.0 --check --check-db
+```
+
 ## Install A Package
 
 Install a package that is not already registered in Core:

@@ -33,6 +33,7 @@ Example
 ```powershell
 uv run dbpm check-core --minimum-version 3.2.0
 uv run dbpm plan gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --mode install --dependency-source gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
+uv run dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --dependency-source gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
 uv run dbpm install gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --env development --dependency-source gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
 ```
 
@@ -46,6 +47,7 @@ uv run dbpm install gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.data
 - Local cache for downloaded and extracted ZIP artifacts
 - Exact and caret-compatible dependency constraints
 - Ordered multi-package install for dependency sources
+- Dependency lockfile generation and verification through `dbpm lock`
 - Core-backed installed-state lookup
 - Core-backed reverse-dependency lookup
 - Core provenance staging through `pkg_application.stage_deployment_provenance_p`
@@ -53,9 +55,9 @@ uv run dbpm install gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.data
 - Install, upgrade, reinstall, resume, and validate workflows
 
 ## Still Planned
-- Dependency lockfiles
+- Lockfile-driven install without restating sources on the command line
+- Lockfile-aware trusted artifact mirrors
 - Generic Maven-compatible repository configuration beyond GitHub Packages
-- Trusted artifact mirrors for production deployments
 - Roll-forward migrations
 - Package signing
 - APEX integration
@@ -88,6 +90,7 @@ Common variables:
 ```text
 dbpm check-core
 dbpm plan
+dbpm lock
 dbpm bootstrap-core
 dbpm install
 dbpm upgrade
