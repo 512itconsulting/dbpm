@@ -9,19 +9,59 @@ These examples assume:
 
 Do not commit environment files that contain passwords.
 
-## PowerShell Setup
+## Environment Setup
 
-Example local `setenv.ps1` shape:
+Keep local environment scripts uncommitted. They may contain database passwords and GitHub tokens.
+
+Required for database commands:
+
+- `DBPM_SQL_RUNNER`: SQLcl or SQLPlus executable.
+- `DBPM_CONNECT`: Oracle connect string.
+
+Required for private GitHub Packages:
+
+- `DBPM_GITHUB_TOKEN`: GitHub token with package read access.
+- `DBPM_CACHE_DIR`: local cache for downloaded and extracted package artifacts.
+
+Optional:
+
+- `DBPM_GITHUB_USER`: GitHub username used with `DBPM_GITHUB_TOKEN`. If omitted, dbpm falls back to `GITHUB_ACTOR` or `x-access-token`.
+- `DBPM_RUN_DB_TESTS`: set to `1` to enable opt-in live database pytest tests.
+
+Example local `setenv.ps1`:
 
 ```powershell
-$env:DBPM_SQL_RUNNER = "sql"
+$env:DBPM_SQL_RUNNER = "sql.exe"
 $env:DBPM_CONNECT = "user/password@tns_alias_or_service"
+$env:DBPM_GITHUB_TOKEN = "github_token_with_package_read_access"
+$env:DBPM_CACHE_DIR = ".\.dbpm-cache"
+
+# Optional
+$env:DBPM_GITHUB_USER = "github_username"
+# $env:DBPM_RUN_DB_TESTS = "1"
 ```
 
-Load it before running connected commands:
+Example local `setenv.sh`:
+
+```sh
+export DBPM_SQL_RUNNER="sql"
+export DBPM_CONNECT="user/password@tns_alias_or_service"
+export DBPM_GITHUB_TOKEN="github_token_with_package_read_access"
+export DBPM_CACHE_DIR="./.dbpm-cache"
+
+# Optional
+export DBPM_GITHUB_USER="github_username"
+# export DBPM_RUN_DB_TESTS="1"
+```
+
+Load the environment before running connected or remote package commands:
 
 ```powershell
 . .\setenv.ps1
+```
+
+```sh
+. ./setenv.sh
 ```
 
 ## Check Core
