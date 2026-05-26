@@ -30,29 +30,75 @@ Maven-compatible repositories may be useful for publishing immutable package art
 - Reduce fragile hand-managed deployment scripts
 
 Example
-```text
-dbpm bootstrap core@1.2.0
-dbpm install utl_interval@2.1.4
+```powershell
+uv run dbpm check-core --minimum-version 3.2.0
+uv run dbpm plan gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --mode install --dependency-source gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
+uv run dbpm install gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --env development --dependency-source gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
 ```
 
-## Planned Features
-- Package manifests
-- Dependency lockfiles
-- Dependency resolution
-- Local artifact cache
-- HTTP(S) package retrieval
-- Maven-compatible and GitHub Packages repository resolution
-- Trusted artifact mirrors for production deployments
-- Core-backed install registry
-- Deployment orchestration
-- Roll-forward migrations
+## Current MVP
+- Package manifests through `dbpm.yaml`, `dbpm.yml`, `dbpm.json`, or `package.dbpm.yaml`
+- Local package directory sources
+- Local ZIP package sources
+- GitHub Maven ZIP package sources with `gh-maven:owner/repo:group:artifact:version[:extension]`
+- Maven snapshot ZIP resolution through `maven-metadata.xml`
+- SHA-256 checksum capture for ZIP artifacts
+- Local cache for downloaded and extracted ZIP artifacts
+- Exact and caret-compatible dependency constraints
+- Ordered multi-package install for dependency sources
+- Core-backed installed-state lookup
+- Core-backed reverse-dependency lookup
+- Core provenance staging through `pkg_application.stage_deployment_provenance_p`
 - Environment-aware deployment plans
+- Install, upgrade, reinstall, resume, and validate workflows
+
+## Still Planned
+- Dependency lockfiles
+- Generic Maven-compatible repository configuration beyond GitHub Packages
+- Trusted artifact mirrors for production deployments
+- Roll-forward migrations
 - Package signing
 - APEX integration
-- CLI tooling
+- Rich artifact registry
 
 ## Status
-Early-stage experimental project.
+Early-stage experimental project. The current MVP has been live-tested against GitHub Packages artifacts for:
+
+- `core`
+- `utl_interval`
+- `simple_scheduler`
+
+`simple_scheduler` depends on `utl_interval`; dbpm can install both from GitHub Packages in dependency order and record Core provenance with artifact URLs and SHA-256 checksums.
+
+## Environment
+
+Database and GitHub Packages access are configured through local, uncommitted environment files such as `setenv.ps1` or `setenv.sh`.
+
+Common variables:
+
+- `DBPM_SQL_RUNNER`: SQLcl or SQLPlus executable, such as `sql.exe`
+- `DBPM_CONNECT`: Oracle connect string
+- `DBPM_GITHUB_TOKEN`: GitHub token with package read access
+- `DBPM_GITHUB_USER`: optional GitHub username for package authentication
+- `DBPM_CACHE_DIR`: local artifact cache, such as `.\.dbpm-cache`
+- `DBPM_RUN_DB_TESTS`: optional `1` to enable live database pytest tests
+
+## Commands
+
+```text
+dbpm check-core
+dbpm plan
+dbpm bootstrap-core
+dbpm install
+dbpm upgrade
+dbpm reinstall
+dbpm resume
+dbpm validate
+```
+
+Run `dbpm <command> --help` for command-specific options.
+
+During development, examples use `uv run dbpm ...` so uv runs the project console script in the project environment. If the project has already been installed into a virtual environment, the generated console script can also be called directly, such as `.\.venv\Scripts\dbpm.exe` on Windows.
 
 ## Related Projects
 - [core](https://github.com/rsantmyer/core)

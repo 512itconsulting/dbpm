@@ -73,7 +73,7 @@ gh-maven:owner/repo:group:artifact:version[:extension]
 For example:
 
 ```text
-gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:0.1.0-SNAPSHOT
+gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
 ```
 
 The default extension is `zip`. dbpm resolves the coordinate to the standard Maven repository path under `https://maven.pkg.github.com/<owner>/<repo>/`, downloads the archive over HTTP(S), calculates its SHA-256 checksum, extracts it into the local dbpm cache, and then treats it like any other ZIP source.

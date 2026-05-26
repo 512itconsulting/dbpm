@@ -2,7 +2,7 @@
 
 These examples assume:
 
-- dbpm is installed in the project virtual environment.
+- commands are run from the dbpm project with `uv run dbpm`.
 - SQLcl is available as `sql`.
 - Core is already installed in the target schema.
 - A local, uncommitted `setenv.ps1` or `setenv.sh` sets credentials.
@@ -69,13 +69,13 @@ Load the environment before running connected or remote package commands:
 Verify Core is available and satisfies the minimum version:
 
 ```powershell
-.\.venv\Scripts\dbpm.exe check-core --minimum-version 3.0.0
+uv run dbpm check-core --minimum-version 3.2.0
 ```
 
 Expected output:
 
 ```text
-CORE_VERSION=3.0.0
+CORE_VERSION=3.2.0
 ```
 
 ## Plan A Local Package Install
@@ -83,13 +83,13 @@ CORE_VERSION=3.0.0
 Generate a plan without connecting to the database:
 
 ```powershell
-.\.venv\Scripts\dbpm.exe plan C:\Local_Exe\Repos\utl_interval --mode install --env development
+uv run dbpm plan C:\Local_Exe\Repos\utl_interval --mode install --env development
 ```
 
 Generate a connected plan that includes Core installed state and reverse dependencies:
 
 ```powershell
-.\.venv\Scripts\dbpm.exe plan C:\Local_Exe\Repos\utl_interval --mode install --env development --connect $env:DBPM_CONNECT
+uv run dbpm plan C:\Local_Exe\Repos\utl_interval --mode install --env development --connect $env:DBPM_CONNECT
 ```
 
 ## Plan Local Dependencies
@@ -97,7 +97,7 @@ Generate a connected plan that includes Core installed state and reverse depende
 When a package manifest declares dependencies, provide local package sources that may satisfy them:
 
 ```powershell
-.\.venv\Scripts\dbpm.exe plan C:\path\to\consumer --mode install --dependency-source C:\path\to\dependency
+uv run dbpm plan C:\path\to\consumer --mode install --dependency-source C:\path\to\dependency
 ```
 
 The resulting multi-package plan orders dependencies before consumers. If a required dependency is not already installed in Core and no matching local source is provided, planning fails before deployment.
@@ -106,7 +106,7 @@ GitHub Maven ZIP artifacts can be used as package sources:
 
 ```powershell
 $env:DBPM_GITHUB_TOKEN = "<token-if-required>"
-.\.venv\Scripts\dbpm.exe plan gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:<version> --mode install --dependency-source gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:0.1.0-SNAPSHOT
+uv run dbpm plan gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --mode install --dependency-source gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
 ```
 
 The coordinate format is:
@@ -120,7 +120,7 @@ gh-maven:owner/repo:group:artifact:version[:extension]
 Install a package that is not already registered in Core:
 
 ```powershell
-.\.venv\Scripts\dbpm.exe install C:\Local_Exe\Repos\utl_interval --env development
+uv run dbpm install C:\Local_Exe\Repos\utl_interval --env development
 ```
 
 Before running the package deployment script, dbpm stages resolved provenance in Core with `pkg_application.stage_deployment_provenance_p`. The existing deploy script still receives the commit hash argument and calls `begin_deployment_p`; Core consumes the matching staged provenance when that deployment starts.
@@ -134,7 +134,7 @@ dbpm: UTL_INTERVAL is already installed; use reinstall or upgrade
 Install can use the same local dependency sources:
 
 ```powershell
-.\.venv\Scripts\dbpm.exe install C:\path\to\consumer --env development --dependency-source C:\path\to\dependency
+uv run dbpm install C:\path\to\consumer --env development --dependency-source C:\path\to\dependency
 ```
 
 dbpm executes each package in dependency order and stops on the first failed package.
@@ -144,7 +144,7 @@ dbpm executes each package in dependency order and stops on the first failed pac
 Destructive reinstall requires explicit intent:
 
 ```powershell
-.\.venv\Scripts\dbpm.exe reinstall C:\Local_Exe\Repos\utl_interval --env development --allow-destructive
+uv run dbpm reinstall C:\Local_Exe\Repos\utl_interval --env development --allow-destructive
 ```
 
 If installed applications depend on the target, dbpm blocks before calling Core cleanup:
@@ -158,7 +158,7 @@ dbpm: Cannot reinstall UTL_INTERVAL; installed applications depend on it: SIMPLE
 If a prior deployment left Core status as `R` or `F`, fix the deployment issue and resume:
 
 ```powershell
-.\.venv\Scripts\dbpm.exe resume C:\Local_Exe\Repos\utl_interval --env development
+uv run dbpm resume C:\Local_Exe\Repos\utl_interval --env development
 ```
 
 If the package is already complete, resume is refused:
@@ -172,7 +172,7 @@ dbpm: UTL_INTERVAL deployment status is C; resume requires R or F
 Run the package validation script declared in `dbpm.yaml`:
 
 ```powershell
-.\.venv\Scripts\dbpm.exe validate C:\Local_Exe\Repos\utl_interval --env development
+uv run dbpm validate C:\Local_Exe\Repos\utl_interval --env development
 ```
 
 For `utl_interval`, this runs:
