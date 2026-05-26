@@ -3,7 +3,9 @@ from dbpm.db import (
     _application_state_sql,
     _core_check_sql,
     _delete_application_sql,
+    _deployment_provenance_sql,
     _parse_application_state,
+    _parse_deployment_provenance,
     _parse_reverse_dependencies,
     _parse_semver,
     _reverse_dependencies_sql,
@@ -95,6 +97,29 @@ def test_reverse_dependencies_sql_queries_app_dependency():
     assert "DBPM_REVERSE_DEPENDENCY|" in sql
     assert "FROM app_dependency" in sql
     assert "WHERE depends_on = 'UTL_INTERVAL'" in sql
+
+
+def test_deployment_provenance_sql_uses_core_api():
+    sql = _deployment_provenance_sql("utl_interval", "1.2.3")
+
+    assert "pkg_application.get_deployment_provenance_json_f" in sql
+    assert "ip_application_name => 'UTL_INTERVAL'" in sql
+    assert "ip_major_version    => 1" in sql
+    assert "ip_minor_version    => 2" in sql
+    assert "ip_patch_version    => 3" in sql
+    assert "DBPM_DEPLOYMENT_PROVENANCE|" in sql
+
+
+def test_parse_deployment_provenance():
+    provenance = _parse_deployment_provenance(
+        '\nDBPM_DEPLOYMENT_PROVENANCE|{"application_name":"UTL_INTERVAL","major_version":1}\n'
+    )
+
+    assert provenance == {"application_name": "UTL_INTERVAL", "major_version": 1}
+
+
+def test_parse_deployment_provenance_not_found():
+    assert _parse_deployment_provenance("") is None
 
 
 def test_parse_reverse_dependencies():

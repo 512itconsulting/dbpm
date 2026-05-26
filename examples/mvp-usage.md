@@ -131,7 +131,7 @@ Verify that the current resolution still matches the lockfile:
 uv run dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --dependency-source gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:1.0.0 --check
 ```
 
-Verify that the connected database has the locked package versions installed with complete Core deployment status:
+Verify that the connected database has the locked package versions installed with complete Core deployment status and matching Core provenance rows:
 
 ```powershell
 uv run dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --dependency-source gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:1.0.0 --check --check-db

@@ -19,6 +19,7 @@ This document tracks what the current dbpm MVP can do and what remains before th
 - `dbpm-lock.json` generation for resolved install plans.
 - Lockfile verification against the current source resolution.
 - Lockfile/database reconciliation for installed package versions and complete Core status.
+- Lockfile/database reconciliation for Core deployment provenance rows through `pkg_application.get_deployment_provenance_json_f`.
 - Lockfile-driven install without restating package sources.
 - Environment policy evaluation for development, test, staging, and production classes.
 - SQLcl/SQLPlus runner configuration through `--runner` or `DBPM_SQL_RUNNER`.
@@ -59,7 +60,7 @@ dbpm validate
 - Local directory deployments do not yet calculate a stable source-tree checksum.
 - Multi-package dependency execution is install-only.
 - Dependency resolution supports exact `major.minor.patch` and caret-compatible constraints.
-- Lockfile database reconciliation checks installed version and Core status, but does not yet compare Core provenance rows.
+- Lockfile database provenance reconciliation requires Core 3.3.0 or newer.
 - Named remote retrieval is GitHub Maven ZIP-only; lockfiles can install from locked HTTPS ZIP artifact URLs.
 - Local artifact cache exists for downloaded and extracted ZIP artifacts, but is not lockfile-aware.
 - Execution logs are not yet captured into dbpm-managed log files.
@@ -67,8 +68,8 @@ dbpm validate
 
 ## Next Recommended Work
 
-1. Add Core provenance-row reconciliation to lockfile database checks.
-2. Extend ordered multi-package execution beyond install.
-3. Decide checksum strategy for local directory deployments.
-4. Add dbpm-managed execution log capture.
-5. Add generic Maven repository retrieval.
+1. Extend ordered multi-package execution beyond install.
+2. Decide checksum strategy for local directory deployments.
+3. Add dbpm-managed execution log capture.
+4. Add generic Maven repository retrieval.
+5. Add lockfile-aware trusted artifact mirrors.

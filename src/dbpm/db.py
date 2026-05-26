@@ -137,6 +137,24 @@ def get_reverse_dependencies(
     return _parse_reverse_dependencies(result.stdout)
 
 
+def get_deployment_provenance(
+    *,
+    connect: str,
+    runner: str,
+    application_name: str,
+    version: str,
+) -> dict[str, object] | None:
+    result = run_sql_script(
+        sql=_deployment_provenance_sql(application_name, version),
+        connect=connect,
+        runner=runner,
+        label="dbpm-deployment-provenance",
+    )
+    if result.returncode != 0:
+        raise ExecutionError(_format_sql_failure(f"Deployment provenance query failed for {application_name}", result))
+    return _parse_deployment_provenance(result.stdout)
+
+
 def _write_temp_script(sql: str, label: str) -> Path:
     handle = tempfile.NamedTemporaryFile(
         mode="w",
@@ -304,6 +322,36 @@ EXIT SUCCESS
 """
 
 
+def _deployment_provenance_sql(application_name: str, version: str) -> str:
+    app_name = _sql_literal(application_name.upper())
+    major, minor, patch = _parse_semver(version)
+    return f"""
+SET HEADING OFF
+SET FEEDBACK OFF
+SET PAGESIZE 0
+SET VERIFY OFF
+SET SERVEROUTPUT ON
+WHENEVER SQLERROR EXIT FAILURE
+WHENEVER OSERROR EXIT FAILURE
+
+DECLARE
+   l_json CLOB;
+BEGIN
+   l_json := pkg_application.get_deployment_provenance_json_f(
+      ip_application_name => {app_name},
+      ip_major_version    => {major},
+      ip_minor_version    => {minor},
+      ip_patch_version    => {patch}
+   );
+   IF l_json IS NOT NULL THEN
+      DBMS_OUTPUT.PUT_LINE('DBPM_DEPLOYMENT_PROVENANCE|' || DBMS_LOB.SUBSTR(l_json, 32767, 1));
+   END IF;
+END;
+/
+EXIT SUCCESS
+"""
+
+
 def _parse_application_state(output: str) -> ApplicationState | None:
     for raw_line in output.splitlines():
         line = raw_line.strip()
@@ -328,6 +376,22 @@ def _parse_reverse_dependencies(output: str) -> list[str]:
         if line.startswith("DBPM_REVERSE_DEPENDENCY|"):
             dependencies.append(line.split("|", 1)[1])
     return dependencies
+
+
+def _parse_deployment_provenance(output: str) -> dict[str, object] | None:
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line.startswith("DBPM_DEPLOYMENT_PROVENANCE|"):
+            continue
+        raw_json = line.split("|", 1)[1]
+        try:
+            value = json.loads(raw_json)
+        except json.JSONDecodeError as exc:
+            raise ExecutionError(f"Unexpected deployment provenance output: {line}") from exc
+        if not isinstance(value, dict):
+            raise ExecutionError(f"Unexpected deployment provenance output: {line}")
+        return value
+    return None
 
 
 def _parse_semver(value: str) -> tuple[int, int, int]:

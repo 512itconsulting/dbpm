@@ -52,7 +52,7 @@ dbpm install --lockfile [dbpm-lock.json]
 
 `--check` fails when the current resolution differs from the lockfile. It compares package identity, version, execution order, artifact URI, checksum, checksum algorithm, and package coordinate.
 
-`--check-db` also reads Core installed state for the locked packages and fails when a package is missing, has a non-complete deployment status, or has a different installed version. The MVP does not yet compare Core provenance rows; that should be added once dbpm has a stable Core provenance query API.
+`--check-db` also reads Core installed state for the locked packages and fails when a package is missing, has a non-complete deployment status, or has a different installed version. With Core 3.3.0 or newer, it also reads `pkg_application.get_deployment_provenance_json_f` and compares the recorded artifact/provenance fields against the lockfile.
 
 `install --lockfile` reconstructs the ordered install plan from the package sources recorded in the lockfile. For remote artifacts, the MVP loads the locked HTTPS ZIP artifact URL directly, verifies the resulting plan still matches the lockfile, then executes the normal install path.
 

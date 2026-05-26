@@ -6,15 +6,17 @@ import os
 import sys
 from pathlib import Path
 
-from .db import check_core, get_application_state, get_reverse_dependencies
+from .db import check_core, get_application_state, get_deployment_provenance, get_reverse_dependencies
 from .environment import resolve_environment
 from .errors import DbpmError
 from .executor import execute_plan
 from .lockfile import (
     LOCKFILE_NAME,
     assert_database_matches_lockfile,
+    assert_database_provenance_matches_lockfile,
     assert_lockfile_matches_plan,
     create_lockfile,
+    deployment_provenance_requests,
     load_lockfile,
     package_sources_from_lockfile,
     write_lockfile,
@@ -46,6 +48,16 @@ def main(argv: list[str] | None = None) -> int:
                     if not args.connect:
                         raise DbpmError("Database lockfile check requires --connect or DBPM_CONNECT")
                     assert_database_matches_lockfile(lockfile, plan)
+                    provenances = {
+                        app_name: get_deployment_provenance(
+                            connect=_connect_string(args),
+                            runner=args.runner,
+                            application_name=app_name,
+                            version=version,
+                        )
+                        for app_name, version in deployment_provenance_requests(lockfile)
+                    }
+                    assert_database_provenance_matches_lockfile(lockfile, provenances)
                 print(f"LOCKFILE_OK={lockfile_path}")
                 return 0
             lockfile = create_lockfile(plan)

@@ -90,6 +90,32 @@ def assert_database_matches_lockfile(
         raise LockfileError("; ".join(errors))
 
 
+def assert_database_provenance_matches_lockfile(
+    lockfile: dict[str, object],
+    provenances_by_app: dict[str, dict[str, object] | None],
+) -> None:
+    errors: list[str] = []
+    for app_name, locked_package in _locked_packages_by_app(lockfile).items():
+        provenance = provenances_by_app.get(app_name)
+        if provenance is None:
+            errors.append(f"{app_name} deployment provenance is not recorded")
+            continue
+        errors.extend(_compare_package_provenance(locked_package, provenance))
+
+    if errors:
+        raise LockfileError("; ".join(errors))
+
+
+def deployment_provenance_requests(lockfile: dict[str, object]) -> list[tuple[str, str]]:
+    requests = []
+    for app_name, locked_package in _locked_packages_by_app(lockfile).items():
+        version = locked_package.get("version")
+        if not isinstance(version, str) or not version:
+            raise LockfileError(f"{app_name} lockfile entry is missing version")
+        requests.append((app_name, version))
+    return requests
+
+
 def package_sources_from_lockfile(lockfile: dict[str, object]) -> tuple[str, list[str]]:
     packages = lockfile.get("packages", [])
     execution_order = lockfile.get("execution_order", [])
@@ -111,6 +137,53 @@ def package_sources_from_lockfile(lockfile: dict[str, object]) -> tuple[str, lis
         if isinstance(app_name, str) and app_name != root_application_name
     ]
     return root_source, dependency_sources
+
+
+def _compare_package_provenance(
+    locked_package: dict[str, object],
+    provenance: dict[str, object],
+) -> list[str]:
+    app_name = str(locked_package.get("application_name"))
+    version = str(locked_package.get("version"))
+    artifact = _dict(locked_package.get("artifact"))
+    locked_provenance = _dict(locked_package.get("provenance"))
+    errors: list[str] = []
+
+    version_parts = version.split(".")
+    if len(version_parts) == 3:
+        for field, expected in zip(("major_version", "minor_version", "patch_version"), version_parts):
+            if _normalize(provenance.get(field)) != expected:
+                errors.append(
+                    f"{app_name} provenance {field} mismatch: "
+                    f"expected {expected}, found {provenance.get(field)}"
+                )
+
+    comparisons = {
+        "artifact_uri": artifact.get("uri"),
+        "artifact_checksum": artifact.get("checksum"),
+        "artifact_checksum_alg": artifact.get("checksum_alg"),
+        "artifact_file_name": artifact.get("file_name"),
+        "artifact_repository_type": artifact.get("repository_type"),
+        "artifact_group_id": artifact.get("group_id"),
+        "artifact_id": artifact.get("artifact_id"),
+        "artifact_version": artifact.get("artifact_version"),
+        "artifact_classifier": artifact.get("classifier"),
+        "artifact_extension": artifact.get("extension"),
+        "package_coordinate": artifact.get("coordinate"),
+        "source_repository_url": locked_provenance.get("source_repository_url"),
+        "source_commit_hash": locked_provenance.get("source_commit_hash"),
+        "source_path": artifact.get("uri"),
+        "build_id": locked_provenance.get("build_id"),
+        "build_url": locked_provenance.get("build_url"),
+        "build_time": locked_provenance.get("build_time"),
+    }
+    for field, expected in comparisons.items():
+        if _normalize(expected) != _normalize(provenance.get(field)):
+            errors.append(
+                f"{app_name} provenance {field} mismatch: "
+                f"expected {expected}, found {provenance.get(field)}"
+            )
+    return errors
 
 
 def _compare_lockfiles(
@@ -258,3 +331,9 @@ def _root_application_name(plan: dict[str, object]) -> object:
 
 def _dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _normalize(value: object) -> str | None:
+    if value is None:
+        return None
+    return str(value)

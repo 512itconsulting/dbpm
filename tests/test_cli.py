@@ -148,6 +148,33 @@ def test_lock_check_db_reconciles_installed_state(tmp_path: Path, monkeypatch, c
     )
 
     assert cli.main(["lock", str(package), "--output", str(lockfile)]) == 0
+    locked = json.loads(lockfile.read_text(encoding="utf-8"))["packages"][0]
+    monkeypatch.setattr(
+        cli,
+        "get_deployment_provenance",
+        lambda **kwargs: {
+            "major_version": 0,
+            "minor_version": 1,
+            "patch_version": 0,
+            "artifact_uri": locked["artifact"]["uri"],
+            "artifact_checksum": locked["artifact"]["checksum"],
+            "artifact_checksum_alg": locked["artifact"]["checksum_alg"],
+            "artifact_file_name": locked["artifact"]["file_name"],
+            "artifact_repository_type": locked["artifact"]["repository_type"],
+            "artifact_group_id": locked["artifact"]["group_id"],
+            "artifact_id": locked["artifact"]["artifact_id"],
+            "artifact_version": locked["artifact"]["artifact_version"],
+            "artifact_classifier": locked["artifact"]["classifier"],
+            "artifact_extension": locked["artifact"]["extension"],
+            "package_coordinate": locked["artifact"]["coordinate"],
+            "source_repository_url": locked["provenance"]["source_repository_url"],
+            "source_commit_hash": locked["provenance"]["source_commit_hash"],
+            "source_path": locked["artifact"]["uri"],
+            "build_id": locked["provenance"]["build_id"],
+            "build_url": locked["provenance"]["build_url"],
+            "build_time": locked["provenance"]["build_time"],
+        },
+    )
     assert (
         cli.main(
             [

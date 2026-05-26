@@ -26,10 +26,10 @@ Define the smallest useful dbpm implementation.
 - lockfile generation for resolved install plans
 - lockfile verification against current resolution
 - lockfile/database reconciliation for installed versions and complete Core status
+- lockfile/database reconciliation for Core deployment provenance rows
 - lockfile-driven install without restating package sources
 
 ## Deferred
-- lockfile Core provenance-row reconciliation
 - generic Maven repository resolution beyond GitHub Packages
 - trusted artifact mirrors
 - package publishing
@@ -51,6 +51,7 @@ Define the smallest useful dbpm implementation.
 - write a lockfile for resolved package artifacts
 - fail clearly when the current source resolution differs from the lockfile
 - verify locked package versions are installed with complete Core status
+- verify Core deployment provenance rows match locked artifact identity
 - install from locked artifact sources recorded in `dbpm-lock.json`
 - pass commit hash into deployment scripts
 - stage artifact provenance in Core before running package deployment scripts
