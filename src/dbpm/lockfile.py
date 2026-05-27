@@ -309,15 +309,19 @@ def _locked_package(package_plan: dict[str, object]) -> dict[str, object]:
 
 
 def _provenance_payload(package_plan: dict[str, object]) -> dict[str, object]:
-    pre_actions = package_plan.get("pre_actions", [])
-    if not isinstance(pre_actions, list):
-        return {}
-    for action in pre_actions:
-        if not isinstance(action, dict) or action.get("type") != "stage_deployment_provenance":
+    for action_group_name, action_type in (
+        ("pre_actions", "stage_deployment_provenance"),
+        ("post_actions", "record_deployment_provenance"),
+    ):
+        actions = package_plan.get(action_group_name, [])
+        if not isinstance(actions, list):
             continue
-        payload = action.get("payload")
-        if isinstance(payload, dict):
-            return payload
+        for action in actions:
+            if not isinstance(action, dict) or action.get("type") != action_type:
+                continue
+            payload = action.get("payload")
+            if isinstance(payload, dict):
+                return payload
     return {}
 
 

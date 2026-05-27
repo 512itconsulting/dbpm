@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
 
-from .db import delete_application, stage_deployment_provenance
+from .db import delete_application, record_deployment_provenance, stage_deployment_provenance
 from .errors import ExecutionError
 
 
@@ -58,6 +58,7 @@ def execute_plan(
         raise ExecutionError(f"SQL runner not found: {runner}") from exc
     if returncode != 0:
         raise ExecutionError(f"Deployment command failed with exit code {returncode}; see {log_file}")
+    _execute_post_actions(plan, connect=connect, runner=runner)
     return returncode
 
 
@@ -132,6 +133,24 @@ def _execute_pre_actions(plan: dict[str, object], *, connect: str, runner: str) 
             stage_deployment_provenance(connect=connect, runner=runner, payload=payload)
         else:
             raise ExecutionError(f"Unsupported pre-action: {action_type}")
+
+
+def _execute_post_actions(plan: dict[str, object], *, connect: str, runner: str) -> None:
+    post_actions = plan.get("post_actions", [])
+    if not isinstance(post_actions, list):
+        raise ExecutionError("Plan post_actions must be a list")
+
+    for action in post_actions:
+        if not isinstance(action, dict):
+            raise ExecutionError("Plan post_actions entries must be objects")
+        action_type = action.get("type")
+        if action_type == "record_deployment_provenance":
+            payload = action.get("payload")
+            if not isinstance(payload, dict):
+                raise ExecutionError("record_deployment_provenance post-action requires payload")
+            record_deployment_provenance(connect=connect, runner=runner, payload=payload)
+        else:
+            raise ExecutionError(f"Unsupported post-action: {action_type}")
 
 
 def _cwd_for_script(script_ref: object) -> str | None:

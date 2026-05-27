@@ -103,6 +103,25 @@ def stage_deployment_provenance(
     return result
 
 
+def record_deployment_provenance(
+    *,
+    connect: str,
+    runner: str,
+    payload: dict[str, object],
+) -> SqlResult:
+    sql = _record_deployment_provenance_sql(payload)
+    application_name = str(payload.get("application_name", ""))
+    result = run_sql_script(
+        sql=sql,
+        connect=connect,
+        runner=runner,
+        label="dbpm-record-provenance",
+    )
+    if result.returncode != 0:
+        raise ExecutionError(_format_sql_failure(f"Record provenance failed for {application_name}", result))
+    return result
+
+
 def get_application_state(
     *,
     connect: str,
@@ -231,6 +250,27 @@ EXIT SUCCESS
 
 
 def _stage_deployment_provenance_sql(payload: dict[str, object]) -> str:
+    return _deployment_provenance_write_sql(
+        payload,
+        procedure_name="stage_deployment_provenance_p",
+        output_name="STAGED_DEPLOYMENT_PROVENANCE",
+    )
+
+
+def _record_deployment_provenance_sql(payload: dict[str, object]) -> str:
+    return _deployment_provenance_write_sql(
+        payload,
+        procedure_name="record_deployment_provenance_p",
+        output_name="RECORDED_DEPLOYMENT_PROVENANCE",
+    )
+
+
+def _deployment_provenance_write_sql(
+    payload: dict[str, object],
+    *,
+    procedure_name: str,
+    output_name: str,
+) -> str:
     application_name = _required_payload_str(payload, "application_name").upper()
     major, minor, patch = _parse_semver(_required_payload_str(payload, "version"))
     deployment_type = str(payload.get("deployment_type", "I"))
@@ -248,7 +288,7 @@ WHENEVER SQLERROR EXIT FAILURE
 WHENEVER OSERROR EXIT FAILURE
 
 BEGIN
-   pkg_application.stage_deployment_provenance_p(
+   pkg_application.{procedure_name}(
       ip_application_name         => {_sql_literal(application_name)},
       ip_major_version            => {major},
       ip_minor_version            => {minor},
@@ -274,7 +314,7 @@ BEGIN
       ip_build_time               => {_nullable_sql_literal(payload.get("build_time"))},
       ip_build_metadata_json      => {_nullable_sql_literal(build_metadata_json)}
    );
-   DBMS_OUTPUT.PUT_LINE('STAGED_DEPLOYMENT_PROVENANCE=' || {_sql_literal(application_name)});
+   DBMS_OUTPUT.PUT_LINE('{output_name}=' || {_sql_literal(application_name)});
 END;
 /
 EXIT SUCCESS

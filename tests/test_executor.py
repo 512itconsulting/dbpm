@@ -114,6 +114,49 @@ def test_execute_plan_runs_multi_package_children_in_order(tmp_path, monkeypatch
     assert logs[1].endswith("-002-CONSUMER-validate.log")
 
 
+def test_execute_plan_runs_record_post_action_after_script(tmp_path, monkeypatch):
+    monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
+    payload = {
+        "application_name": "CORE",
+        "version": "3.4.0",
+        "deploy_commit_hash": "123",
+    }
+    plan = {
+        "mode": "bootstrap-core",
+        "package": {
+            "application_name": "CORE",
+        },
+        "pre_actions": [],
+        "post_actions": [
+            {
+                "type": "record_deployment_provenance",
+                "payload": payload,
+            }
+        ],
+        "execution": {
+            "script_ref": "deploy.sql",
+            "arguments": ["123"],
+        },
+    }
+    calls = []
+
+    with patch("dbpm.executor.record_deployment_provenance") as record:
+        with patch("dbpm.executor.subprocess.Popen") as popen:
+            record.side_effect = lambda **kwargs: calls.append(("record", kwargs))
+            popen.side_effect = lambda *args, **kwargs: calls.append(("script", args[0])) or _FakeProcess(stdout="deployed\n")
+            execute_plan(plan, connect="user/pass@db", runner="sql")
+
+    assert calls[0] == ("script", ["sql", "-L", "user/pass@db", "@deploy.sql", "123"])
+    assert calls[1] == (
+        "record",
+        {
+            "connect": "user/pass@db",
+            "runner": "sql",
+            "payload": payload,
+        },
+    )
+
+
 def test_execute_plan_failure_mentions_log_file(tmp_path, monkeypatch):
     monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
     plan = {

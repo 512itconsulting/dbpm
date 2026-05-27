@@ -331,6 +331,38 @@ scripts:
     assert plan["core"]["required"] is False
     assert plan["core"]["bootstrap"] is True
     assert plan["pre_actions"] == []
+    assert plan["post_actions"] == []
+
+
+def test_bootstrap_core_34_records_provenance_after_deploy(tmp_path: Path):
+    package = tmp_path / "core"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: core
+  version: "3.4.0"
+
+scripts:
+  install: Deployment_Manifests/deploy.sql
+""",
+        encoding="utf-8",
+    )
+
+    source = load_package_source(str(package))
+    plan = create_plan(
+        mode="bootstrap-core",
+        source=source,
+        provenance=resolve_provenance(source),
+        environment=resolve_environment("development"),
+    )
+
+    assert plan["core"]["required"] is False
+    assert plan["pre_actions"] == []
+    assert plan["post_actions"][0]["type"] == "record_deployment_provenance"
+    assert plan["post_actions"][0]["payload"]["application_name"] == "CORE"
+    assert plan["post_actions"][0]["payload"]["version"] == "3.4.0"
+    assert plan["post_actions"][0]["payload"]["deployment_type"] == "I"
 
 
 def test_core_upgrade_stages_provenance_when_installed_core_supports_it(tmp_path: Path):

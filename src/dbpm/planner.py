@@ -51,6 +51,7 @@ def create_plan(
         "provenance": provenance.as_dict(),
         "policy": policy,
         "pre_actions": _pre_actions_for_mode(mode, manifest, source, provenance, installed_state),
+        "post_actions": _post_actions_for_mode(mode, manifest, source, provenance, installed_state),
         "execution": {
             "script": script,
             "script_ref": str(source.resolve_script_path(script)) if script else None,
@@ -126,6 +127,30 @@ def _pre_actions_for_mode(
     return actions
 
 
+def _post_actions_for_mode(
+    mode: str,
+    manifest: PackageManifest,
+    source: PackageSource,
+    provenance: Provenance,
+    installed_state: dict[str, str] | None,
+) -> list[dict[str, object]]:
+    actions: list[dict[str, object]] = []
+    if mode == "bootstrap-core" and _can_record_bootstrap_provenance(manifest):
+        actions.append(
+            {
+                "type": "record_deployment_provenance",
+                "payload": _deployment_provenance_payload(
+                    mode=mode,
+                    manifest=manifest,
+                    source=source,
+                    provenance=provenance,
+                    installed_state=installed_state,
+                ),
+            }
+        )
+    return actions
+
+
 def _can_stage_provenance(
     mode: str,
     manifest: PackageManifest,
@@ -139,6 +164,10 @@ def _can_stage_provenance(
     if installed_version is None:
         return False
     return _parse_semver(installed_version) >= (3, 2, 0)
+
+
+def _can_record_bootstrap_provenance(manifest: PackageManifest) -> bool:
+    return manifest.is_core and _parse_semver(manifest.version) >= (3, 4, 0)
 
 
 def _deployment_provenance_payload(
@@ -188,6 +217,8 @@ def _deployment_type_for_mode(
     installed_state: dict[str, str] | None,
 ) -> str:
     if mode in {"install", "reinstall", "resume"}:
+        return "I"
+    if mode == "bootstrap-core":
         return "I"
     if mode == "upgrade" and installed_state:
         installed_version = installed_state.get("version")

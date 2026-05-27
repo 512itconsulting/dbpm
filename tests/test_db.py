@@ -8,6 +8,7 @@ from dbpm.db import (
     _parse_deployment_provenance,
     _parse_reverse_dependencies,
     _parse_semver,
+    _record_deployment_provenance_sql,
     _reverse_dependencies_sql,
     _stage_deployment_provenance_sql,
 )
@@ -64,6 +65,30 @@ def test_stage_deployment_provenance_sql_uses_core_api():
     assert "ip_artifact_checksum        => 'abc123'" in sql
     assert "ip_build_metadata_json      => '{\"source\":\"artifact-metadata\"}'" in sql
     assert "STAGED_DEPLOYMENT_PROVENANCE=" in sql
+
+
+def test_record_deployment_provenance_sql_uses_core_api():
+    sql = _record_deployment_provenance_sql(
+        {
+            "application_name": "core",
+            "version": "3.4.0",
+            "deployment_type": "I",
+            "deploy_commit_hash": "1234567890123456789012345678901234567890",
+            "artifact_uri": "C:\\packages\\core.zip",
+            "artifact_checksum": "abc123",
+            "build_metadata_json": {"source": "artifact-metadata"},
+        }
+    )
+
+    assert "pkg_application.record_deployment_provenance_p" in sql
+    assert "ip_application_name         => 'CORE'" in sql
+    assert "ip_major_version            => 3" in sql
+    assert "ip_minor_version            => 4" in sql
+    assert "ip_patch_version            => 0" in sql
+    assert "ip_deploy_commit_hash       => '1234567890123456789012345678901234567890'" in sql
+    assert "ip_artifact_uri             => 'C:\\packages\\core.zip'" in sql
+    assert "ip_artifact_checksum        => 'abc123'" in sql
+    assert "RECORDED_DEPLOYMENT_PROVENANCE=" in sql
 
 
 def test_application_state_sql_queries_application_table():
