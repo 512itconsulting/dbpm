@@ -44,7 +44,7 @@ uv run dbpm install --lockfile dbpm-lock.json --env development
 - GitHub Maven ZIP package sources with `gh-maven:owner/repo:group:artifact:version[:extension]`
 - HTTPS ZIP artifact sources for lockfile installs
 - Maven snapshot ZIP resolution through `maven-metadata.xml`
-- SHA-256 checksum capture for ZIP artifacts
+- SHA-256 checksum capture for ZIP artifacts and deterministic TREE-SHA-256 capture for local directories
 - Local cache for downloaded and extracted ZIP artifacts
 - Exact and caret-compatible dependency constraints
 - Ordered multi-package install for dependency sources

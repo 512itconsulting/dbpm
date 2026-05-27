@@ -234,7 +234,7 @@ def test_zip_without_dbpm_manifest_can_derive_manifest_from_pom(tmp_path: Path):
     assert source.manifest.dependencies[0].name == "demo_base"
 
 
-def test_directory_source_does_not_claim_artifact_checksum(tmp_path: Path):
+def test_directory_source_claims_tree_artifact_checksum(tmp_path: Path):
     package = tmp_path / "package"
     package.mkdir()
     (package / "dbpm.yaml").write_text(
@@ -251,8 +251,80 @@ scripts:
 
     source = load_package_source(str(package))
 
-    assert source.artifact_checksum is None
-    assert source.artifact_checksum_alg is None
+    assert source.artifact_checksum is not None
+    assert len(source.artifact_checksum) == 64
+    assert source.artifact_checksum_alg == "TREE-SHA-256"
+
+
+def test_directory_tree_checksum_ignores_local_noise(tmp_path: Path):
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: demo
+  version: "0.1.0"
+
+scripts:
+  install: deploy.sql
+""",
+        encoding="utf-8",
+    )
+    (package / "deploy.sql").write_text("PROMPT deploy\n", encoding="utf-8")
+    baseline = load_package_source(str(package)).artifact_checksum
+
+    (package / ".dbpm-cache-refresh").mkdir()
+    (package / ".dbpm-cache-refresh" / "artifact.zip").write_text("ignored", encoding="utf-8")
+    (package / "target").mkdir()
+    (package / "target" / "generated.txt").write_text("ignored", encoding="utf-8")
+    (package / "deploy.log").write_text("ignored", encoding="utf-8")
+
+    assert load_package_source(str(package)).artifact_checksum == baseline
+
+
+def test_directory_tree_checksum_is_stable_across_root_paths(tmp_path: Path):
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    for package in (first, second):
+        package.mkdir()
+        (package / "dbpm.yaml").write_text(
+            """
+package:
+  name: demo
+  version: "0.1.0"
+
+scripts:
+  install: deploy.sql
+""",
+            encoding="utf-8",
+        )
+        (package / "deploy.sql").write_text("PROMPT deploy\n", encoding="utf-8")
+
+    assert load_package_source(str(first)).artifact_checksum == load_package_source(
+        str(second)
+    ).artifact_checksum
+
+
+def test_directory_tree_checksum_changes_when_source_changes(tmp_path: Path):
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: demo
+  version: "0.1.0"
+
+scripts:
+  install: deploy.sql
+""",
+        encoding="utf-8",
+    )
+    (package / "deploy.sql").write_text("PROMPT deploy\n", encoding="utf-8")
+    baseline = load_package_source(str(package)).artifact_checksum
+
+    (package / "deploy.sql").write_text("PROMPT changed\n", encoding="utf-8")
+
+    assert load_package_source(str(package)).artifact_checksum != baseline
 
 
 def test_missing_manifest_fails(tmp_path: Path):

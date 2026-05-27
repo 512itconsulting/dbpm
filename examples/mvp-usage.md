@@ -125,6 +125,8 @@ uv run dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.databas
 
 This writes `dbpm-lock.json` with the ordered package list, resolved artifact URLs, SHA-256 checksums for ZIP artifacts, provenance fields, and dependency metadata.
 
+Local package directory sources record deterministic `TREE-SHA-256` checksums instead of ZIP archive checksums. The tree checksum is based on relative source paths and file bytes, while ignoring local cache, VCS, build-output, virtual-environment, and log noise.
+
 Verify that the current resolution still matches the lockfile:
 
 ```powershell

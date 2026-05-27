@@ -11,6 +11,7 @@ This document tracks what the current dbpm MVP can do and what remains before th
 - Direct GitHub Maven ZIP package download support.
 - Direct HTTPS ZIP artifact download support for locked artifact URLs.
 - SHA-256 checksum capture for local built ZIP artifacts.
+- Deterministic TREE-SHA-256 checksum capture for local package directory sources.
 - Artifact metadata provenance from `META-INF/*-build.properties`.
 - Local git provenance fallback.
 - `dbpm.plan.v0` JSON plan generation.
@@ -57,7 +58,6 @@ dbpm validate
 
 ## Known Gaps
 
-- Local directory deployments do not yet calculate a stable source-tree checksum.
 - Multi-package dependency execution is install-only.
 - Dependency resolution supports exact `major.minor.patch` and caret-compatible constraints.
 - Lockfile database provenance reconciliation requires Core 3.3.0 or newer.
@@ -69,7 +69,6 @@ dbpm validate
 ## Next Recommended Work
 
 1. Extend ordered multi-package execution beyond install.
-2. Decide checksum strategy for local directory deployments.
-3. Add dbpm-managed execution log capture.
-4. Add generic Maven repository retrieval.
-5. Add lockfile-aware trusted artifact mirrors.
+2. Add dbpm-managed execution log capture.
+3. Add generic Maven repository retrieval.
+4. Add lockfile-aware trusted artifact mirrors.

@@ -63,7 +63,7 @@ Each locked package should include an immutable artifact identity. At minimum, t
 - package name
 - version
 - artifact coordinate or URL
-- cryptographic checksum
+- cryptographic checksum, using archive SHA-256 for ZIP artifacts or TREE-SHA-256 for local directory sources
 - packaging format
 - provenance metadata location or extracted provenance fields
 

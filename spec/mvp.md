@@ -22,6 +22,7 @@ Define the smallest useful dbpm implementation.
 - Maven snapshot ZIP artifacts resolved through `maven-metadata.xml`
 - SHA-256 checksum capture for local built ZIP artifacts
 - SHA-256 checksum capture for downloaded GitHub Maven ZIP artifacts
+- deterministic TREE-SHA-256 checksum capture for local package directory sources
 - local cache for downloaded and extracted ZIP artifacts
 - lockfile generation for resolved install plans
 - lockfile verification against current resolution
@@ -56,7 +57,7 @@ Define the smallest useful dbpm implementation.
 - pass commit hash into deployment scripts
 - stage artifact provenance in Core before running package deployment scripts
 - stage Core upgrade provenance when installed Core is 3.2.0 or newer
-- include artifact checksum in staged Core provenance when deploying a ZIP artifact
+- include artifact checksum in staged Core provenance when deploying ZIP artifacts or local package directories
 - read installed state from Core
 - resolve exact semantic version dependencies
 - resolve caret-compatible semantic version dependencies, such as `^1.0.0`
@@ -96,5 +97,4 @@ Maven-compatible repository layouts can remain a publishing and hosting option. 
 ## Open Decisions
 - SQLPlus vs SQLcl default
 - exact plan JSON shape
-- checksum strategy for local directory deployments
 - generic Maven repository configuration beyond GitHub Packages

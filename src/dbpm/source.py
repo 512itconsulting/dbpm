@@ -10,11 +10,31 @@ import urllib.error
 import urllib.request
 import zipfile
 from dataclasses import dataclass
+from fnmatch import fnmatch
 from pathlib import Path
 from xml.etree import ElementTree
 
 from .errors import SourceError
 from .manifest import MANIFEST_NAMES, PackageManifest, parse_manifest
+
+
+TREE_CHECKSUM_ALG = "TREE-SHA-256"
+TREE_CHECKSUM_EXCLUDES = (
+    ".git",
+    ".hg",
+    ".svn",
+    ".dbpm-cache*",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "target",
+    "*.egg-info",
+    "*.log",
+)
 
 
 @dataclass(frozen=True)
@@ -72,6 +92,7 @@ def _load_directory_source(path: Path) -> PackageSource:
     text = manifest_path.read_text(encoding="utf-8")
     manifest = parse_manifest(text, manifest_path.name)
     metadata = _read_directory_metadata(path)
+    artifact_checksum = _tree_sha256(path)
     return PackageSource(
         path=path,
         source_type="directory",
@@ -79,6 +100,8 @@ def _load_directory_source(path: Path) -> PackageSource:
         manifest_name=manifest_path.name,
         manifest=manifest,
         metadata=metadata,
+        artifact_checksum=artifact_checksum,
+        artifact_checksum_alg=TREE_CHECKSUM_ALG,
     )
 
 
@@ -359,6 +382,38 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _tree_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    for item in _tree_files(path):
+        relative_path = item.relative_to(path).as_posix()
+        digest.update(relative_path.encode("utf-8"))
+        digest.update(b"\0")
+        with item.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _tree_files(path: Path) -> list[Path]:
+    files: list[Path] = []
+    for item in path.rglob("*"):
+        relative_parts = item.relative_to(path).parts
+        if _tree_path_excluded(relative_parts):
+            continue
+        if item.is_file():
+            files.append(item)
+    return sorted(files, key=lambda item: item.relative_to(path).as_posix())
+
+
+def _tree_path_excluded(relative_parts: tuple[str, ...]) -> bool:
+    return any(
+        fnmatch(part, pattern)
+        for part in relative_parts
+        for pattern in TREE_CHECKSUM_EXCLUDES
+    )
 
 
 def _artifact_cache_dir() -> Path:
