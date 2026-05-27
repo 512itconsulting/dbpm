@@ -808,6 +808,167 @@ def test_core_upgrade_reads_installed_state_and_executes(tmp_path: Path, monkeyp
     assert calls["plan"]["pre_actions"][0]["type"] == "stage_deployment_provenance"
 
 
+def test_upgrade_with_dependency_source_executes_multi_package_plan(
+    tmp_path: Path,
+    monkeypatch,
+):
+    base = tmp_path / "base"
+    consumer = tmp_path / "consumer"
+    _write_package_with_upgrade(base)
+    consumer.mkdir()
+    (consumer / "dbpm.yaml").write_text(
+        """
+package:
+  name: consumer
+  version: "1.0.1"
+
+dependencies:
+  - name: demo
+    version: "^1.0.0"
+
+scripts:
+  install: deploy.sql
+  upgrade: upgrade.sql
+  validate: smoke.sql
+""",
+        encoding="utf-8",
+    )
+    calls = {}
+
+    def fake_get_application_state(**kwargs):
+        version = "1.0.0"
+        return ApplicationState(
+            application_name=kwargs["application_name"],
+            version=version,
+            deploy_status="C",
+            deploy_commit_hash="abc",
+        )
+
+    def fake_execute_plan(plan, *, connect: str, runner: str):
+        calls["plan"] = plan
+        calls["connect"] = connect
+        calls["runner"] = runner
+        return 0
+
+    monkeypatch.setattr(cli, "get_application_state", fake_get_application_state)
+    monkeypatch.setattr(cli, "execute_plan", fake_execute_plan)
+
+    assert (
+        cli.main(
+            [
+                "upgrade",
+                str(consumer),
+                "--dependency-source",
+                str(base),
+                "--connect",
+                "user/pass@db",
+            ]
+        )
+        == 0
+    )
+
+    assert calls["connect"] == "user/pass@db"
+    assert calls["plan"]["schema_version"] == "dbpm.multi-plan.v0"
+    assert calls["plan"]["execution_order"] == ["DEMO", "CONSUMER"]
+    assert [item["mode"] for item in calls["plan"]["packages"]] == ["upgrade", "upgrade"]
+
+
+def test_upgrade_with_missing_dependency_source_fails_instead_of_installing(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+):
+    consumer = tmp_path / "consumer"
+    consumer.mkdir()
+    (consumer / "dbpm.yaml").write_text(
+        """
+package:
+  name: consumer
+  version: "1.0.1"
+
+dependencies:
+  - name: demo
+    version: "1.0.1"
+
+scripts:
+  install: deploy.sql
+  upgrade: upgrade.sql
+""",
+        encoding="utf-8",
+    )
+
+    def fake_get_application_state(**kwargs):
+        if kwargs["application_name"] == "CONSUMER":
+            return ApplicationState(
+                application_name="CONSUMER",
+                version="1.0.0",
+                deploy_status="C",
+                deploy_commit_hash="abc",
+            )
+        return None
+
+    monkeypatch.setattr(cli, "get_application_state", fake_get_application_state)
+
+    assert cli.main(["upgrade", str(consumer), "--connect", "user/pass@db"]) == 2
+
+    assert "Missing dependency source for CONSUMER: DEMO 1.0.1" in capsys.readouterr().err
+
+
+def test_upgrade_with_uninstalled_dependency_source_fails_instead_of_installing(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+):
+    base = tmp_path / "base"
+    consumer = tmp_path / "consumer"
+    _write_package_with_upgrade(base)
+    consumer.mkdir()
+    (consumer / "dbpm.yaml").write_text(
+        """
+package:
+  name: consumer
+  version: "1.0.1"
+
+dependencies:
+  - name: demo
+    version: "^1.0.0"
+
+scripts:
+  install: deploy.sql
+  upgrade: upgrade.sql
+""",
+        encoding="utf-8",
+    )
+
+    def fake_get_application_state(**kwargs):
+        if kwargs["application_name"] == "CONSUMER":
+            return ApplicationState(
+                application_name="CONSUMER",
+                version="1.0.0",
+                deploy_status="C",
+                deploy_commit_hash="abc",
+            )
+        return None
+
+    monkeypatch.setattr(cli, "get_application_state", fake_get_application_state)
+
+    assert (
+        cli.main(
+            [
+                "upgrade",
+                str(consumer),
+                "--dependency-source",
+                str(base),
+                "--connect",
+                "user/pass@db",
+            ]
+        )
+        == 2
+    )
+
+    assert "Cannot upgrade dependency DEMO; it is not installed; use install first" in capsys.readouterr().err
+
+
 def test_upgrade_blocks_when_not_installed(tmp_path: Path, monkeypatch, capsys):
     package = tmp_path / "package"
     _write_package_with_upgrade(package)

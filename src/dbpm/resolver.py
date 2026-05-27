@@ -89,6 +89,23 @@ def _resolve_dependency_order(
             dep_source = available.get(dep_app)
             dep_state = installed_states.get(dep_app)
             _assert_supported_constraint(dependency.version)
+            if mode == "upgrade" and dep_source is not None:
+                if not _version_satisfies(dep_source.manifest.version, dependency.version):
+                    raise DependencyError(
+                        f"Dependency source {dep_app} version {dep_source.manifest.version} "
+                        f"does not satisfy required version {dependency.version}"
+                    )
+                if dep_state is None:
+                    raise DependencyError(
+                        f"Cannot upgrade dependency {dep_app}; it is not installed; use install first"
+                    )
+                if dep_state is not None and _state_satisfies_dependency(dep_state, dependency.version):
+                    installed_version = dep_state.get("version")
+                    if installed_version is not None and _parse_version(installed_version) < _parse_version(
+                        dep_source.manifest.version
+                    ):
+                        visit(dep_source)
+                        continue
             if (
                 dep_state is not None
                 and _state_satisfies_dependency(dep_state, dependency.version)
@@ -124,8 +141,8 @@ def _resolve_dependency_order(
 
 
 def _dependency_mode(mode: str) -> str:
-    if mode == "validate":
-        return "validate"
+    if mode in {"upgrade", "validate"}:
+        return mode
     return "install"
 
 

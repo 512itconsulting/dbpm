@@ -146,6 +146,7 @@ def _build_parser() -> argparse.ArgumentParser:
     upgrade = subparsers.add_parser("upgrade", help="Upgrade an installed package to a new version")
     _add_common_args(upgrade)
     _add_execution_args(upgrade)
+    _add_dependency_source_args(upgrade)
 
     reinstall = subparsers.add_parser("reinstall", help="Destructively reinstall a package")
     _add_common_args(reinstall)
@@ -225,7 +226,7 @@ def _build_plan(
         if not source.manifest.is_core:
             reverse_dependencies = _get_reverse_dependencies(args, source.manifest.application_name)
 
-    if args.command in {"plan", "install", "lock", "validate"} and (
+    if args.command in {"plan", "install", "lock", "upgrade", "validate"} and (
         dependency_sources or source.manifest.dependencies
     ):
         installed_states = {source.manifest.application_name: installed_state}

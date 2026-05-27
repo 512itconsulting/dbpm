@@ -187,6 +187,16 @@ uv run dbpm upgrade C:\Local_Exe\Repos\core --env development
 
 For installed Core `3.2.0` or newer, dbpm stages resolved provenance before running the manifest-declared update script.
 
+## Upgrade With Local Dependencies
+
+Upgrade can use dependency sources conservatively. Supplied dependency sources are upgraded before the consuming package only when the dependency is already installed, complete, and lower than the supplied source version:
+
+```powershell
+uv run dbpm upgrade C:\path\to\consumer --env development --dependency-source C:\path\to\dependency
+```
+
+If a supplied dependency source is not installed, dbpm refuses the upgrade and tells you to install first rather than turning the upgrade into an implicit install.
+
 ## Reinstall A Package
 
 Destructive reinstall requires explicit intent:

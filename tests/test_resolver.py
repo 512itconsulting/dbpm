@@ -31,6 +31,7 @@ package:
 
 scripts:
   install: deploy.sql
+  upgrade: upgrade.sql
   validate: smoke.sql
 {dependencies}
 """,
@@ -155,6 +156,97 @@ def test_multi_package_validate_runs_dependency_sources_as_validate(tmp_path: Pa
     assert plan["execution_order"] == ["FIXTURE_BASE", "FIXTURE_CONSUMER"]
     assert [item["mode"] for item in plan["packages"]] == ["validate", "validate"]
     assert [item["execution"]["arguments"] for item in plan["packages"]] == [[], []]
+
+
+def test_multi_package_upgrade_runs_newer_installed_dependency_sources_as_upgrade(
+    tmp_path: Path,
+):
+    base = tmp_path / "base"
+    consumer = tmp_path / "consumer"
+    _write_package(base, name="fixture_base", version="1.1.0")
+    _write_package(consumer, name="fixture_consumer", version="1.1.0", dependency=("fixture_base", "^1.0.0"))
+
+    plan = create_multi_package_plan(
+        mode="upgrade",
+        source=load_package_source(str(consumer)),
+        dependency_sources=[load_package_source(str(base))],
+        environment=resolve_environment("development"),
+        installed_states={
+            "FIXTURE_BASE": {
+                "application_name": "FIXTURE_BASE",
+                "version": "1.0.0",
+                "deploy_status": "C",
+                "deploy_commit_hash": "abc",
+            },
+            "FIXTURE_CONSUMER": {
+                "application_name": "FIXTURE_CONSUMER",
+                "version": "1.0.0",
+                "deploy_status": "C",
+                "deploy_commit_hash": "def",
+            },
+        },
+    )
+
+    assert plan["execution_order"] == ["FIXTURE_BASE", "FIXTURE_CONSUMER"]
+    assert [item["mode"] for item in plan["packages"]] == ["upgrade", "upgrade"]
+
+
+def test_multi_package_upgrade_skips_dependency_source_when_installed_version_matches(
+    tmp_path: Path,
+):
+    base = tmp_path / "base"
+    consumer = tmp_path / "consumer"
+    _write_package(base, name="fixture_base", version="1.1.0")
+    _write_package(consumer, name="fixture_consumer", version="1.1.0", dependency=("fixture_base", "^1.0.0"))
+
+    plan = create_multi_package_plan(
+        mode="upgrade",
+        source=load_package_source(str(consumer)),
+        dependency_sources=[load_package_source(str(base))],
+        environment=resolve_environment("development"),
+        installed_states={
+            "FIXTURE_BASE": {
+                "application_name": "FIXTURE_BASE",
+                "version": "1.1.0",
+                "deploy_status": "C",
+                "deploy_commit_hash": "abc",
+            },
+            "FIXTURE_CONSUMER": {
+                "application_name": "FIXTURE_CONSUMER",
+                "version": "1.0.0",
+                "deploy_status": "C",
+                "deploy_commit_hash": "def",
+            },
+        },
+    )
+
+    assert plan["execution_order"] == ["FIXTURE_CONSUMER"]
+    assert plan["satisfied_dependencies"][0]["application_name"] == "FIXTURE_BASE"
+
+
+def test_multi_package_upgrade_fails_when_dependency_source_is_not_installed(
+    tmp_path: Path,
+):
+    base = tmp_path / "base"
+    consumer = tmp_path / "consumer"
+    _write_package(base, name="fixture_base", version="1.1.0")
+    _write_package(consumer, name="fixture_consumer", version="1.1.0", dependency=("fixture_base", "^1.0.0"))
+
+    with pytest.raises(DependencyError, match="Cannot upgrade dependency FIXTURE_BASE"):
+        create_multi_package_plan(
+            mode="upgrade",
+            source=load_package_source(str(consumer)),
+            dependency_sources=[load_package_source(str(base))],
+            environment=resolve_environment("development"),
+            installed_states={
+                "FIXTURE_CONSUMER": {
+                    "application_name": "FIXTURE_CONSUMER",
+                    "version": "1.0.0",
+                    "deploy_status": "C",
+                    "deploy_commit_hash": "def",
+                },
+            },
+        )
 
 
 def test_multi_package_plan_detects_cycles(tmp_path: Path):
