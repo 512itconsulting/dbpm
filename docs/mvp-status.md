@@ -27,6 +27,7 @@ This document tracks what the current dbpm MVP can do and what remains before th
 - Environment policy evaluation for development, test, staging, and production classes.
 - SQLcl/SQLPlus runner configuration through `--runner` or `DBPM_SQL_RUNNER`.
 - Database connection configuration through `--connect` or `DBPM_CONNECT`.
+- dbpm-managed per-package script execution log files through `DBPM_LOG_DIR` or `.dbpm-logs`.
 - `check-core` command.
 - Core installed-state lookup.
 - Core reverse-dependency lookup.
@@ -66,11 +67,9 @@ dbpm validate
 - Lockfile database provenance reconciliation requires Core 3.3.0 or newer.
 - Named remote retrieval is GitHub Maven ZIP-only; lockfiles can install from locked HTTPS ZIP artifact URLs.
 - Local artifact cache exists for downloaded and extracted ZIP artifacts, but is not lockfile-aware.
-- Execution logs are not yet captured into dbpm-managed log files.
 - `bootstrap-core` exists as a command but has not been recently tested end-to-end against an empty schema.
 
 ## Next Recommended Work
 
-1. Add dbpm-managed execution log capture.
-2. Add generic Maven repository retrieval.
-3. Add lockfile-aware trusted artifact mirrors.
+1. Add generic Maven repository retrieval.
+2. Add lockfile-aware trusted artifact mirrors.

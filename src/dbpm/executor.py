@@ -1,13 +1,32 @@
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import TextIO
 
 from .db import delete_application, stage_deployment_provenance
 from .errors import ExecutionError
 
 
-def execute_plan(plan: dict[str, object], *, connect: str, runner: str) -> int:
+@dataclass
+class _ExecutionContext:
+    run_id: str
+    log_dir: Path
+    sequence: int = 0
+
+
+def execute_plan(
+    plan: dict[str, object],
+    *,
+    connect: str,
+    runner: str,
+    context: _ExecutionContext | None = None,
+) -> int:
+    context = context or _new_execution_context()
     packages = plan.get("packages")
     if packages is not None:
         if not isinstance(packages, list):
@@ -15,7 +34,7 @@ def execute_plan(plan: dict[str, object], *, connect: str, runner: str) -> int:
         for child_plan in packages:
             if not isinstance(child_plan, dict):
                 raise ExecutionError("Multi-package plan entries must be objects")
-            execute_plan(child_plan, connect=connect, runner=runner)
+            execute_plan(child_plan, connect=connect, runner=runner, context=context)
         return 0
 
     execution = plan.get("execution")
@@ -32,13 +51,59 @@ def execute_plan(plan: dict[str, object], *, connect: str, runner: str) -> int:
     _execute_pre_actions(plan, connect=connect, runner=runner)
 
     command = [runner, "-L", connect, f"@{script_ref}", *[str(arg) for arg in arguments]]
+    log_file = _next_log_file(context, plan)
     try:
-        result = subprocess.run(command, cwd=_cwd_for_script(script_ref))
+        returncode = _run_command(command, cwd=_cwd_for_script(script_ref), log_file=log_file)
     except FileNotFoundError as exc:
         raise ExecutionError(f"SQL runner not found: {runner}") from exc
-    if result.returncode != 0:
-        raise ExecutionError(f"Deployment command failed with exit code {result.returncode}")
-    return result.returncode
+    if returncode != 0:
+        raise ExecutionError(f"Deployment command failed with exit code {returncode}; see {log_file}")
+    return returncode
+
+
+def _new_execution_context() -> _ExecutionContext:
+    run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    log_dir = Path(os.environ.get("DBPM_LOG_DIR", ".dbpm-logs")).resolve()
+    return _ExecutionContext(run_id=run_id, log_dir=log_dir)
+
+
+def _next_log_file(context: _ExecutionContext, plan: dict[str, object]) -> Path:
+    context.sequence += 1
+    package = plan.get("package")
+    app_name = "package"
+    if isinstance(package, dict):
+        app_name = str(package.get("application_name") or package.get("name") or app_name)
+    mode = str(plan.get("mode") or "execute")
+    file_name = f"{context.run_id}-{context.sequence:03d}-{_safe_name(app_name)}-{_safe_name(mode)}.log"
+    context.log_dir.mkdir(parents=True, exist_ok=True)
+    return context.log_dir / file_name
+
+
+def _safe_name(value: str) -> str:
+    return "".join(char if char.isalnum() or char in {"_", "-"} else "_" for char in value)
+
+
+def _run_command(command: list[str], *, cwd: str | None, log_file: Path) -> int:
+    with log_file.open("w", encoding="utf-8", errors="replace") as log:
+        process = subprocess.Popen(
+            command,
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        if process.stdout is not None:
+            _tee_output(process.stdout, log)
+        return process.wait()
+
+
+def _tee_output(source: TextIO, log: TextIO) -> None:
+    for line in source:
+        sys.stdout.write(line)
+        sys.stdout.flush()
+        log.write(line)
+        log.flush()
 
 
 def _execute_pre_actions(plan: dict[str, object], *, connect: str, runner: str) -> None:

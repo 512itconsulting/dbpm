@@ -35,6 +35,7 @@ build/
 dist/
 *.egg-info/
 .dbpm-cache*/
+.dbpm-logs/
 dbpm-live-test-lock.json
 
 # Local database environment helpers may contain credentials.

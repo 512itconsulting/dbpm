@@ -49,6 +49,7 @@ Define the smallest useful dbpm implementation.
 - execute SQLPlus/SQLcl manifest scripts
 - execute ordered local dependency-source install, conservative upgrade, and validate plans
 - execute ordered GitHub Maven dependency-source install plans
+- capture package script output in per-package execution log files while streaming it to the console
 - write a lockfile for resolved package artifacts
 - fail clearly when the current source resolution differs from the lockfile
 - verify locked package versions are installed with complete Core status

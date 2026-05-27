@@ -26,6 +26,7 @@ Required for private GitHub Packages:
 Optional:
 
 - `DBPM_GITHUB_USER`: GitHub username used with `DBPM_GITHUB_TOKEN`. If omitted, dbpm falls back to `GITHUB_ACTOR` or `x-access-token`.
+- `DBPM_LOG_DIR`: execution log directory. If omitted, dbpm writes logs under `.dbpm-logs` in the current working directory.
 - `DBPM_RUN_DB_TESTS`: set to `1` to enable opt-in live database pytest tests.
 
 Example local `setenv.ps1`:
@@ -37,6 +38,7 @@ $env:DBPM_GITHUB_TOKEN = "github_token_with_package_read_access"
 $env:DBPM_CACHE_DIR = ".\.dbpm-cache"
 
 # Optional
+$env:DBPM_LOG_DIR = ".\.dbpm-logs"
 $env:DBPM_GITHUB_USER = "github_username"
 # $env:DBPM_RUN_DB_TESTS = "1"
 ```
@@ -50,6 +52,7 @@ export DBPM_GITHUB_TOKEN="github_token_with_package_read_access"
 export DBPM_CACHE_DIR="./.dbpm-cache"
 
 # Optional
+export DBPM_LOG_DIR="./.dbpm-logs"
 export DBPM_GITHUB_USER="github_username"
 # export DBPM_RUN_DB_TESTS="1"
 ```
@@ -176,6 +179,8 @@ uv run dbpm install --lockfile --env development
 ```
 
 dbpm reloads the locked artifact URLs or local paths, verifies the resolved artifacts still match the lockfile, and then executes the ordered install plan.
+
+Each package script execution streams output to the console and writes the same output to a log file. By default, logs are written under `.dbpm-logs` in the current working directory. Set `DBPM_LOG_DIR` to choose a different location.
 
 ## Upgrade Core
 

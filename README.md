@@ -84,6 +84,7 @@ Common variables:
 - `DBPM_GITHUB_TOKEN`: GitHub token with package read access
 - `DBPM_GITHUB_USER`: optional GitHub username for package authentication
 - `DBPM_CACHE_DIR`: local artifact cache, such as `.\.dbpm-cache`
+- `DBPM_LOG_DIR`: optional execution log directory, default: `.\.dbpm-logs`
 - `DBPM_RUN_DB_TESTS`: optional `1` to enable live database pytest tests
 
 ## Commands
