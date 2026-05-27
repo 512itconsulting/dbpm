@@ -20,13 +20,18 @@ def create_multi_package_plan(
 ) -> dict[str, object]:
     installed_states = installed_states or {}
     reverse_dependencies = reverse_dependencies or {}
-    ordered_sources, satisfied = _resolve_dependency_order(source, dependency_sources, installed_states)
+    ordered_sources, satisfied = _resolve_dependency_order(
+        mode,
+        source,
+        dependency_sources,
+        installed_states,
+    )
 
     package_plans: list[dict[str, object]] = []
     for item in ordered_sources:
         app_name = item.manifest.application_name
         state = installed_states.get(app_name)
-        item_mode = mode if item is source else "install"
+        item_mode = _dependency_mode(mode) if item is not source else mode
         package_plans.append(
             create_plan(
                 mode=item_mode,
@@ -59,6 +64,7 @@ def create_multi_package_plan(
 
 
 def _resolve_dependency_order(
+    mode: str,
     source: PackageSource,
     dependency_sources: list[PackageSource],
     installed_states: dict[str, dict[str, str] | None],
@@ -83,7 +89,11 @@ def _resolve_dependency_order(
             dep_source = available.get(dep_app)
             dep_state = installed_states.get(dep_app)
             _assert_supported_constraint(dependency.version)
-            if dep_state is not None and _state_satisfies_dependency(dep_state, dependency.version):
+            if (
+                dep_state is not None
+                and _state_satisfies_dependency(dep_state, dependency.version)
+                and (mode != "validate" or dep_source is None)
+            ):
                 if dep_app not in satisfied_apps:
                     satisfied.append(
                         {
@@ -111,6 +121,12 @@ def _resolve_dependency_order(
 
     visit(source)
     return ordered, satisfied
+
+
+def _dependency_mode(mode: str) -> str:
+    if mode == "validate":
+        return "validate"
+    return "install"
 
 
 def _state_satisfies_dependency(state: dict[str, str], version: str) -> bool:

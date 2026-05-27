@@ -47,7 +47,7 @@ Define the smallest useful dbpm implementation.
 - generate an ordered multi-package plan from local dependency sources
 - enforce environment policy
 - execute SQLPlus/SQLcl manifest scripts
-- execute ordered local dependency-source install plans
+- execute ordered local dependency-source install and validate plans
 - execute ordered GitHub Maven dependency-source install plans
 - write a lockfile for resolved package artifacts
 - fail clearly when the current source resolution differs from the lockfile
@@ -67,6 +67,7 @@ Define the smallest useful dbpm implementation.
 - block destructive reinstall when installed applications depend on the target
 - resume running or failed deployments without deleting application state
 - run package validation scripts after successful deployment
+- run package validation scripts in dependency order when dependency sources are provided
 
 ## Fixtures
 - core

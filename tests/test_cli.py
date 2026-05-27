@@ -639,6 +639,69 @@ def test_validate_requires_complete_deployment(tmp_path: Path, monkeypatch):
     assert cli.main(["validate", str(package), "--connect", "user/pass@db"]) == 0
 
 
+def test_validate_with_dependency_source_executes_multi_package_plan(
+    tmp_path: Path,
+    monkeypatch,
+):
+    base = tmp_path / "base"
+    consumer = tmp_path / "consumer"
+    _write_package(base)
+    consumer.mkdir()
+    (consumer / "dbpm.yaml").write_text(
+        """
+package:
+  name: consumer
+  version: "0.1.0"
+
+dependencies:
+  - name: demo
+    version: "0.1.0"
+
+scripts:
+  install: deploy.sql
+  validate: smoke.sql
+""",
+        encoding="utf-8",
+    )
+    calls = {}
+
+    def fake_get_application_state(**kwargs):
+        return ApplicationState(
+            application_name=kwargs["application_name"],
+            version="0.1.0",
+            deploy_status="C",
+            deploy_commit_hash="abc",
+        )
+
+    def fake_execute_plan(plan, *, connect: str, runner: str):
+        calls["plan"] = plan
+        calls["connect"] = connect
+        calls["runner"] = runner
+        return 0
+
+    monkeypatch.setattr(cli, "get_application_state", fake_get_application_state)
+    monkeypatch.setattr(cli, "execute_plan", fake_execute_plan)
+
+    assert (
+        cli.main(
+            [
+                "validate",
+                str(consumer),
+                "--dependency-source",
+                str(base),
+                "--connect",
+                "user/pass@db",
+            ]
+        )
+        == 0
+    )
+
+    assert calls["connect"] == "user/pass@db"
+    assert calls["plan"]["schema_version"] == "dbpm.multi-plan.v0"
+    assert calls["plan"]["execution_order"] == ["DEMO", "CONSUMER"]
+    assert [item["mode"] for item in calls["plan"]["packages"]] == ["validate", "validate"]
+
+
 def test_validate_blocks_running_deployment(tmp_path: Path, monkeypatch, capsys):
     package = tmp_path / "package"
     _write_package(package)

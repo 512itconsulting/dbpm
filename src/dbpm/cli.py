@@ -163,6 +163,7 @@ def _build_parser() -> argparse.ArgumentParser:
     validate = subparsers.add_parser("validate", help="Run a package validation script")
     _add_common_args(validate)
     _add_execution_args(validate)
+    _add_dependency_source_args(validate)
 
     return parser
 
@@ -224,7 +225,9 @@ def _build_plan(
         if not source.manifest.is_core:
             reverse_dependencies = _get_reverse_dependencies(args, source.manifest.application_name)
 
-    if args.command in {"plan", "install", "lock"} and (dependency_sources or source.manifest.dependencies):
+    if args.command in {"plan", "install", "lock", "validate"} and (
+        dependency_sources or source.manifest.dependencies
+    ):
         installed_states = {source.manifest.application_name: installed_state}
         reverse_dependencies_by_app = {source.manifest.application_name: reverse_dependencies or []}
         if include_installed_state:

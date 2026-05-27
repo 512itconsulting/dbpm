@@ -47,7 +47,7 @@ uv run dbpm install --lockfile dbpm-lock.json --env development
 - SHA-256 checksum capture for ZIP artifacts and deterministic TREE-SHA-256 capture for local directories
 - Local cache for downloaded and extracted ZIP artifacts
 - Exact and caret-compatible dependency constraints
-- Ordered multi-package install for dependency sources
+- Ordered multi-package install and validate for dependency sources
 - Dependency lockfile generation and verification through `dbpm lock`
 - Lockfile-driven install without restating package sources
 - Core-backed installed-state lookup

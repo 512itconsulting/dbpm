@@ -31,6 +31,7 @@ package:
 
 scripts:
   install: deploy.sql
+  validate: smoke.sql
 {dependencies}
 """,
         encoding="utf-8",
@@ -122,6 +123,38 @@ def test_multi_package_plan_supports_caret_dependency_constraint(tmp_path: Path)
     )
 
     assert plan["execution_order"] == ["FIXTURE_BASE", "FIXTURE_CONSUMER"]
+
+
+def test_multi_package_validate_runs_dependency_sources_as_validate(tmp_path: Path):
+    base = tmp_path / "base"
+    consumer = tmp_path / "consumer"
+    _write_package(base, name="fixture_base")
+    _write_package(consumer, name="fixture_consumer", dependency=("fixture_base", "1.0.0"))
+
+    plan = create_multi_package_plan(
+        mode="validate",
+        source=load_package_source(str(consumer)),
+        dependency_sources=[load_package_source(str(base))],
+        environment=resolve_environment("development"),
+        installed_states={
+            "FIXTURE_BASE": {
+                "application_name": "FIXTURE_BASE",
+                "version": "1.0.0",
+                "deploy_status": "C",
+                "deploy_commit_hash": "abc",
+            },
+            "FIXTURE_CONSUMER": {
+                "application_name": "FIXTURE_CONSUMER",
+                "version": "1.0.0",
+                "deploy_status": "C",
+                "deploy_commit_hash": "def",
+            },
+        },
+    )
+
+    assert plan["execution_order"] == ["FIXTURE_BASE", "FIXTURE_CONSUMER"]
+    assert [item["mode"] for item in plan["packages"]] == ["validate", "validate"]
+    assert [item["execution"]["arguments"] for item in plan["packages"]] == [[], []]
 
 
 def test_multi_package_plan_detects_cycles(tmp_path: Path):

@@ -229,6 +229,12 @@ For `utl_interval`, this runs:
 Tests/smoke_test.sql
 ```
 
+Validation can use dependency sources too. dbpm validates supplied dependency sources before the consuming package:
+
+```powershell
+uv run dbpm validate C:\path\to\consumer --env development --dependency-source C:\path\to\dependency
+```
+
 ## Run Tests
 
 Unit tests:
