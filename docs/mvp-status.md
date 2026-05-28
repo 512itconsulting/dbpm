@@ -44,7 +44,9 @@ This document tracks what the current dbpm MVP can do and what remains before th
 - Reinstall preflight blocks applications with installed dependents.
 - Local multi-package installs, upgrades, and validations order dependency sources before consumers and fail clearly for missing, mismatched, unsupported, or cyclic dependencies.
 - Opt-in live database integration test for Core.
+- Unit-test wrapper that unsets live database variables before running pytest.
 - Dev database proof with `utl_interval` install, upgrade, reinstall, and validate.
+- WSL dev database proof with `bootstrap-core` installing Core 3.4.0 into an empty schema from a GitHub Maven artifact.
 
 ## Current Commands
 
@@ -67,7 +69,6 @@ dbpm validate
 - Lockfile database provenance reconciliation requires Core 3.3.0 or newer.
 - Named remote retrieval is GitHub Maven ZIP-only; lockfiles can install from locked HTTPS ZIP artifact URLs.
 - Local artifact cache exists for downloaded and extracted ZIP artifacts, but is not lockfile-aware.
-- `bootstrap-core` exists as a command but has not been recently tested end-to-end against an empty schema.
 
 ## Next Recommended Work
 

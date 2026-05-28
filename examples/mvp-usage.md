@@ -252,16 +252,43 @@ uv run dbpm validate C:\path\to\consumer --env development --dependency-source C
 
 ## Run Tests
 
-Unit tests:
+Unit tests should run without live database environment variables. If
+`DBPM_CONNECT` is set, some CLI tests will correctly attempt connected planning
+or preflight checks, which makes the unit suite depend on Oracle network access.
 
-```powershell
-.\.venv\Scripts\python.exe -m pytest -q
+Linux/WSL unit tests:
+
+```sh
+./scripts/test-unit.sh
 ```
 
-Opt-in database integration test:
+Equivalent manual Linux/WSL form:
+
+```sh
+unset DBPM_CONNECT
+unset DBPM_RUN_DB_TESTS
+uv run --extra dev pytest
+```
+
+PowerShell unit tests:
+
+```powershell
+Remove-Item Env:\DBPM_CONNECT -ErrorAction SilentlyContinue
+Remove-Item Env:\DBPM_RUN_DB_TESTS -ErrorAction SilentlyContinue
+uv run --extra dev pytest
+```
+
+Opt-in database integration tests should be run separately after loading the
+local database environment:
 
 ```powershell
 . .\setenv.ps1
 $env:DBPM_RUN_DB_TESTS = "1"
-.\.venv\Scripts\python.exe -m pytest tests\test_integration_db.py -q
+uv run --extra dev pytest tests\test_integration_db.py
+```
+
+```sh
+. ./setenv.sh
+export DBPM_RUN_DB_TESTS="1"
+uv run --extra dev pytest tests/test_integration_db.py
 ```

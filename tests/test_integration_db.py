@@ -1,4 +1,5 @@
 import os
+import re
 
 import pytest
 
@@ -19,4 +20,11 @@ def test_check_core_against_development_database():
 
     result = check_core(connect=connect, runner=runner, minimum_version="3.0.0")
 
-    assert "CORE_VERSION=3.0.0" in result.stdout
+    match = re.search(r"CORE_VERSION=(\d+\.\d+\.\d+)", result.stdout)
+    assert match is not None
+    assert _version_tuple(match.group(1)) >= (3, 0, 0)
+
+
+def _version_tuple(value: str) -> tuple[int, int, int]:
+    major, minor, patch = value.split(".")
+    return int(major), int(minor), int(patch)
