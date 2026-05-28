@@ -33,6 +33,7 @@ Define the smallest useful dbpm implementation.
 
 ## Deferred
 - trusted artifact mirrors
+- stepwise upgrade chain planning for ordered version-to-version migrations
 - package publishing
 - signing
 - APEX integration

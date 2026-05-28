@@ -32,6 +32,8 @@ Move an installed package to a newer semantic version.
 - Should prefer additive schema evolution and forward-only migration scripts.
 - Must not delete and recreate the application registration.
 - For end-user applications, should patch the application and required dependency upgrades through the resolved or locked deployment plan.
+- Current MVP upgrade execution runs the requested target package's upgrade script directly. It does not yet resolve or execute intermediate package versions for stepwise migrations such as `1.0.0 -> 1.1.0 -> 1.2.0 -> 1.3.0`.
+- Until stepwise upgrade chains are implemented, package upgrade scripts must safely handle the installed-to-target version transition they may be asked to perform.
 
 ### `reinstall`
 

@@ -67,9 +67,11 @@ dbpm validate
 
 - Multi-package dependency execution does not yet support reinstall.
 - Dependency resolution supports exact `major.minor.patch` and caret-compatible constraints.
+- Upgrade execution does not yet resolve or run intermediate package versions. Target upgrade scripts must handle the installed-to-target version transition, such as `1.0.0` directly to `1.3.0`.
 - Lockfile database provenance reconciliation requires Core 3.3.0 or newer.
 - Local artifact cache exists for downloaded and extracted ZIP artifacts, but is not lockfile-aware.
 
 ## Next Recommended Work
 
 1. Add lockfile-aware trusted artifact mirrors.
+2. Add stepwise upgrade chain planning for ordered version-to-version migrations.
