@@ -44,11 +44,12 @@ Perform a destructive full reinstall.
 - Requires explicit operator intent.
 - Should be blocked by default in production-like environments.
 
-### `repair`
+### `resume`
 
-Re-run deployment steps for the currently installed version without deleting registered application state.
+Re-run deployment steps for an application that is in a running (`R`) or failed (`F`) Core deployment status, without deleting registered application state.
 
-- Intended for interrupted deployments or object recompilation/replacement.
+- Intended for interrupted or failed deployments.
+- Requires the application to already be registered in Core with status `R` or `F`.
 - Should preserve data and registry history.
 - Requires careful package support because not every deployment script is idempotent.
 

@@ -7,6 +7,8 @@ These examples assume:
 - Core is already installed in the target schema.
 - A local, uncommitted `dbpm-env.ps1` or `dbpm-env.sh` sets credentials.
 
+Path arguments in the examples below use Windows-style paths. On Linux or macOS, substitute forward-slash paths such as `~/repos/utl_interval`.
+
 Do not commit environment files that contain passwords.
 
 ## Environment Setup
@@ -30,11 +32,11 @@ Required for database commands:
 Required for private GitHub Packages:
 
 - `DBPM_GITHUB_TOKEN`: GitHub token with package read access.
-- `DBPM_CACHE_DIR`: local cache for downloaded and extracted package artifacts.
 
 Optional:
 
 - `DBPM_GITHUB_USER`: GitHub username used with `DBPM_GITHUB_TOKEN`. If omitted, dbpm falls back to `GITHUB_ACTOR` or `x-access-token`.
+- `DBPM_CACHE_DIR`: local cache for downloaded and extracted package artifacts. Defaults to `~/.dbpm/cache`.
 - `DBPM_LOG_DIR`: execution log directory. If omitted, dbpm writes logs under `.dbpm-logs` in the current working directory.
 - `DBPM_RUN_DB_TESTS`: set to `1` to enable opt-in live database pytest tests.
 
@@ -172,7 +174,7 @@ When no lockfile path is provided, `--lockfile` defaults to `dbpm-lock.json`:
 uv run dbpm install --lockfile --env development
 ```
 
-dbpm reloads the locked artifact URLs or local paths, verifies the resolved artifacts still match the lockfile, and then executes the ordered install plan.
+dbpm reloads the locked artifact URLs or local paths, verifies each artifact's SHA-256 checksum against the lockfile, and then executes the ordered install plan. A content-addressed cache (`~/.dbpm/cache/by-checksum/`) means subsequent lockfile installs of the same artifact skip the network entirely.
 
 Each package script execution streams output to the console and writes the same output to a log file. By default, logs are written under `.dbpm-logs` in the current working directory. Set `DBPM_LOG_DIR` to choose a different location.
 

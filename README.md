@@ -46,7 +46,7 @@ uv run dbpm install --lockfile dbpm-lock.json --env development
 - HTTPS ZIP artifact sources for lockfile installs
 - Maven snapshot ZIP resolution through `maven-metadata.xml`
 - SHA-256 checksum capture for ZIP artifacts and deterministic TREE-SHA-256 capture for local directories
-- Local cache for downloaded and extracted ZIP artifacts
+- Content-addressed artifact cache keyed by SHA-256 for lockfile-verified downloads
 - Exact and caret-compatible dependency constraints
 - Ordered multi-package install, conservative upgrade, and validate for dependency sources
 - Dependency lockfile generation and verification through `dbpm lock`
@@ -58,7 +58,6 @@ uv run dbpm install --lockfile dbpm-lock.json --env development
 - Install, upgrade, reinstall, resume, and validate workflows
 
 ## Still Planned
-- Lockfile-aware trusted artifact mirrors
 - Roll-forward migrations
 - Package signing
 - APEX integration
@@ -103,7 +102,7 @@ dbpm validate
 
 Run `dbpm <command> --help` for command-specific options.
 
-During development, examples use `uv run dbpm ...` so uv runs the project console script in the project environment. If the project has already been installed into a virtual environment, the generated console script can also be called directly, such as `.\.venv\Scripts\dbpm.exe` on Windows.
+During development, examples use `uv run dbpm ...` so uv runs the project console script in the project environment. If the project has already been installed into a virtual environment, the generated console script can also be called directly: `.venv/bin/dbpm` on Linux/macOS or `.\.venv\Scripts\dbpm.exe` on Windows.
 
 ## Related Projects
 - [core](https://github.com/rsantmyer/core)

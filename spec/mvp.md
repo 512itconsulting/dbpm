@@ -24,7 +24,7 @@ Define the smallest useful dbpm implementation.
 - SHA-256 checksum capture for local built ZIP artifacts
 - SHA-256 checksum capture for downloaded Maven ZIP artifacts
 - deterministic TREE-SHA-256 checksum capture for local package directory sources
-- local cache for downloaded and extracted ZIP artifacts
+- content-addressed artifact cache keyed by SHA-256, populated on lockfile-verified downloads and used on subsequent lockfile installs without re-downloading
 - lockfile generation for resolved install plans
 - lockfile verification against current resolution
 - lockfile/database reconciliation for installed versions and complete Core status
@@ -32,7 +32,6 @@ Define the smallest useful dbpm implementation.
 - lockfile-driven install without restating package sources
 
 ## Deferred
-- trusted artifact mirrors
 - stepwise upgrade chain planning for ordered version-to-version migrations
 - package publishing
 - signing
@@ -55,6 +54,7 @@ Define the smallest useful dbpm implementation.
 - fail clearly when the current source resolution differs from the lockfile
 - verify locked package versions are installed with complete Core status
 - verify Core deployment provenance rows match locked artifact identity
+- verify artifact SHA-256 checksums against lockfile values on lockfile-driven installs
 - install from locked artifact sources recorded in `dbpm-lock.json`
 - pass commit hash into deployment scripts
 - stage artifact provenance in Core before running package deployment scripts
