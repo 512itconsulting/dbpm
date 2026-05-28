@@ -9,6 +9,7 @@ This document tracks what the current dbpm MVP can do and what remains before th
 - Local package directory support.
 - Local built ZIP support.
 - Direct GitHub Maven ZIP package download support.
+- Generic Maven-compatible ZIP package download support.
 - Direct HTTPS ZIP artifact download support for locked artifact URLs.
 - SHA-256 checksum capture for local built ZIP artifacts.
 - Deterministic TREE-SHA-256 checksum capture for local package directory sources.
@@ -67,10 +68,8 @@ dbpm validate
 - Multi-package dependency execution does not yet support reinstall.
 - Dependency resolution supports exact `major.minor.patch` and caret-compatible constraints.
 - Lockfile database provenance reconciliation requires Core 3.3.0 or newer.
-- Named remote retrieval is GitHub Maven ZIP-only; lockfiles can install from locked HTTPS ZIP artifact URLs.
 - Local artifact cache exists for downloaded and extracted ZIP artifacts, but is not lockfile-aware.
 
 ## Next Recommended Work
 
-1. Add generic Maven repository retrieval.
-2. Add lockfile-aware trusted artifact mirrors.
+1. Add lockfile-aware trusted artifact mirrors.

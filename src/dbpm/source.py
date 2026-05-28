@@ -73,6 +73,8 @@ class PackageSource:
 def load_package_source(raw_path: str) -> PackageSource:
     if raw_path.startswith("gh-maven:"):
         return _load_github_maven_source(raw_path)
+    if raw_path.startswith("maven:"):
+        return _load_maven_source(raw_path)
     if raw_path.startswith(("http://", "https://")):
         return _load_url_zip_source(raw_path)
 
@@ -141,8 +143,36 @@ def _load_zip_source(path: Path) -> PackageSource:
 
 def _load_github_maven_source(raw_source: str) -> PackageSource:
     coordinate = _parse_github_maven_source(raw_source)
-    artifact_url = _github_maven_artifact_url(coordinate)
+    repository_url = f"https://maven.pkg.github.com/{coordinate['owner']}/{coordinate['repo']}/"
+    artifact_url = _maven_artifact_url(repository_url, coordinate)
     cache_path = _artifact_cache_dir() / "maven" / coordinate["owner"] / coordinate["repo"]
+    cache_path = cache_path / coordinate["group"].replace(".", "/") / coordinate["artifact"]
+    artifact_file_name = Path(urllib.parse.urlparse(artifact_url).path).name
+    cache_path = cache_path / coordinate["version"] / artifact_file_name
+    if not cache_path.exists():
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        _download(artifact_url, cache_path)
+
+    source = _load_zip_source(cache_path)
+    return PackageSource(
+        path=source.path,
+        source_type=source.source_type,
+        root=source.root,
+        manifest_name=source.manifest_name,
+        manifest=source.manifest,
+        metadata=source.metadata,
+        artifact_checksum=source.artifact_checksum,
+        artifact_checksum_alg=source.artifact_checksum_alg,
+        artifact_uri=artifact_url,
+        work_path=source.work_path,
+    )
+
+
+def _load_maven_source(raw_source: str) -> PackageSource:
+    coordinate = _parse_maven_source(raw_source)
+    artifact_url = _maven_artifact_url(coordinate["repository_url"], coordinate)
+    repository_hash = hashlib.sha256(coordinate["repository_url"].encode("utf-8")).hexdigest()
+    cache_path = _artifact_cache_dir() / "maven-url" / repository_hash
     cache_path = cache_path / coordinate["group"].replace(".", "/") / coordinate["artifact"]
     artifact_file_name = Path(urllib.parse.urlparse(artifact_url).path).name
     cache_path = cache_path / coordinate["version"] / artifact_file_name
@@ -206,6 +236,7 @@ def _parse_github_maven_source(raw_source: str) -> dict[str, str]:
     return {
         "owner": owner,
         "repo": repo,
+        "repository_url": f"https://maven.pkg.github.com/{owner}/{repo}/",
         "group": group,
         "artifact": artifact,
         "version": version,
@@ -213,22 +244,51 @@ def _parse_github_maven_source(raw_source: str) -> dict[str, str]:
     }
 
 
-def _github_maven_artifact_url(coordinate: dict[str, str]) -> str:
+def _parse_maven_source(raw_source: str) -> dict[str, str]:
+    value = raw_source.removeprefix("maven:")
+    if "::" not in value:
+        raise SourceError(
+            "Maven sources must use "
+            "maven:repository-url::group:artifact:version[:extension]"
+        )
+    repository_url, coordinate_text = value.split("::", 1)
+    if not repository_url.startswith(("http://", "https://")):
+        raise SourceError("Maven source repository URL must start with http:// or https://")
+    parts = coordinate_text.split(":")
+    if len(parts) not in {3, 4}:
+        raise SourceError(
+            "Maven sources must use "
+            "maven:repository-url::group:artifact:version[:extension]"
+        )
+    group, artifact, version = parts[:3]
+    extension = parts[3] if len(parts) == 4 else "zip"
+    return {
+        "repository_url": repository_url,
+        "group": group,
+        "artifact": artifact,
+        "version": version,
+        "extension": extension,
+    }
+
+
+def _maven_artifact_url(repository_url: str, coordinate: dict[str, str]) -> str:
     group_path = coordinate["group"].replace(".", "/")
     artifact_version = coordinate["version"]
     if coordinate["version"].endswith("-SNAPSHOT"):
-        artifact_version = _github_maven_snapshot_version(coordinate, group_path)
+        artifact_version = _maven_snapshot_version(repository_url, coordinate, group_path)
     file_name = f"{coordinate['artifact']}-{artifact_version}.{coordinate['extension']}"
+    base_url = repository_url.rstrip("/")
     return (
-        f"https://maven.pkg.github.com/{coordinate['owner']}/{coordinate['repo']}/"
-        f"{group_path}/{coordinate['artifact']}/{coordinate['version']}/{file_name}"
+        f"{base_url}/{group_path}/{coordinate['artifact']}/"
+        f"{coordinate['version']}/{file_name}"
     )
 
 
-def _github_maven_snapshot_version(coordinate: dict[str, str], group_path: str) -> str:
+def _maven_snapshot_version(repository_url: str, coordinate: dict[str, str], group_path: str) -> str:
+    base_url = repository_url.rstrip("/")
     metadata_url = (
-        f"https://maven.pkg.github.com/{coordinate['owner']}/{coordinate['repo']}/"
-        f"{group_path}/{coordinate['artifact']}/{coordinate['version']}/maven-metadata.xml"
+        f"{base_url}/{group_path}/{coordinate['artifact']}/"
+        f"{coordinate['version']}/maven-metadata.xml"
     )
     metadata = _download_text(metadata_url)
     try:

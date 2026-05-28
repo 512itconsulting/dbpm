@@ -18,10 +18,11 @@ Define the smallest useful dbpm implementation.
 - local package directory
 - local built ZIP
 - GitHub Maven ZIP artifact coordinate: `gh-maven:owner/repo:group:artifact:version[:extension]`
+- generic Maven ZIP artifact coordinate: `maven:repository-url::group:artifact:version[:extension]`
 - HTTPS ZIP artifact URL loaded from a lockfile
 - Maven snapshot ZIP artifacts resolved through `maven-metadata.xml`
 - SHA-256 checksum capture for local built ZIP artifacts
-- SHA-256 checksum capture for downloaded GitHub Maven ZIP artifacts
+- SHA-256 checksum capture for downloaded Maven ZIP artifacts
 - deterministic TREE-SHA-256 checksum capture for local package directory sources
 - local cache for downloaded and extracted ZIP artifacts
 - lockfile generation for resolved install plans
@@ -31,7 +32,6 @@ Define the smallest useful dbpm implementation.
 - lockfile-driven install without restating package sources
 
 ## Deferred
-- generic Maven repository resolution beyond GitHub Packages
 - trusted artifact mirrors
 - package publishing
 - signing
@@ -48,7 +48,7 @@ Define the smallest useful dbpm implementation.
 - enforce environment policy
 - execute SQLPlus/SQLcl manifest scripts
 - execute ordered local dependency-source install, conservative upgrade, and validate plans
-- execute ordered GitHub Maven dependency-source install plans
+- execute ordered Maven dependency-source install plans
 - capture package script output in per-package execution log files while streaming it to the console
 - write a lockfile for resolved package artifacts
 - fail clearly when the current source resolution differs from the lockfile
@@ -75,7 +75,7 @@ Define the smallest useful dbpm implementation.
 - core
 - utl_interval
 - simple_scheduler, which depends on utl_interval
-- live GitHub Maven artifacts for core, utl_interval, and simple_scheduler
+- live Maven artifacts for core, utl_interval, and simple_scheduler
 - local unit-test packages for dependency ordering
 
 ## Runtime Decision
@@ -93,11 +93,10 @@ Initial third-party dependency:
 
 ## Consumer Tooling Direction
 
-The MVP keeps consumer prerequisites minimal. GitHub Maven ZIP package retrieval is implemented through direct HTTP(S) download, without requiring Maven or a JDK on consumer machines.
+The MVP keeps consumer prerequisites minimal. Maven ZIP package retrieval is implemented through direct HTTP(S) download, without requiring Maven or a JDK on consumer machines.
 
 Maven-compatible repository layouts can remain a publishing and hosting option. dbpm should treat them as addressable artifact repositories, not as a requirement that consumers invoke Maven directly.
 
 ## Open Decisions
 - SQLPlus vs SQLcl default
 - exact plan JSON shape
-- generic Maven repository configuration beyond GitHub Packages

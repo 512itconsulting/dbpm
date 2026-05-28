@@ -171,9 +171,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _add_common_args(parser: argparse.ArgumentParser, *, source_required: bool = True) -> None:
     if source_required:
-        parser.add_argument("source", help="Local package directory or built ZIP")
+        parser.add_argument("source", help="Package source: local directory, ZIP, URL, or Maven coordinate")
     else:
-        parser.add_argument("source", nargs="?", help="Local package directory or built ZIP")
+        parser.add_argument("source", nargs="?", help="Package source: local directory, ZIP, URL, or Maven coordinate")
     parser.add_argument("--env", default="development", help="Target environment name")
     parser.add_argument("--approve", action="store_true", help="Approve policy-gated actions")
 

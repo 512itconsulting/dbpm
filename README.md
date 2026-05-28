@@ -32,8 +32,8 @@ Maven-compatible repositories may be useful for publishing immutable package art
 Example
 ```powershell
 uv run dbpm check-core --minimum-version 3.2.0
-uv run dbpm plan gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --mode install --dependency-source gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
-uv run dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --dependency-source gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
+uv run dbpm plan gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --mode install --dependency-source gh-maven:512itconsulting/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
+uv run dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --dependency-source gh-maven:512itconsulting/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
 uv run dbpm install --lockfile dbpm-lock.json --env development
 ```
 
@@ -42,6 +42,7 @@ uv run dbpm install --lockfile dbpm-lock.json --env development
 - Local package directory sources
 - Local ZIP package sources
 - GitHub Maven ZIP package sources with `gh-maven:owner/repo:group:artifact:version[:extension]`
+- Generic Maven ZIP package sources with `maven:repository-url::group:artifact:version[:extension]`
 - HTTPS ZIP artifact sources for lockfile installs
 - Maven snapshot ZIP resolution through `maven-metadata.xml`
 - SHA-256 checksum capture for ZIP artifacts and deterministic TREE-SHA-256 capture for local directories
@@ -58,7 +59,6 @@ uv run dbpm install --lockfile dbpm-lock.json --env development
 
 ## Still Planned
 - Lockfile-aware trusted artifact mirrors
-- Generic Maven-compatible repository configuration beyond GitHub Packages
 - Roll-forward migrations
 - Package signing
 - APEX integration

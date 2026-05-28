@@ -62,7 +62,7 @@ SQLcl project artifacts should be treated as producer output, not as a replaceme
 
 ## MVP Status
 
-The MVP supports local package directories, local built ZIP files, and direct GitHub Maven package downloads for ZIP artifacts.
+The MVP supports local package directories, local built ZIP files, direct GitHub Maven package downloads, and generic Maven-compatible repository downloads for ZIP artifacts.
 
 GitHub Maven package sources use this form:
 
@@ -73,10 +73,24 @@ gh-maven:owner/repo:group:artifact:version[:extension]
 For example:
 
 ```text
-gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
+gh-maven:512itconsulting/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
 ```
 
 The default extension is `zip`. dbpm resolves the coordinate to the standard Maven repository path under `https://maven.pkg.github.com/<owner>/<repo>/`, downloads the archive over HTTP(S), calculates its SHA-256 checksum, extracts it into the local dbpm cache, and then treats it like any other ZIP source.
+
+Generic Maven package sources use this form:
+
+```text
+maven:repository-url::group:artifact:version[:extension]
+```
+
+For example:
+
+```text
+maven:https://repo.example.com/releases::com.512itconsulting.database:utl_interval:1.0.0
+```
+
+The repository URL is the Maven repository base URL. dbpm appends the group path, artifact id, version, and artifact filename using the standard Maven repository layout.
 
 For `-SNAPSHOT` versions, dbpm reads the version-level `maven-metadata.xml` and resolves the requested extension to the timestamped artifact filename before downloading.
 

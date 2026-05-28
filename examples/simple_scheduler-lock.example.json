@@ -17,7 +17,7 @@
         "file_name": "utl_interval-1.0.0.zip",
         "group_id": "com.512itconsulting.database",
         "repository_type": "file",
-        "uri": "https://maven.pkg.github.com/rsantmyer/utl_interval/com/512itconsulting/database/utl_interval/1.0.0/utl_interval-1.0.0.zip"
+        "uri": "https://maven.pkg.github.com/512itconsulting/utl_interval/com/512itconsulting/database/utl_interval/1.0.0/utl_interval-1.0.0.zip"
       },
       "dependencies": [],
       "name": "utl_interval",
@@ -33,7 +33,7 @@
       },
       "source": {
         "manifest": "utl_interval-1.0.0/dbpm.yaml",
-        "path": "https://maven.pkg.github.com/rsantmyer/utl_interval/com/512itconsulting/database/utl_interval/1.0.0/utl_interval-1.0.0.zip",
+        "path": "https://maven.pkg.github.com/512itconsulting/utl_interval/com/512itconsulting/database/utl_interval/1.0.0/utl_interval-1.0.0.zip",
         "root": "utl_interval-1.0.0",
         "type": "zip"
       },

@@ -86,11 +86,12 @@ uv run dbpm plan C:\path\to\consumer --mode install --dependency-source C:\path\
 
 The resulting multi-package plan orders dependencies before consumers. If a required dependency is not already installed in Core and no matching local source is provided, planning fails before deployment.
 
-GitHub Maven ZIP artifacts can be used as package sources:
+Maven-compatible ZIP artifacts can be used as package sources. GitHub Packages
+has a convenience source form:
 
 ```powershell
 $env:DBPM_GITHUB_TOKEN = "<token-if-required>"
-uv run dbpm plan gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --mode install --dependency-source gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
+uv run dbpm plan gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --mode install --dependency-source gh-maven:512itconsulting/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
 ```
 
 The coordinate format is:
@@ -99,12 +100,24 @@ The coordinate format is:
 gh-maven:owner/repo:group:artifact:version[:extension]
 ```
 
+Generic Maven-compatible repositories use an explicit repository base URL:
+
+```text
+maven:repository-url::group:artifact:version[:extension]
+```
+
+For example:
+
+```powershell
+uv run dbpm plan maven:https://maven.pkg.github.com/512itconsulting/utl_interval::com.512itconsulting.database:utl_interval:1.0.0 --mode install
+```
+
 ## Lock Resolved Artifacts
 
 Write a lockfile for an install resolution:
 
 ```powershell
-uv run dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --dependency-source gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
+uv run dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --dependency-source gh-maven:512itconsulting/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
 ```
 
 This writes `dbpm-lock.json` with the ordered package list, resolved artifact URLs, SHA-256 checksums for ZIP artifacts, provenance fields, and dependency metadata.
@@ -114,13 +127,13 @@ Local package directory sources record deterministic `TREE-SHA-256` checksums in
 Verify that the current resolution still matches the lockfile:
 
 ```powershell
-uv run dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --dependency-source gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:1.0.0 --check
+uv run dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --dependency-source gh-maven:512itconsulting/utl_interval:com.512itconsulting.database:utl_interval:1.0.0 --check
 ```
 
 Verify that the connected database has the locked package versions installed with complete Core deployment status and matching Core provenance rows:
 
 ```powershell
-uv run dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --dependency-source gh-maven:rsantmyer/utl_interval:com.512itconsulting.database:utl_interval:1.0.0 --check --check-db
+uv run dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --dependency-source gh-maven:512itconsulting/utl_interval:com.512itconsulting.database:utl_interval:1.0.0 --check --check-db
 ```
 
 ## Install A Package

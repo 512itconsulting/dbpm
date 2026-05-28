@@ -110,6 +110,43 @@ scripts:
     assert (source.work_path / "deploy.sql").exists()
 
 
+def test_load_generic_maven_package_downloads_zip(tmp_path: Path, monkeypatch):
+    fixture_archive = tmp_path / "fixture.zip"
+    with ZipFile(fixture_archive, "w") as archive:
+        archive.writestr(
+            "demo/dbpm.yaml",
+            """
+package:
+  name: demo
+  version: "0.1.0"
+
+scripts:
+  install: deploy.sql
+""",
+        )
+        archive.writestr("demo/deploy.sql", "PROMPT deploy\n")
+
+    downloads = {}
+
+    def fake_download(url: str, destination: Path) -> None:
+        downloads["url"] = url
+        destination.write_bytes(fixture_archive.read_bytes())
+
+    monkeypatch.setattr("dbpm.source._download", fake_download)
+
+    source = load_package_source(
+        "maven:https://repo.example.test/releases::com.512itconsulting.database:demo:0.1.0"
+    )
+
+    assert downloads["url"] == (
+        "https://repo.example.test/releases/"
+        "com/512itconsulting/database/demo/0.1.0/demo-0.1.0.zip"
+    )
+    assert source.display_path == downloads["url"]
+    assert source.manifest.name == "demo"
+    assert source.resolve_script_path("deploy.sql") == source.work_path / "deploy.sql"
+
+
 def test_load_url_zip_package_downloads_zip(tmp_path: Path, monkeypatch):
     fixture_archive = tmp_path / "fixture.zip"
     with ZipFile(fixture_archive, "w") as archive:
@@ -188,6 +225,78 @@ scripts:
         "/0.1.0-SNAPSHOT/demo-0.1.0-20260522.201317-1.zip"
     )
     assert source.manifest.name == "demo"
+
+
+def test_load_generic_maven_snapshot_resolves_timestamped_zip(tmp_path: Path, monkeypatch):
+    fixture_archive = tmp_path / "fixture.zip"
+    with ZipFile(fixture_archive, "w") as archive:
+        archive.writestr(
+            "demo/dbpm.yaml",
+            """
+package:
+  name: demo
+  version: "0.1.0"
+
+scripts:
+  install: deploy.sql
+""",
+        )
+        archive.writestr("demo/deploy.sql", "PROMPT deploy\n")
+
+    metadata = """
+<metadata>
+  <versioning>
+    <snapshotVersions>
+      <snapshotVersion>
+        <extension>zip</extension>
+        <value>0.1.0-20260522.201317-1</value>
+      </snapshotVersion>
+    </snapshotVersions>
+  </versioning>
+</metadata>
+"""
+    downloads = {}
+    metadata_urls = []
+
+    def fake_download_text(url: str) -> str:
+        metadata_urls.append(url)
+        return metadata
+
+    monkeypatch.setattr("dbpm.source._download_text", fake_download_text)
+
+    def fake_download(url: str, destination: Path) -> None:
+        downloads["url"] = url
+        destination.write_bytes(fixture_archive.read_bytes())
+
+    monkeypatch.setattr("dbpm.source._download", fake_download)
+
+    source = load_package_source(
+        "maven:https://repo.example.test/snapshots/::"
+        "com.512itconsulting.database:demo:0.1.0-SNAPSHOT"
+    )
+
+    assert metadata_urls == [
+        "https://repo.example.test/snapshots/"
+        "com/512itconsulting/database/demo/0.1.0-SNAPSHOT/maven-metadata.xml"
+    ]
+    assert downloads["url"] == (
+        "https://repo.example.test/snapshots/"
+        "com/512itconsulting/database/demo/0.1.0-SNAPSHOT/"
+        "demo-0.1.0-20260522.201317-1.zip"
+    )
+    assert source.manifest.name == "demo"
+
+
+def test_generic_maven_source_rejects_missing_separator():
+    with pytest.raises(SourceError, match="Maven sources must use"):
+        load_package_source(
+            "maven:https://repo.example.test/releases:com.512itconsulting.database:demo:0.1.0"
+        )
+
+
+def test_generic_maven_source_rejects_non_http_repository():
+    with pytest.raises(SourceError, match="repository URL must start"):
+        load_package_source("maven:file:///repo::com.512itconsulting.database:demo:0.1.0")
 
 
 def test_zip_without_dbpm_manifest_can_derive_manifest_from_pom(tmp_path: Path):
