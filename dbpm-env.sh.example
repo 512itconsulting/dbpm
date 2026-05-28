@@ -1,0 +1,20 @@
+#!/usr/bin/env sh
+# Copy this file to dbpm-env.sh and fill in local values.
+# Do not commit dbpm-env.sh; it may contain credentials.
+
+export DBPM_SQL_RUNNER="sql"
+export DBPM_CONNECT="user/password@tns_alias_or_service"
+
+# Required for private GitHub Packages.
+export DBPM_GITHUB_TOKEN="github_token_with_package_read_access"
+export DBPM_GITHUB_USER="github_username"
+
+# Local dbpm runtime directories.
+export DBPM_CACHE_DIR="./.dbpm-cache"
+export DBPM_LOG_DIR="./.dbpm-logs"
+
+# Optional: keep uv cache inside this repo if your home cache is unavailable.
+export UV_CACHE_DIR="./.uv-cache"
+
+# Optional: enable opt-in live database pytest tests.
+# export DBPM_RUN_DB_TESTS="1"

@@ -1,0 +1,16 @@
+# Copy this file to dbpm-env.ps1 and fill in local values.
+# Do not commit dbpm-env.ps1; it may contain credentials.
+
+$env:DBPM_SQL_RUNNER = "sql"
+$env:DBPM_CONNECT = "user/password@tns_alias_or_service"
+
+# Required for private GitHub Packages.
+$env:DBPM_GITHUB_TOKEN = "github_token_with_package_read_access"
+$env:DBPM_GITHUB_USER = "github_username"
+
+# Local dbpm runtime directories.
+$env:DBPM_CACHE_DIR = ".\.dbpm-cache"
+$env:DBPM_LOG_DIR = ".\.dbpm-logs"
+
+# Optional: enable opt-in live database pytest tests.
+# $env:DBPM_RUN_DB_TESTS = "1"

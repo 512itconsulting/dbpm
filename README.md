@@ -75,7 +75,7 @@ Early-stage experimental project. The current MVP has been live-tested against G
 
 ## Environment
 
-Database and GitHub Packages access are configured through local, uncommitted environment files such as `setenv.ps1` or `setenv.sh`.
+Database and GitHub Packages access is configured through local, uncommitted environment files such as `dbpm-env.ps1` or `dbpm-env.sh`. Start from the committed templates `dbpm-env.ps1.example` or `dbpm-env.sh.example`.
 
 Common variables:
 

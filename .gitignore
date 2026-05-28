@@ -39,5 +39,7 @@ dist/
 dbpm-live-test-lock.json
 
 # Local database environment helpers may contain credentials.
+dbpm-env.ps1
+dbpm-env.sh
 setenv.ps1
 setenv.sh

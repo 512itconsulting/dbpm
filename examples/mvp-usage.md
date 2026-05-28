@@ -5,13 +5,22 @@ These examples assume:
 - commands are run from the dbpm project with `uv run dbpm`.
 - SQLcl is available as `sql`.
 - Core is already installed in the target schema.
-- A local, uncommitted `setenv.ps1` or `setenv.sh` sets credentials.
+- A local, uncommitted `dbpm-env.ps1` or `dbpm-env.sh` sets credentials.
 
 Do not commit environment files that contain passwords.
 
 ## Environment Setup
 
-Keep local environment scripts uncommitted. They may contain database passwords and GitHub tokens.
+Keep local environment scripts uncommitted. They may contain database passwords and GitHub tokens. Start by copying one of the committed templates:
+
+```powershell
+Copy-Item .\dbpm-env.ps1.example .\dbpm-env.ps1
+```
+
+```sh
+cp ./dbpm-env.sh.example ./dbpm-env.sh
+chmod 600 ./dbpm-env.sh
+```
 
 Required for database commands:
 
@@ -29,42 +38,14 @@ Optional:
 - `DBPM_LOG_DIR`: execution log directory. If omitted, dbpm writes logs under `.dbpm-logs` in the current working directory.
 - `DBPM_RUN_DB_TESTS`: set to `1` to enable opt-in live database pytest tests.
 
-Example local `setenv.ps1`:
-
-```powershell
-$env:DBPM_SQL_RUNNER = "sql.exe"
-$env:DBPM_CONNECT = "user/password@tns_alias_or_service"
-$env:DBPM_GITHUB_TOKEN = "github_token_with_package_read_access"
-$env:DBPM_CACHE_DIR = ".\.dbpm-cache"
-
-# Optional
-$env:DBPM_LOG_DIR = ".\.dbpm-logs"
-$env:DBPM_GITHUB_USER = "github_username"
-# $env:DBPM_RUN_DB_TESTS = "1"
-```
-
-Example local `setenv.sh`:
-
-```sh
-export DBPM_SQL_RUNNER="sql"
-export DBPM_CONNECT="user/password@tns_alias_or_service"
-export DBPM_GITHUB_TOKEN="github_token_with_package_read_access"
-export DBPM_CACHE_DIR="./.dbpm-cache"
-
-# Optional
-export DBPM_LOG_DIR="./.dbpm-logs"
-export DBPM_GITHUB_USER="github_username"
-# export DBPM_RUN_DB_TESTS="1"
-```
-
 Load the environment before running connected or remote package commands:
 
 ```powershell
-. .\setenv.ps1
+. .\dbpm-env.ps1
 ```
 
 ```sh
-. ./setenv.sh
+. ./dbpm-env.sh
 ```
 
 ## Check Core
@@ -282,13 +263,13 @@ Opt-in database integration tests should be run separately after loading the
 local database environment:
 
 ```powershell
-. .\setenv.ps1
+. .\dbpm-env.ps1
 $env:DBPM_RUN_DB_TESTS = "1"
 uv run --extra dev pytest tests\test_integration_db.py
 ```
 
 ```sh
-. ./setenv.sh
+. ./dbpm-env.sh
 export DBPM_RUN_DB_TESTS="1"
 uv run --extra dev pytest tests/test_integration_db.py
 ```
