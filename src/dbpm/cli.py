@@ -19,7 +19,7 @@ from .lockfile import (
     create_lockfile,
     deployment_provenance_requests,
     load_lockfile,
-    package_sources_from_lockfile,
+    lockfile_package_sources_with_checksums,
     write_lockfile,
 )
 from .planner import create_plan
@@ -273,18 +273,36 @@ def _build_plan_from_lockfile(
 
     lockfile_path = Path(args.lockfile)
     lockfile = load_lockfile(lockfile_path)
-    source, dependency_sources = package_sources_from_lockfile(lockfile)
-    lock_args = argparse.Namespace(
-        command="install",
-        source=source,
-        dependency_source=dependency_sources,
-        env=args.env,
-        approve=args.approve,
-        connect=args.connect,
-        runner=args.runner,
+    root_entry, dep_entries = lockfile_package_sources_with_checksums(lockfile)
+
+    root_uri, root_checksum, root_alg = root_entry
+    root_source = load_package_source(root_uri, expected_checksum=root_checksum, expected_checksum_alg=root_alg)
+    dep_sources = [
+        load_package_source(uri, expected_checksum=checksum, expected_checksum_alg=alg)
+        for uri, checksum, alg in dep_entries
+    ]
+
+    environment = resolve_environment(args.env)
+    installed_states: dict[str, dict[str, str] | None] = {}
+    reverse_dependencies_by_app: dict[str, list[str]] = {}
+
+    if include_installed_state:
+        for source in [root_source, *dep_sources]:
+            app_name = source.manifest.application_name
+            if _should_read_installed_state("install", source.manifest.is_core):
+                installed_states[app_name] = _get_installed_state(args, app_name)
+                reverse_dependencies_by_app[app_name] = _get_reverse_dependencies(args, app_name)
+
+    plan = create_multi_package_plan(
+        mode="install",
+        source=root_source,
+        dependency_sources=dep_sources,
+        environment=environment,
+        installed_states=installed_states,
+        reverse_dependencies=reverse_dependencies_by_app,
         allow_destructive=False,
+        approve=args.approve,
     )
-    plan = _build_plan("install", lock_args, include_installed_state=include_installed_state)
     assert_lockfile_matches_plan(lockfile, plan)
     return plan
 

@@ -138,6 +138,29 @@ def deployment_provenance_requests(lockfile: dict[str, object]) -> list[tuple[st
     return requests
 
 
+def lockfile_package_sources_with_checksums(
+    lockfile: dict[str, object],
+) -> tuple[tuple[str, str | None, str | None], list[tuple[str, str | None, str | None]]]:
+    """Return (root_entry, dep_entries) where each entry is (uri, checksum, checksum_alg)."""
+    packages_by_app = _locked_packages_by_app(lockfile)
+    execution_order = lockfile.get("execution_order", [])
+    root_application_name = lockfile.get("root_application_name")
+    if not isinstance(execution_order, list):
+        raise LockfileError("Lockfile execution_order must be a list")
+    if not isinstance(root_application_name, str):
+        raise LockfileError("Lockfile is missing root_application_name")
+    if root_application_name not in packages_by_app:
+        raise LockfileError(f"Lockfile root package is missing: {root_application_name}")
+
+    root_entry = _package_source_with_checksum(packages_by_app[root_application_name])
+    dep_entries = [
+        _package_source_with_checksum(packages_by_app[app_name])
+        for app_name in execution_order
+        if isinstance(app_name, str) and app_name != root_application_name
+    ]
+    return root_entry, dep_entries
+
+
 def package_sources_from_lockfile(lockfile: dict[str, object]) -> tuple[str, list[str]]:
     packages = lockfile.get("packages", [])
     execution_order = lockfile.get("execution_order", [])
@@ -256,6 +279,24 @@ def _package_source_reference(package: dict[str, object]) -> str:
         app_name = package.get("application_name") or "<unknown>"
         raise LockfileError(f"{app_name} lockfile entry has no usable source URI")
     return value
+
+
+def _package_source_with_checksum(
+    package: dict[str, object],
+) -> tuple[str, str | None, str | None]:
+    artifact = _dict(package.get("artifact"))
+    source = _dict(package.get("source"))
+    uri = artifact.get("uri") or source.get("path")
+    if not isinstance(uri, str) or not uri:
+        app_name = package.get("application_name") or "<unknown>"
+        raise LockfileError(f"{app_name} lockfile entry has no usable source URI")
+    checksum = artifact.get("checksum")
+    checksum_alg = artifact.get("checksum_alg")
+    return (
+        uri,
+        checksum if isinstance(checksum, str) else None,
+        checksum_alg if isinstance(checksum_alg, str) else None,
+    )
 
 
 def _package_plans(plan: dict[str, object]) -> list[dict[str, object]]:

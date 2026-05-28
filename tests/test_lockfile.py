@@ -13,6 +13,7 @@ from dbpm.lockfile import (
     create_lockfile,
     deployment_provenance_requests,
     load_lockfile,
+    lockfile_package_sources_with_checksums,
     write_lockfile,
 )
 from dbpm.planner import create_plan
@@ -190,6 +191,21 @@ def test_database_provenance_match_accepts_matching_row(tmp_path: Path, monkeypa
             }
         },
     )
+
+
+def test_lockfile_package_sources_with_checksums(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("DBPM_CACHE_DIR", str(tmp_path / "cache"))
+    artifact = tmp_path / "demo.zip"
+    _write_zip(artifact)
+    lockfile = create_lockfile(_plan_for_zip(artifact))
+
+    root_entry, dep_entries = lockfile_package_sources_with_checksums(lockfile)
+
+    root_uri, root_checksum, root_alg = root_entry
+    assert str(artifact) in root_uri or root_uri == str(artifact)
+    assert root_alg == "SHA-256"
+    assert root_checksum is not None and len(root_checksum) == 64
+    assert dep_entries == []
 
 
 def test_database_provenance_match_rejects_mismatch(tmp_path: Path, monkeypatch):

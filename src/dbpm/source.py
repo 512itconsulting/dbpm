@@ -70,20 +70,36 @@ class PackageSource:
         return self.work_path / script_path
 
 
-def load_package_source(raw_path: str) -> PackageSource:
+def load_package_source(
+    raw_path: str,
+    *,
+    expected_checksum: str | None = None,
+    expected_checksum_alg: str | None = None,
+) -> PackageSource:
+    sha256_expected = expected_checksum if expected_checksum_alg == "SHA-256" else None
+
     if raw_path.startswith("gh-maven:"):
-        return _load_github_maven_source(raw_path)
+        return _load_github_maven_source(raw_path, expected_checksum=sha256_expected)
     if raw_path.startswith("maven:"):
-        return _load_maven_source(raw_path)
+        return _load_maven_source(raw_path, expected_checksum=sha256_expected)
     if raw_path.startswith(("http://", "https://")):
-        return _load_url_zip_source(raw_path)
+        return _load_url_zip_source(raw_path, expected_checksum=sha256_expected)
 
     path = Path(raw_path).resolve()
     if path.is_dir():
-        return _load_directory_source(path)
-    if path.is_file() and path.suffix.lower() == ".zip":
-        return _load_zip_source(path)
-    raise SourceError(f"Unsupported package source: {path}")
+        source = _load_directory_source(path)
+    elif path.is_file() and path.suffix.lower() == ".zip":
+        source = _load_zip_source(path)
+    else:
+        raise SourceError(f"Unsupported package source: {path}")
+
+    if expected_checksum and source.artifact_checksum_alg == expected_checksum_alg:
+        if source.artifact_checksum != expected_checksum:
+            raise SourceError(
+                f"Checksum mismatch for {path.name}: "
+                f"expected {expected_checksum}, got {source.artifact_checksum}"
+            )
+    return source
 
 
 def _load_directory_source(path: Path) -> PackageSource:
@@ -141,19 +157,17 @@ def _load_zip_source(path: Path) -> PackageSource:
     )
 
 
-def _load_github_maven_source(raw_source: str) -> PackageSource:
+def _load_github_maven_source(raw_source: str, *, expected_checksum: str | None = None) -> PackageSource:
     coordinate = _parse_github_maven_source(raw_source)
     repository_url = f"https://maven.pkg.github.com/{coordinate['owner']}/{coordinate['repo']}/"
     artifact_url = _maven_artifact_url(repository_url, coordinate)
-    cache_path = _artifact_cache_dir() / "maven" / coordinate["owner"] / coordinate["repo"]
-    cache_path = cache_path / coordinate["group"].replace(".", "/") / coordinate["artifact"]
+    coord_cache = _artifact_cache_dir() / "maven" / coordinate["owner"] / coordinate["repo"]
+    coord_cache = coord_cache / coordinate["group"].replace(".", "/") / coordinate["artifact"]
     artifact_file_name = Path(urllib.parse.urlparse(artifact_url).path).name
-    cache_path = cache_path / coordinate["version"] / artifact_file_name
-    if not cache_path.exists():
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        _download(artifact_url, cache_path)
+    coord_cache = coord_cache / coordinate["version"] / artifact_file_name
+    zip_path = _resolve_remote_zip(artifact_url, coord_cache, expected_checksum)
 
-    source = _load_zip_source(cache_path)
+    source = _load_zip_source(zip_path)
     return PackageSource(
         path=source.path,
         source_type=source.source_type,
@@ -168,19 +182,17 @@ def _load_github_maven_source(raw_source: str) -> PackageSource:
     )
 
 
-def _load_maven_source(raw_source: str) -> PackageSource:
+def _load_maven_source(raw_source: str, *, expected_checksum: str | None = None) -> PackageSource:
     coordinate = _parse_maven_source(raw_source)
     artifact_url = _maven_artifact_url(coordinate["repository_url"], coordinate)
     repository_hash = hashlib.sha256(coordinate["repository_url"].encode("utf-8")).hexdigest()
-    cache_path = _artifact_cache_dir() / "maven-url" / repository_hash
-    cache_path = cache_path / coordinate["group"].replace(".", "/") / coordinate["artifact"]
+    coord_cache = _artifact_cache_dir() / "maven-url" / repository_hash
+    coord_cache = coord_cache / coordinate["group"].replace(".", "/") / coordinate["artifact"]
     artifact_file_name = Path(urllib.parse.urlparse(artifact_url).path).name
-    cache_path = cache_path / coordinate["version"] / artifact_file_name
-    if not cache_path.exists():
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        _download(artifact_url, cache_path)
+    coord_cache = coord_cache / coordinate["version"] / artifact_file_name
+    zip_path = _resolve_remote_zip(artifact_url, coord_cache, expected_checksum)
 
-    source = _load_zip_source(cache_path)
+    source = _load_zip_source(zip_path)
     return PackageSource(
         path=source.path,
         source_type=source.source_type,
@@ -195,17 +207,15 @@ def _load_maven_source(raw_source: str) -> PackageSource:
     )
 
 
-def _load_url_zip_source(url: str) -> PackageSource:
+def _load_url_zip_source(url: str, *, expected_checksum: str | None = None) -> PackageSource:
     artifact_file_name = Path(urllib.parse.urlparse(url).path).name
     if not artifact_file_name.lower().endswith(".zip"):
         raise SourceError(f"URL package sources must reference a ZIP artifact: {url}")
-    cache_path = _artifact_cache_dir() / "url" / hashlib.sha256(url.encode("utf-8")).hexdigest()
-    cache_path = cache_path / artifact_file_name
-    if not cache_path.exists():
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        _download(url, cache_path)
+    coord_cache = _artifact_cache_dir() / "url" / hashlib.sha256(url.encode("utf-8")).hexdigest()
+    coord_cache = coord_cache / artifact_file_name
+    zip_path = _resolve_remote_zip(url, coord_cache, expected_checksum)
 
-    source = _load_zip_source(cache_path)
+    source = _load_zip_source(zip_path)
     return PackageSource(
         path=source.path,
         source_type=source.source_type,
@@ -474,6 +484,45 @@ def _tree_path_excluded(relative_parts: tuple[str, ...]) -> bool:
         for part in relative_parts
         for pattern in TREE_CHECKSUM_EXCLUDES
     )
+
+
+def _checksum_cache_path(checksum: str, file_name: str) -> Path:
+    return _artifact_cache_dir() / "by-checksum" / "sha256" / checksum / file_name
+
+
+def _resolve_remote_zip(
+    artifact_url: str,
+    coord_cache_path: Path,
+    expected_checksum: str | None,
+) -> Path:
+    artifact_file_name = coord_cache_path.name
+
+    # Content-addressed cache hit — no download or re-verification needed
+    if expected_checksum:
+        csum_path = _checksum_cache_path(expected_checksum, artifact_file_name)
+        if csum_path.exists():
+            return csum_path
+
+    # Download if not in coordinate cache
+    if not coord_cache_path.exists():
+        coord_cache_path.parent.mkdir(parents=True, exist_ok=True)
+        _download(artifact_url, coord_cache_path)
+
+    # Verify against lockfile checksum and populate content-addressed cache
+    if expected_checksum:
+        actual = _sha256(coord_cache_path)
+        if actual != expected_checksum:
+            raise SourceError(
+                f"Checksum mismatch for {artifact_file_name}: "
+                f"expected {expected_checksum}, got {actual}. "
+                f"Remove the cached file to re-download: {coord_cache_path}"
+            )
+        csum_path = _checksum_cache_path(expected_checksum, artifact_file_name)
+        if not csum_path.exists():
+            csum_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(coord_cache_path, csum_path)
+
+    return coord_cache_path
 
 
 def _artifact_cache_dir() -> Path:

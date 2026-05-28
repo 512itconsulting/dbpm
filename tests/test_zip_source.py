@@ -442,3 +442,132 @@ def test_missing_manifest_fails(tmp_path: Path):
 
     with pytest.raises(SourceError, match="No dbpm manifest"):
         load_package_source(str(package))
+
+
+def test_load_zip_with_correct_expected_checksum_passes(tmp_path: Path):
+    archive_path = tmp_path / "demo.zip"
+    with ZipFile(archive_path, "w") as archive:
+        archive.writestr("demo/dbpm.yaml", "package:\n  name: demo\n  version: '0.1.0'\nscripts:\n  install: deploy.sql\n")
+    checksum = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+
+    source = load_package_source(str(archive_path), expected_checksum=checksum, expected_checksum_alg="SHA-256")
+
+    assert source.artifact_checksum == checksum
+
+
+def test_load_zip_with_wrong_expected_checksum_fails(tmp_path: Path):
+    archive_path = tmp_path / "demo.zip"
+    with ZipFile(archive_path, "w") as archive:
+        archive.writestr("demo/dbpm.yaml", "package:\n  name: demo\n  version: '0.1.0'\nscripts:\n  install: deploy.sql\n")
+
+    with pytest.raises(SourceError, match="Checksum mismatch"):
+        load_package_source(str(archive_path), expected_checksum="a" * 64, expected_checksum_alg="SHA-256")
+
+
+def test_load_directory_with_correct_expected_checksum_passes(tmp_path: Path):
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        "package:\n  name: demo\n  version: '0.1.0'\nscripts:\n  install: deploy.sql\n", encoding="utf-8"
+    )
+    source = load_package_source(str(package))
+    tree_checksum = source.artifact_checksum
+
+    source2 = load_package_source(str(package), expected_checksum=tree_checksum, expected_checksum_alg="TREE-SHA-256")
+
+    assert source2.artifact_checksum == tree_checksum
+
+
+def test_load_directory_with_wrong_expected_checksum_fails(tmp_path: Path):
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        "package:\n  name: demo\n  version: '0.1.0'\nscripts:\n  install: deploy.sql\n", encoding="utf-8"
+    )
+
+    with pytest.raises(SourceError, match="Checksum mismatch"):
+        load_package_source(str(package), expected_checksum="b" * 64, expected_checksum_alg="TREE-SHA-256")
+
+
+def test_maven_download_with_correct_checksum_passes(tmp_path: Path, monkeypatch):
+    fixture_archive = tmp_path / "fixture.zip"
+    with ZipFile(fixture_archive, "w") as archive:
+        archive.writestr("demo/dbpm.yaml", "package:\n  name: demo\n  version: '0.1.0'\nscripts:\n  install: deploy.sql\n")
+
+    monkeypatch.setattr(
+        "dbpm.source._download",
+        lambda url, destination: destination.write_bytes(fixture_archive.read_bytes()),
+    )
+    expected = hashlib.sha256(fixture_archive.read_bytes()).hexdigest()
+
+    source = load_package_source(
+        "gh-maven:rsantmyer/demo:com.512itconsulting.database:demo:0.1.0",
+        expected_checksum=expected,
+        expected_checksum_alg="SHA-256",
+    )
+
+    assert source.artifact_checksum == expected
+
+
+def test_maven_download_with_wrong_checksum_fails(tmp_path: Path, monkeypatch):
+    fixture_archive = tmp_path / "fixture.zip"
+    with ZipFile(fixture_archive, "w") as archive:
+        archive.writestr("demo/dbpm.yaml", "package:\n  name: demo\n  version: '0.1.0'\nscripts:\n  install: deploy.sql\n")
+
+    monkeypatch.setattr(
+        "dbpm.source._download",
+        lambda url, destination: destination.write_bytes(fixture_archive.read_bytes()),
+    )
+
+    with pytest.raises(SourceError, match="Checksum mismatch"):
+        load_package_source(
+            "gh-maven:rsantmyer/demo:com.512itconsulting.database:demo:0.1.0",
+            expected_checksum="c" * 64,
+            expected_checksum_alg="SHA-256",
+        )
+
+
+def test_checksum_cache_is_populated_after_download(tmp_path: Path, monkeypatch):
+    fixture_archive = tmp_path / "fixture.zip"
+    with ZipFile(fixture_archive, "w") as archive:
+        archive.writestr("demo/dbpm.yaml", "package:\n  name: demo\n  version: '0.1.0'\nscripts:\n  install: deploy.sql\n")
+
+    monkeypatch.setattr(
+        "dbpm.source._download",
+        lambda url, destination: destination.write_bytes(fixture_archive.read_bytes()),
+    )
+    expected = hashlib.sha256(fixture_archive.read_bytes()).hexdigest()
+
+    load_package_source(
+        "gh-maven:rsantmyer/demo:com.512itconsulting.database:demo:0.1.0",
+        expected_checksum=expected,
+        expected_checksum_alg="SHA-256",
+    )
+
+    cache_dir = tmp_path / "cache" / "by-checksum" / "sha256" / expected
+    assert cache_dir.exists()
+    assert list(cache_dir.iterdir())
+
+
+def test_checksum_cache_hit_skips_download(tmp_path: Path, monkeypatch):
+    fixture_archive = tmp_path / "fixture.zip"
+    with ZipFile(fixture_archive, "w") as archive:
+        archive.writestr("demo/dbpm.yaml", "package:\n  name: demo\n  version: '0.1.0'\nscripts:\n  install: deploy.sql\n")
+
+    download_calls: list[str] = []
+
+    def fake_download(url: str, destination: Path) -> None:
+        download_calls.append(url)
+        destination.write_bytes(fixture_archive.read_bytes())
+
+    monkeypatch.setattr("dbpm.source._download", fake_download)
+    expected = hashlib.sha256(fixture_archive.read_bytes()).hexdigest()
+    coord = "gh-maven:rsantmyer/demo:com.512itconsulting.database:demo:0.1.0"
+
+    # First load populates the checksum cache
+    load_package_source(coord, expected_checksum=expected, expected_checksum_alg="SHA-256")
+    assert len(download_calls) == 1
+
+    # Second load hits the checksum cache — no download
+    load_package_source(coord, expected_checksum=expected, expected_checksum_alg="SHA-256")
+    assert len(download_calls) == 1
