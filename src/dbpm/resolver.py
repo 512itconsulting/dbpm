@@ -162,6 +162,10 @@ def _assert_supported_constraint(version: str) -> None:
         raise DependencyError(f"Unsupported dependency version constraint: {version}")
 
 
+def version_satisfies(candidate: str, constraint: str) -> bool:
+    return _version_satisfies(candidate, constraint)
+
+
 def _version_satisfies(candidate: str, constraint: str) -> bool:
     _assert_supported_constraint(constraint)
     if constraint.startswith("^"):
@@ -172,6 +176,10 @@ def _version_satisfies(candidate: str, constraint: str) -> bool:
         next_major = (base_version[0] + 1, 0, 0)
         return candidate_version < next_major
     return candidate == constraint
+
+
+def parse_version(value: str) -> tuple[int, int, int]:
+    return _parse_version(value)
 
 
 def _parse_version(value: str) -> tuple[int, int, int]:

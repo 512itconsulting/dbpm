@@ -6,6 +6,7 @@ import os
 import sys
 from pathlib import Path
 
+from .chain import ChainError, resolve_upgrade_chain
 from .db import check_core, get_application_state, get_deployment_provenance, get_reverse_dependencies
 from .environment import resolve_environment
 from .errors import DbpmError
@@ -83,7 +84,10 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 if args.command == "install" and args.source is None:
                     raise DbpmError("install requires a source or --lockfile")
-                plan = _build_plan(args.command, args, include_installed_state=not args.dry_run)
+                include_installed = not args.dry_run or (
+                    args.command == "upgrade" and bool(args.connect)
+                )
+                plan = _build_plan(args.command, args, include_installed_state=include_installed)
             if args.dry_run:
                 _print_json(plan)
                 return 0
@@ -251,6 +255,13 @@ def _build_plan(
             approve=args.approve,
         )
 
+    if mode == "upgrade" and installed_state is not None:
+        installed_version = installed_state.get("version")
+        if isinstance(installed_version, str):
+            chain = resolve_upgrade_chain(source, args.source, installed_version)
+            if len(chain) > 1:
+                return _build_chain_plan(chain, args, installed_version, environment, allow_destructive)
+
     return create_plan(
         mode=mode,
         source=source,
@@ -307,7 +318,50 @@ def _build_plan_from_lockfile(
     return plan
 
 
+def _build_chain_plan(
+    chain: list,
+    args: argparse.Namespace,
+    installed_version: str,
+    environment: object,
+    allow_destructive: bool,
+) -> dict[str, object]:
+    from .provenance import resolve_provenance
+    steps = []
+    modeled_version = installed_version
+    for step_source in chain:
+        modeled_state = {"version": modeled_version, "deploy_status": "C"}
+        step_plan = create_plan(
+            mode="upgrade",
+            source=step_source,
+            provenance=resolve_provenance(step_source),
+            environment=environment,
+            installed_state=modeled_state,
+            reverse_dependencies=None,
+            allow_destructive=allow_destructive,
+            approve=args.approve,
+        )
+        steps.append(step_plan)
+        modeled_version = step_source.manifest.version
+
+    target = chain[-1]
+    return {
+        "schema_version": "dbpm.upgrade-chain.v0",
+        "mode": "upgrade",
+        "package": {
+            "name": target.manifest.name,
+            "application_name": target.manifest.application_name,
+            "version": target.manifest.version,
+        },
+        "installed_version": installed_version,
+        "steps": steps,
+    }
+
+
 def _execute_or_explain(plan: dict[str, object], args: argparse.Namespace) -> None:
+    if plan.get("schema_version") == "dbpm.upgrade-chain.v0":
+        _execute_upgrade_chain(plan, args)
+        return
+
     packages = plan.get("packages")
     if isinstance(packages, list):
         for child_plan in packages:
@@ -321,6 +375,25 @@ def _execute_or_explain(plan: dict[str, object], args: argparse.Namespace) -> No
     _execute_or_explain_policy(plan)
     _enforce_installed_state(plan)
     execute_plan(plan, connect=_connect_string(args), runner=args.runner)
+
+
+def _execute_upgrade_chain(plan: dict[str, object], args: argparse.Namespace) -> None:
+    steps = plan.get("steps", [])
+    if not isinstance(steps, list):
+        raise DbpmError("Upgrade chain plan steps must be a list")
+    for i, step_plan in enumerate(steps):
+        if not isinstance(step_plan, dict):
+            raise DbpmError("Upgrade chain step must be an object")
+        if i > 0:
+            package = step_plan.get("package")
+            app_name = package.get("application_name") if isinstance(package, dict) else None
+            if isinstance(app_name, str):
+                fresh_state = _get_installed_state(args, app_name)
+                step_plan = dict(step_plan)
+                step_plan["installed_state"] = fresh_state
+        _execute_or_explain_policy(step_plan)
+        _enforce_installed_state(step_plan)
+        execute_plan(step_plan, connect=_connect_string(args), runner=args.runner)
 
 
 def _execute_or_explain_policy(plan: dict[str, object]) -> None:

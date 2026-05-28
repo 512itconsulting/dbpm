@@ -15,6 +15,7 @@ MANIFEST_NAMES = ("dbpm.yaml", "dbpm.yml", "dbpm.json", "package.dbpm.yaml")
 class ScriptSet:
     install: str | None = None
     upgrade: str | None = None
+    upgrade_from: str | None = None
     validate: str | None = None
     uninstall: str | None = None
 
@@ -69,12 +70,7 @@ def parse_manifest(text: str, source_name: str) -> PackageManifest:
         database_minimum_version=_optional_string(database, "minimum_version"),
         core_minimum_version=_optional_string(core, "minimum_version"),
         dependencies=tuple(dependencies),
-        scripts=ScriptSet(
-            install=_optional_script(scripts, "install"),
-            upgrade=_optional_script(scripts, "upgrade"),
-            validate=_optional_script(scripts, "validate"),
-            uninstall=_optional_script(scripts, "uninstall"),
-        ),
+        scripts=_parse_scripts(scripts, source_name),
     )
 
 
@@ -141,6 +137,28 @@ def _required_string(data: dict[str, Any], key: str, source_name: str) -> str:
 def _optional_string(data: dict[str, Any], key: str) -> str | None:
     value = data.get(key)
     return None if value is None else str(value)
+
+
+def _parse_scripts(data: dict[str, Any], source_name: str) -> ScriptSet:
+    upgrade_from = _optional_string(data, "upgrade_from")
+    if upgrade_from is not None and not _valid_version_constraint(upgrade_from):
+        raise ManifestError(
+            f"`scripts.upgrade_from` in {source_name} must be a semantic version "
+            f"constraint such as '1.2.0' or '^1.2.0', got: {upgrade_from!r}"
+        )
+    return ScriptSet(
+        install=_optional_script(data, "install"),
+        upgrade=_optional_script(data, "upgrade"),
+        upgrade_from=upgrade_from,
+        validate=_optional_script(data, "validate"),
+        uninstall=_optional_script(data, "uninstall"),
+    )
+
+
+def _valid_version_constraint(value: str) -> bool:
+    normalized = value.removeprefix("^")
+    parts = normalized.split(".")
+    return len(parts) == 3 and all(part.isdigit() for part in parts)
 
 
 def _optional_script(data: dict[str, Any], key: str) -> str | None:

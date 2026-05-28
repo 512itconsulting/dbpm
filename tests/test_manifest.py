@@ -71,6 +71,77 @@ package:
         )
 
 
+def test_upgrade_from_parses_from_yaml():
+    manifest = parse_manifest(
+        """
+package:
+  name: demo
+  version: "1.3.0"
+scripts:
+  upgrade: Deployment_Manifests/upgrade.sql
+  upgrade_from: "^1.2.0"
+""",
+        "dbpm.yaml",
+    )
+
+    assert manifest.scripts.upgrade_from == "^1.2.0"
+
+
+def test_upgrade_from_parses_exact_version():
+    manifest = parse_manifest(
+        """
+package:
+  name: demo
+  version: "1.3.0"
+scripts:
+  upgrade: Deployment_Manifests/upgrade.sql
+  upgrade_from: "1.2.0"
+""",
+        "dbpm.yaml",
+    )
+
+    assert manifest.scripts.upgrade_from == "1.2.0"
+
+
+def test_upgrade_from_absent_defaults_to_none():
+    manifest = parse_manifest(
+        """
+package:
+  name: demo
+  version: "1.3.0"
+scripts:
+  upgrade: Deployment_Manifests/upgrade.sql
+""",
+        "dbpm.yaml",
+    )
+
+    assert manifest.scripts.upgrade_from is None
+
+
+def test_upgrade_from_parses_from_json():
+    manifest = parse_manifest(
+        '{"package": {"name": "demo", "version": "1.3.0"}, "scripts": {"upgrade": "upgrade.sql", "upgrade_from": "^1.0.0"}}',
+        "dbpm.json",
+    )
+
+    assert manifest.scripts.upgrade_from == "^1.0.0"
+
+
+def test_upgrade_from_invalid_syntax_fails():
+    with pytest.raises(ManifestError, match="upgrade_from"):
+        parse_manifest(
+            """
+package:
+  name: demo
+  version: "1.3.0"
+scripts:
+  upgrade: upgrade.sql
+  upgrade_from: "latest"
+""",
+            "dbpm.yaml",
+        )
+
+
 def test_invalid_dependency_shape_fails():
     with pytest.raises(ManifestError, match="dependencies"):
         parse_manifest(

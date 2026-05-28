@@ -1071,3 +1071,125 @@ def test_check_core_uses_environment_connect_and_runner(monkeypatch, capsys):
         "minimum_version": "3.0.0",
     }
     assert "CORE_VERSION=3.0.0" in capsys.readouterr().out
+
+
+# ── upgrade chain ────────────────────────────────────────────────────────────
+
+
+def _write_maven_upgrade_package(path: Path, *, version: str, upgrade_from: str | None = None) -> None:
+    from zipfile import ZipFile
+
+    upgrade_from_line = f"  upgrade_from: \"{upgrade_from}\"\n" if upgrade_from else ""
+    manifest = (
+        f"package:\n  name: demo\n  version: \"{version}\"\n"
+        f"core:\n  minimum_version: \"3.0.0\"\n"
+        f"scripts:\n  install: deploy.sql\n  upgrade: upgrade.sql\n{upgrade_from_line}"
+    )
+    with ZipFile(path, "w") as archive:
+        archive.writestr(f"demo/dbpm.yaml", manifest)
+        archive.writestr(f"demo/upgrade.sql", "PROMPT upgrade\n")
+        archive.writestr(f"demo/deploy.sql", "PROMPT deploy\n")
+
+
+def _version_aware_cli_download(tmp_path: Path, name: str):
+    import re
+
+    def _download(url: str, dest: Path) -> None:
+        match = re.search(r"/(\d+\.\d+\.\d+)/", url)
+        version = match.group(1) if match else "1.0.0"
+        buf = tmp_path / f"_buf_{version}.zip"
+        _write_maven_upgrade_package(buf, version=version)
+        dest.write_bytes(buf.read_bytes())
+
+    return _download
+
+
+def test_upgrade_chain_dry_run_outputs_chain_plan(tmp_path: Path, monkeypatch, capsys):
+    monkeypatch.setenv("DBPM_CACHE_DIR", str(tmp_path / "cache"))
+
+    monkeypatch.setattr(
+        "dbpm.chain._maven_version_list",
+        lambda repo, coord: ["1.0.0", "1.1.0", "1.2.0", "1.3.0"],
+    )
+    monkeypatch.setattr("dbpm.source._download", _version_aware_cli_download(tmp_path, "demo"))
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState(
+            application_name="DEMO",
+            version="1.0.0",
+            deploy_status="C",
+            deploy_commit_hash="abc",
+        ),
+    )
+
+    raw = "gh-maven:rsantmyer/demo:com.example:demo:1.3.0"
+    assert cli.main(["upgrade", raw, "--dry-run", "--connect", "user/pass@db"]) == 0
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["schema_version"] == "dbpm.upgrade-chain.v0"
+    assert output["installed_version"] == "1.0.0"
+    assert len(output["steps"]) == 3
+    assert [s["package"]["version"] for s in output["steps"]] == ["1.1.0", "1.2.0", "1.3.0"]
+
+
+def test_upgrade_chain_maven_with_satisfied_upgrade_from_is_direct(tmp_path: Path, monkeypatch, capsys):
+    monkeypatch.setenv("DBPM_CACHE_DIR", str(tmp_path / "cache"))
+
+    def _download(url: str, dest: Path) -> None:
+        buf = tmp_path / "_buf_1.3.0.zip"
+        _write_maven_upgrade_package(buf, version="1.3.0", upgrade_from="^1.0.0")
+        dest.write_bytes(buf.read_bytes())
+
+    monkeypatch.setattr("dbpm.source._download", _download)
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState(
+            application_name="DEMO",
+            version="1.2.0",
+            deploy_status="C",
+            deploy_commit_hash="abc",
+        ),
+    )
+    monkeypatch.setattr(cli, "execute_plan", lambda *a, **kw: 0)
+
+    raw = "gh-maven:rsantmyer/demo:com.example:demo:1.3.0"
+    assert cli.main(["upgrade", raw, "--connect", "user/pass@db"]) == 0
+
+    out = capsys.readouterr()
+    assert out.err == ""
+
+
+def test_upgrade_chain_executes_steps_in_order(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("DBPM_CACHE_DIR", str(tmp_path / "cache"))
+
+    versions_returned = ["1.0.0"]
+
+    def fake_get_state(**kwargs):
+        return ApplicationState(
+            application_name="DEMO",
+            version=versions_returned[-1],
+            deploy_status="C",
+            deploy_commit_hash="abc",
+        )
+
+    executed_versions = []
+
+    def fake_execute_plan(plan, *, connect, runner):
+        package = plan.get("package", {})
+        executed_versions.append(package.get("version"))
+        versions_returned.append(package.get("version"))
+
+    monkeypatch.setattr(
+        "dbpm.chain._maven_version_list",
+        lambda repo, coord: ["1.0.0", "1.1.0", "1.2.0", "1.3.0"],
+    )
+    monkeypatch.setattr("dbpm.source._download", _version_aware_cli_download(tmp_path, "demo"))
+    monkeypatch.setattr(cli, "get_application_state", fake_get_state)
+    monkeypatch.setattr(cli, "execute_plan", fake_execute_plan)
+
+    raw = "gh-maven:rsantmyer/demo:com.example:demo:1.3.0"
+    assert cli.main(["upgrade", raw, "--connect", "user/pass@db"]) == 0
+
+    assert executed_versions == ["1.1.0", "1.2.0", "1.3.0"]

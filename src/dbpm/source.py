@@ -294,6 +294,40 @@ def _maven_artifact_url(repository_url: str, coordinate: dict[str, str]) -> str:
     )
 
 
+def _maven_version_list(repository_url: str, coordinate: dict[str, str]) -> list[str]:
+    group_path = coordinate["group"].replace(".", "/")
+    base_url = repository_url.rstrip("/")
+    metadata_url = f"{base_url}/{group_path}/{coordinate['artifact']}/maven-metadata.xml"
+    metadata = _download_text(metadata_url)
+    try:
+        root = ElementTree.fromstring(metadata)
+    except ElementTree.ParseError as exc:
+        raise SourceError(f"Invalid Maven artifact metadata: {metadata_url}") from exc
+    return [
+        version.text
+        for version in root.findall("./versioning/versions/version")
+        if version.text
+    ]
+
+
+def _source_at_version(raw_source: str, version: str) -> str:
+    if raw_source.startswith("gh-maven:"):
+        coordinate = _parse_github_maven_source(raw_source)
+        ext = f":{coordinate['extension']}" if coordinate["extension"] != "zip" else ""
+        return (
+            f"gh-maven:{coordinate['owner']}/{coordinate['repo']}:"
+            f"{coordinate['group']}:{coordinate['artifact']}:{version}{ext}"
+        )
+    if raw_source.startswith("maven:"):
+        coordinate = _parse_maven_source(raw_source)
+        ext = f":{coordinate['extension']}" if coordinate["extension"] != "zip" else ""
+        return (
+            f"maven:{coordinate['repository_url']}::"
+            f"{coordinate['group']}:{coordinate['artifact']}:{version}{ext}"
+        )
+    raise SourceError(f"_source_at_version requires a Maven source: {raw_source}")
+
+
 def _maven_snapshot_version(repository_url: str, coordinate: dict[str, str], group_path: str) -> str:
     base_url = repository_url.rstrip("/")
     metadata_url = (
