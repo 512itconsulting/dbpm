@@ -44,14 +44,7 @@ def resolve_upgrade_chain(
 
     repository_url, coordinate = _maven_repo_and_coordinate(raw_source)
     available = _maven_version_list(repository_url, coordinate)
-
-    installed_v = parse_version(installed_version)
-    target_v = parse_version(source.manifest.version)
-
-    intermediates = sorted(
-        (v for v in available if installed_v < parse_version(v) < target_v),
-        key=parse_version,
-    )
+    intermediates = _minor_boundary_intermediates(available, installed_version, source.manifest.version)
 
     if not intermediates:
         return [source]
@@ -62,6 +55,41 @@ def resolve_upgrade_chain(
     ]
     chain.append(source)
     return chain
+
+
+def _minor_boundary_intermediates(
+    available: list[str],
+    installed_version: str,
+    target_version: str,
+) -> list[str]:
+    """Return one milestone version per intermediate minor between installed and target.
+
+    Patches within a minor are cumulative by semver convention, so only the
+    lowest published patch of each intermediate minor is included. Patches in
+    the installed minor and the target minor are skipped entirely.
+    """
+    installed_v = parse_version(installed_version)
+    target_v = parse_version(target_version)
+    installed_minor = (installed_v[0], installed_v[1])
+    target_minor = (target_v[0], target_v[1])
+
+    by_minor: dict[tuple[int, int], list[tuple[int, int, int]]] = {}
+    for raw in available:
+        try:
+            pv = parse_version(raw)
+        except Exception:
+            continue
+        key = (pv[0], pv[1])
+        by_minor.setdefault(key, []).append(pv)
+
+    milestones = []
+    for key in sorted(by_minor):
+        if key <= installed_minor or key >= target_minor:
+            continue
+        lowest = min(by_minor[key])
+        milestones.append(f"{lowest[0]}.{lowest[1]}.{lowest[2]}")
+
+    return milestones
 
 
 def _is_maven_source(raw_source: str) -> bool:

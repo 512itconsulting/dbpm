@@ -151,6 +151,56 @@ def test_maven_no_intermediate_versions_returns_direct(tmp_path, monkeypatch):
     assert result == [source]
 
 
+def test_maven_patches_within_same_minor_are_skipped(tmp_path, monkeypatch):
+    monkeypatch.setattr("dbpm.source._download", _version_aware_download(tmp_path, "pkg"))
+    monkeypatch.setattr(
+        "dbpm.chain._maven_version_list",
+        lambda repo, coord: ["1.0.0", "1.0.1", "1.0.2", "1.1.0", "1.1.1", "1.2.0", "1.3.0"],
+    )
+
+    archive = tmp_path / "pkg-1.3.0.zip"
+    _make_zip(archive, name="pkg", version="1.3.0")
+    source = load_package_source(str(archive))
+
+    raw = "gh-maven:rsantmyer/pkg:com.example:pkg:1.3.0"
+    result = resolve_upgrade_chain(source, raw, installed_version="1.0.2")
+
+    assert [s.manifest.version for s in result] == ["1.1.0", "1.2.0", "1.3.0"]
+
+
+def test_maven_patch_upgrade_within_same_minor_is_direct(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "dbpm.chain._maven_version_list",
+        lambda repo, coord: ["1.2.0", "1.2.1", "1.2.2", "1.2.3"],
+    )
+
+    archive = tmp_path / "pkg-1.2.3.zip"
+    _make_zip(archive, name="pkg", version="1.2.3")
+    source = load_package_source(str(archive))
+
+    raw = "gh-maven:rsantmyer/pkg:com.example:pkg:1.2.3"
+    result = resolve_upgrade_chain(source, raw, installed_version="1.2.0")
+
+    assert result == [source]
+
+
+def test_maven_uses_lowest_patch_of_each_intermediate_minor(tmp_path, monkeypatch):
+    monkeypatch.setattr("dbpm.source._download", _version_aware_download(tmp_path, "pkg"))
+    monkeypatch.setattr(
+        "dbpm.chain._maven_version_list",
+        lambda repo, coord: ["1.0.0", "1.1.3", "1.1.7", "1.2.1", "1.2.5", "1.3.0"],
+    )
+
+    archive = tmp_path / "pkg-1.3.0.zip"
+    _make_zip(archive, name="pkg", version="1.3.0")
+    source = load_package_source(str(archive))
+
+    raw = "gh-maven:rsantmyer/pkg:com.example:pkg:1.3.0"
+    result = resolve_upgrade_chain(source, raw, installed_version="1.0.0")
+
+    assert [s.manifest.version for s in result] == ["1.1.3", "1.2.1", "1.3.0"]
+
+
 def test_source_at_version_github_maven(tmp_path, monkeypatch):
     from dbpm.source import _source_at_version
 
