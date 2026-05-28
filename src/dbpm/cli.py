@@ -151,6 +151,11 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_common_args(upgrade)
     _add_execution_args(upgrade)
     _add_dependency_source_args(upgrade)
+    upgrade.add_argument(
+        "--allow-dependent-break",
+        action="store_true",
+        help="Allow major upgrade even when installed dependents may have incompatible constraints",
+    )
 
     reinstall = subparsers.add_parser("reinstall", help="Destructively reinstall a package")
     _add_common_args(reinstall)
@@ -374,6 +379,7 @@ def _execute_or_explain(plan: dict[str, object], args: argparse.Namespace) -> No
 
     _execute_or_explain_policy(plan)
     _enforce_installed_state(plan)
+    _enforce_major_upgrade_dependencies(plan, getattr(args, "allow_dependent_break", False))
     execute_plan(plan, connect=_connect_string(args), runner=args.runner)
 
 
@@ -381,6 +387,7 @@ def _execute_upgrade_chain(plan: dict[str, object], args: argparse.Namespace) ->
     steps = plan.get("steps", [])
     if not isinstance(steps, list):
         raise DbpmError("Upgrade chain plan steps must be a list")
+    allow_dependent_break = getattr(args, "allow_dependent_break", False)
     for i, step_plan in enumerate(steps):
         if not isinstance(step_plan, dict):
             raise DbpmError("Upgrade chain step must be an object")
@@ -393,7 +400,44 @@ def _execute_upgrade_chain(plan: dict[str, object], args: argparse.Namespace) ->
                 step_plan["installed_state"] = fresh_state
         _execute_or_explain_policy(step_plan)
         _enforce_installed_state(step_plan)
+        _enforce_major_upgrade_dependencies(step_plan, allow_dependent_break)
         execute_plan(step_plan, connect=_connect_string(args), runner=args.runner)
+
+
+def _enforce_major_upgrade_dependencies(
+    plan: dict[str, object],
+    allow_dependent_break: bool,
+) -> None:
+    if allow_dependent_break or plan.get("mode") != "upgrade":
+        return
+    package = plan.get("package")
+    state = plan.get("installed_state")
+    if not isinstance(package, dict) or not isinstance(state, dict):
+        return
+    installed_version = state.get("version")
+    target_version = package.get("version")
+    if not isinstance(installed_version, str) or not isinstance(target_version, str):
+        return
+    if _major(target_version) <= _major(installed_version):
+        return
+    reverse_deps = plan.get("reverse_dependencies", [])
+    if not reverse_deps:
+        return
+    app_name = package.get("application_name")
+    names = ", ".join(str(n) for n in reverse_deps)
+    raise DbpmError(
+        f"Cannot upgrade {app_name} from {installed_version} to {target_version}; "
+        f"installed dependents may have incompatible constraints: {names}. "
+        f"Provide updated dependent versions with --dependency-source, "
+        f"or use --allow-dependent-break to override."
+    )
+
+
+def _major(version: str) -> int:
+    try:
+        return int(version.split(".")[0])
+    except (ValueError, IndexError):
+        return 0
 
 
 def _execute_or_explain_policy(plan: dict[str, object]) -> None:

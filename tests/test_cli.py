@@ -1091,6 +1091,82 @@ def _write_maven_upgrade_package(path: Path, *, version: str, upgrade_from: str 
         archive.writestr(f"demo/deploy.sql", "PROMPT deploy\n")
 
 
+def test_major_upgrade_with_dependents_is_blocked(tmp_path: Path, monkeypatch, capsys):
+    package = tmp_path / "package"
+    _write_package_with_upgrade(package)
+
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState("DEMO", "1.0.0", "C", "abc"),
+    )
+    monkeypatch.setattr(cli, "get_reverse_dependencies", lambda **kwargs: ["CONSUMER"])
+
+    assert cli.main(["upgrade", str(package), "--connect", "user/pass@db"]) == 2
+
+    err = capsys.readouterr().err
+    assert "Cannot upgrade DEMO from 1.0.0 to 1.0.1" not in err  # minor bump — would not fire
+    # rewrite package with major bump
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: demo
+  version: "2.0.0"
+scripts:
+  install: Deployment_Manifests/deploy.sql
+  upgrade: Deployment_Manifests/upgrade.sql
+""",
+        encoding="utf-8",
+    )
+
+    assert cli.main(["upgrade", str(package), "--connect", "user/pass@db"]) == 2
+    err = capsys.readouterr().err
+    assert "Cannot upgrade DEMO from 1.0.0 to 2.0.0" in err
+    assert "CONSUMER" in err
+    assert "--allow-dependent-break" in err
+
+
+def test_major_upgrade_allow_dependent_break_proceeds(tmp_path: Path, monkeypatch):
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: demo
+  version: "2.0.0"
+scripts:
+  install: Deployment_Manifests/deploy.sql
+  upgrade: Deployment_Manifests/upgrade.sql
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState("DEMO", "1.0.0", "C", "abc"),
+    )
+    monkeypatch.setattr(cli, "get_reverse_dependencies", lambda **kwargs: ["CONSUMER"])
+    monkeypatch.setattr(cli, "execute_plan", lambda *a, **kw: 0)
+
+    assert cli.main(["upgrade", str(package), "--connect", "user/pass@db", "--allow-dependent-break"]) == 0
+
+
+def test_minor_upgrade_with_dependents_is_not_blocked(tmp_path: Path, monkeypatch):
+    package = tmp_path / "package"
+    _write_package_with_upgrade(package)
+
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState("DEMO", "1.0.0", "C", "abc"),
+    )
+    monkeypatch.setattr(cli, "get_reverse_dependencies", lambda **kwargs: ["CONSUMER"])
+    monkeypatch.setattr(cli, "execute_plan", lambda *a, **kw: 0)
+
+    assert cli.main(["upgrade", str(package), "--connect", "user/pass@db"]) == 0
+
+
 def _version_aware_cli_download(tmp_path: Path, name: str):
     import re
 
