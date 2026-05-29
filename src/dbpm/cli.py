@@ -220,6 +220,10 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Allow destructive reinstall planning/execution",
     )
+    reinstall.add_argument(
+        "--confirm-delete-system",
+        help="Required for Core reinstall; must be CORE",
+    )
 
     resume = subparsers.add_parser("resume", help="Resume a running or failed deployment")
     _add_common_args(resume)
@@ -309,6 +313,7 @@ def _build_plan(
     provenance = resolve_provenance(source)
     environment = resolve_environment(args.env)
     allow_destructive = bool(getattr(args, "allow_destructive", False))
+    confirm_delete_system = getattr(args, "confirm_delete_system", None) == source.manifest.application_name
     installed_state = None
     reverse_dependencies = None
     if include_installed_state and _should_read_installed_state(mode, source.manifest.is_core):
@@ -356,6 +361,7 @@ def _build_plan(
         installed_state=installed_state,
         reverse_dependencies=reverse_dependencies,
         allow_destructive=allow_destructive,
+        confirm_delete_system=confirm_delete_system,
         approve=args.approve,
     )
 

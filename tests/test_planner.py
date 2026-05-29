@@ -305,6 +305,83 @@ scripts:
     assert plan["pre_actions"][1]["payload"]["application_name"] == "DEMO"
 
 
+def test_core_reinstall_uses_core_system_teardown(tmp_path: Path):
+    package = tmp_path / "core"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: core
+  version: "3.4.0"
+
+scripts:
+  install: Deployment_Manifests/deploy.sql
+""",
+        encoding="utf-8",
+    )
+    manifests = package / "Deployment_Manifests"
+    manifests.mkdir()
+    (manifests / "deploy.sql").write_text("PROMPT deploy\n", encoding="utf-8")
+    (manifests / "uninstall.core.sql").write_text("PROMPT uninstall\n", encoding="utf-8")
+
+    source = load_package_source(str(package))
+    plan = create_plan(
+        mode="reinstall",
+        source=source,
+        provenance=resolve_provenance(source),
+        environment=resolve_environment("development"),
+        allow_destructive=True,
+        confirm_delete_system=True,
+        installed_state={
+            "application_name": "CORE",
+            "version": "3.4.0",
+            "deploy_status": "C",
+            "deploy_commit_hash": "abc",
+        },
+    )
+
+    assert plan["pre_actions"] == [
+        {
+            "type": "delete_system",
+        },
+        {
+            "type": "execute_script",
+            "script": "Deployment_Manifests/uninstall.core.sql",
+            "script_ref": str(manifests / "uninstall.core.sql"),
+            "arguments": [],
+        },
+    ]
+    assert plan["execution"]["script"] == "Deployment_Manifests/deploy.sql"
+
+
+def test_core_reinstall_requires_delete_system_confirmation(tmp_path: Path):
+    package = tmp_path / "core"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: core
+  version: "3.4.0"
+
+scripts:
+  install: Deployment_Manifests/deploy.sql
+""",
+        encoding="utf-8",
+    )
+
+    source = load_package_source(str(package))
+    plan = create_plan(
+        mode="reinstall",
+        source=source,
+        provenance=resolve_provenance(source),
+        environment=resolve_environment("development"),
+        allow_destructive=True,
+    )
+
+    assert plan["policy"]["result"] == "requires-approval"
+    assert "Core reinstall requires --confirm-delete-system CORE" in plan["policy"]["required_approvals"]
+
+
 def test_bootstrap_core_does_not_require_core(tmp_path: Path):
     package = tmp_path / "core"
     package.mkdir()

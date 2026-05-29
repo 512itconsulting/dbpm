@@ -84,6 +84,17 @@ def delete_application(
     return result
 
 
+def delete_system(
+    *,
+    connect: str,
+    runner: str,
+) -> SqlResult:
+    result = run_sql_script(sql=_delete_system_sql(), connect=connect, runner=runner, label="dbpm-delete-system")
+    if result.returncode != 0:
+        raise ExecutionError(_format_sql_failure("Delete Core system failed", result))
+    return result
+
+
 def stage_deployment_provenance(
     *,
     connect: str,
@@ -243,6 +254,24 @@ BEGIN
       ip_fail_on_not_found  => {fail_flag}
    );
    DBMS_OUTPUT.PUT_LINE('DELETED_APPLICATION=' || {app_name});
+END;
+/
+EXIT SUCCESS
+"""
+
+
+def _delete_system_sql() -> str:
+    return """
+SET HEADING OFF
+SET FEEDBACK OFF
+SET VERIFY OFF
+SET SERVEROUTPUT ON
+WHENEVER SQLERROR EXIT FAILURE
+WHENEVER OSERROR EXIT FAILURE
+
+BEGIN
+   pkg_application.delete_system_p;
+   DBMS_OUTPUT.PUT_LINE('DELETED_SYSTEM=Y');
 END;
 /
 EXIT SUCCESS

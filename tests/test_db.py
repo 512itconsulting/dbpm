@@ -3,6 +3,7 @@ from dbpm.db import (
     _application_state_sql,
     _core_check_sql,
     _delete_application_sql,
+    _delete_system_sql,
     _deployment_provenance_sql,
     _parse_application_state,
     _parse_deployment_provenance,
@@ -36,6 +37,14 @@ def test_delete_application_sql_uses_core_api():
     assert "ip_application_name    => 'UTL_INTERVAL'" in sql
     assert "ip_fail_on_not_found  => 'N'" in sql
     assert "DELETED_APPLICATION=" in sql
+
+
+def test_delete_system_sql_uses_core_api():
+    sql = _delete_system_sql()
+
+    assert "pkg_application.delete_system_p" in sql
+    assert "DELETED_SYSTEM=Y" in sql
+    assert "WHENEVER SQLERROR EXIT FAILURE" in sql
 
 
 def test_stage_deployment_provenance_sql_uses_core_api():

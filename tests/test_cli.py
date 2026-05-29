@@ -578,6 +578,108 @@ def test_reinstall_blocks_when_dependents_exist(tmp_path: Path, monkeypatch, cap
     )
 
 
+def _write_core_reinstall_package(path: Path) -> None:
+    path.mkdir()
+    (path / "dbpm.yaml").write_text(
+        """
+package:
+  name: core
+  version: "3.4.0"
+
+scripts:
+  install: Deployment_Manifests/deploy.sql
+""",
+        encoding="utf-8",
+    )
+
+
+def test_core_reinstall_dry_run_shows_delete_system_confirmation(tmp_path: Path, capsys):
+    package = tmp_path / "core"
+    _write_core_reinstall_package(package)
+
+    assert (
+        cli.main(
+            [
+                "reinstall",
+                str(package),
+                "--allow-destructive",
+                "--dry-run",
+            ]
+        )
+        == 0
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["policy"]["result"] == "requires-approval"
+    assert "Core reinstall requires --confirm-delete-system CORE" in output["policy"]["required_approvals"]
+
+
+def test_core_reinstall_blocks_without_delete_system_confirmation(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+):
+    package = tmp_path / "core"
+    _write_core_reinstall_package(package)
+
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState("CORE", "3.4.0", "C", "abc"),
+    )
+    monkeypatch.setattr(cli, "execute_plan", lambda *args, **kwargs: pytest.fail("should not execute"))
+
+    assert (
+        cli.main(
+            [
+                "reinstall",
+                str(package),
+                "--connect",
+                "user/pass@db",
+                "--allow-destructive",
+            ]
+        )
+        == 2
+    )
+
+    assert "Core reinstall requires --confirm-delete-system CORE" in capsys.readouterr().err
+
+
+def test_core_reinstall_allows_delete_system_confirmation(tmp_path: Path, monkeypatch):
+    package = tmp_path / "core"
+    _write_core_reinstall_package(package)
+    calls = {}
+
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState("CORE", "3.4.0", "C", "abc"),
+    )
+
+    def fake_execute_plan(plan, *, connect: str, runner: str):
+        calls["policy"] = plan["policy"]
+        return 0
+
+    monkeypatch.setattr(cli, "execute_plan", fake_execute_plan)
+
+    assert (
+        cli.main(
+            [
+                "reinstall",
+                str(package),
+                "--connect",
+                "user/pass@db",
+                "--allow-destructive",
+                "--confirm-delete-system",
+                "CORE",
+            ]
+        )
+        == 0
+    )
+
+    assert calls["policy"]["result"] == "allowed"
+
+
 def test_resume_allows_running_deployment(tmp_path: Path, monkeypatch):
     package = tmp_path / "package"
     _write_package(package)

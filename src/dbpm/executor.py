@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
 
-from .db import delete_application, record_deployment_provenance, stage_deployment_provenance
+from .db import delete_application, delete_system, record_deployment_provenance, stage_deployment_provenance
 from .errors import ExecutionError
 
 
@@ -48,7 +48,7 @@ def execute_plan(
     if not isinstance(arguments, list):
         raise ExecutionError("Plan execution arguments must be a list")
 
-    _execute_pre_actions(plan, connect=connect, runner=runner)
+    _execute_pre_actions(plan, connect=connect, runner=runner, context=context)
 
     command = [runner, "-L", connect, f"@{script_ref}", *[str(arg) for arg in arguments]]
     log_file = _next_log_file(context, plan)
@@ -107,7 +107,13 @@ def _tee_output(source: TextIO, log: TextIO) -> None:
         log.flush()
 
 
-def _execute_pre_actions(plan: dict[str, object], *, connect: str, runner: str) -> None:
+def _execute_pre_actions(
+    plan: dict[str, object],
+    *,
+    connect: str,
+    runner: str,
+    context: _ExecutionContext,
+) -> None:
     pre_actions = plan.get("pre_actions", [])
     if not isinstance(pre_actions, list):
         raise ExecutionError("Plan pre_actions must be a list")
@@ -126,6 +132,23 @@ def _execute_pre_actions(plan: dict[str, object], *, connect: str, runner: str) 
                 application_name=str(application_name),
                 fail_on_not_found=str(action.get("fail_on_not_found", "N")),
             )
+        elif action_type == "delete_system":
+            delete_system(connect=connect, runner=runner)
+        elif action_type == "execute_script":
+            script_ref = action.get("script_ref")
+            arguments = action.get("arguments", [])
+            if not script_ref:
+                raise ExecutionError("execute_script pre-action requires script_ref")
+            if not isinstance(arguments, list):
+                raise ExecutionError("execute_script pre-action arguments must be a list")
+            command = [runner, "-L", connect, f"@{script_ref}", *[str(arg) for arg in arguments]]
+            log_file = _next_log_file(context, plan)
+            try:
+                returncode = _run_command(command, cwd=_cwd_for_script(script_ref), log_file=log_file)
+            except FileNotFoundError as exc:
+                raise ExecutionError(f"SQL runner not found: {runner}") from exc
+            if returncode != 0:
+                raise ExecutionError(f"Pre-action script failed with exit code {returncode}; see {log_file}")
         elif action_type == "stage_deployment_provenance":
             payload = action.get("payload")
             if not isinstance(payload, dict):

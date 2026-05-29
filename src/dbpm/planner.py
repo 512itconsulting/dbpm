@@ -8,6 +8,9 @@ from .provenance import Provenance
 from .source import PackageSource
 
 
+CORE_UNINSTALL_SCRIPT = "Deployment_Manifests/uninstall.core.sql"
+
+
 def create_plan(
     *,
     mode: str,
@@ -17,6 +20,7 @@ def create_plan(
     installed_state: dict[str, str] | None = None,
     reverse_dependencies: list[str] | None = None,
     allow_destructive: bool = False,
+    confirm_delete_system: bool = False,
     approve: bool = False,
 ) -> dict[str, object]:
     manifest = source.manifest
@@ -25,6 +29,12 @@ def create_plan(
         dirty=provenance.dirty,
         allow_destructive=allow_destructive,
         approve=approve,
+    )
+    policy = _apply_core_reinstall_policy(
+        policy,
+        mode=mode,
+        manifest=manifest,
+        confirm_delete_system=confirm_delete_system,
     )
     script = _script_for_mode(mode, manifest)
     if mode in {"bootstrap-core", "install", "reinstall", "resume", "upgrade", "validate"} and not script:
@@ -75,6 +85,24 @@ def _package_dict(manifest: PackageManifest) -> dict[str, object]:
     }
 
 
+def _apply_core_reinstall_policy(
+    policy: dict[str, object],
+    *,
+    mode: str,
+    manifest: PackageManifest,
+    confirm_delete_system: bool,
+) -> dict[str, object]:
+    if mode != "reinstall" or not manifest.is_core or confirm_delete_system:
+        return policy
+
+    updated = dict(policy)
+    approvals = list(updated.get("required_approvals", []))
+    approvals.append("Core reinstall requires --confirm-delete-system CORE")
+    updated["required_approvals"] = approvals
+    updated["result"] = "blocked" if updated.get("blocked") else "requires-approval"
+    return updated
+
+
 def _script_for_mode(mode: str, manifest: PackageManifest) -> str | None:
     if mode in {"install", "reinstall", "resume", "bootstrap-core"}:
         return manifest.scripts.install
@@ -100,13 +128,28 @@ def _pre_actions_for_mode(
 ) -> list[dict[str, object]]:
     actions: list[dict[str, object]] = []
     if mode == "reinstall":
-        actions.append(
-            {
-                "type": "delete_application",
-                "application_name": manifest.application_name,
-                "fail_on_not_found": "N",
-            }
-        )
+        if manifest.is_core:
+            actions.extend(
+                [
+                    {
+                        "type": "delete_system",
+                    },
+                    {
+                        "type": "execute_script",
+                        "script": CORE_UNINSTALL_SCRIPT,
+                        "script_ref": str(source.resolve_script_path(CORE_UNINSTALL_SCRIPT)),
+                        "arguments": [],
+                    },
+                ]
+            )
+        else:
+            actions.append(
+                {
+                    "type": "delete_application",
+                    "application_name": manifest.application_name,
+                    "fail_on_not_found": "N",
+                }
+            )
     if mode in {"install", "reinstall", "resume", "upgrade"} and _can_stage_provenance(
         mode,
         manifest,

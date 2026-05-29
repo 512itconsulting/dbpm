@@ -138,6 +138,47 @@ def test_execute_plan_runs_multi_package_children_in_order(tmp_path, monkeypatch
     assert logs[1].endswith("-002-CONSUMER-validate.log")
 
 
+def test_execute_plan_runs_core_teardown_before_reinstall_script(tmp_path, monkeypatch):
+    monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
+    plan = {
+        "mode": "reinstall",
+        "package": {
+            "application_name": "CORE",
+        },
+        "pre_actions": [
+            {
+                "type": "delete_system",
+            },
+            {
+                "type": "execute_script",
+                "script_ref": "Deployment_Manifests/uninstall.core.sql",
+                "arguments": [],
+            },
+        ],
+        "execution": {
+            "script_ref": "Deployment_Manifests/deploy.sql",
+            "arguments": ["abc"],
+        },
+    }
+    calls = []
+
+    with patch("dbpm.executor.delete_system") as delete_system:
+        with patch("dbpm.executor.subprocess.Popen") as popen:
+            delete_system.side_effect = lambda **kwargs: calls.append(("delete_system", kwargs))
+            popen.side_effect = lambda *args, **kwargs: calls.append(("script", args[0])) or _FakeProcess(stdout="ok\n")
+            execute_plan(plan, connect="user/pass@db", runner="sql")
+
+    assert calls == [
+        ("delete_system", {"connect": "user/pass@db", "runner": "sql"}),
+        ("script", ["sql", "-L", "user/pass@db", "@Deployment_Manifests/uninstall.core.sql"]),
+        ("script", ["sql", "-L", "user/pass@db", "@Deployment_Manifests/deploy.sql", "abc"]),
+    ]
+    logs = sorted(path.name for path in (tmp_path / "logs").glob("*.log"))
+    assert len(logs) == 2
+    assert logs[0].endswith("-001-CORE-reinstall.log")
+    assert logs[1].endswith("-002-CORE-reinstall.log")
+
+
 def test_execute_plan_runs_record_post_action_after_script(tmp_path, monkeypatch):
     monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
     payload = {
