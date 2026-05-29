@@ -20,7 +20,7 @@ Maven-compatible repositories may be useful for publishing immutable package art
 - Package reusable PL/SQL libraries
 - Deploy end-user Oracle database applications through the same package workflow
 - Resolve dependencies automatically
-- Support semantic versioning
+- Support [semantic versioning](https://semver.org/)
 - Enable repeatable deployments
 - Use Core as the in-database install registry and deployment substrate
 - Support schema evolution

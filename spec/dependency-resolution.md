@@ -46,15 +46,17 @@ Core dependency records reflect what installed applications declared during depl
 
 ## Version Constraints
 
-Initial version constraint support should be intentionally small and semver-oriented:
+Package versions and dependency constraints follow [Semantic Versioning 2.0.0](https://semver.org/).
 
-- exact versions, such as `1.2.3`
-- compatible ranges, such as `^1.2.0`
-- minimum versions, such as `>=1.2.0`
+Supported constraint forms:
 
-The resolver should reject ambiguous or unsupported constraints until the syntax is formally specified.
+| Form | Example | Meaning |
+|------|---------|---------|
+| Exact | `1.2.3` | Must match exactly |
+| Tilde | `~1.2.3` | Patch-compatible: ≥1.2.3 and <1.3.0 |
+| Caret | `^1.2.3` | Minor-compatible: ≥1.2.3 and <2.0.0 |
 
-The MVP resolver supports exact `major.minor.patch` versions and caret-compatible ranges such as `^1.0.0`. Minimum-version constraints remain specified direction but should fail clearly until implemented.
+The resolver rejects unsupported constraint syntax — comparison operators (`>=`, `<`), wildcards, hyphen ranges, and OR/AND combinations — with a clear error rather than silently ignoring them.
 
 ## Lockfile Resolution
 

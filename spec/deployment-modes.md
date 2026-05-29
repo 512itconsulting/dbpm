@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Deployment mode describes operator intent. It is separate from Core's deployment type constants, which describe semantic version movement for an application.
+Deployment mode describes operator intent. It is separate from Core's deployment type constants, which describe [semantic version](https://semver.org/) movement for an application.
 
 ## Modes
 

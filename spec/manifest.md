@@ -56,7 +56,7 @@ scripts:
 - `dependencies`: Package dependencies beyond Core.
 - `scripts`: SQL*Plus/SQLcl-compatible entry points. Scripts should accept dbpm-injected provenance parameters instead of hard-coding commit hashes.
 
-Version values should be quoted in YAML so semantic versions are always parsed as strings.
+Version values follow [Semantic Versioning 2.0.0](https://semver.org/) and should be quoted in YAML so they are always parsed as strings.
 
 Dependency constraints in the manifest describe acceptable package versions. Exact released deployments should be recorded in a lockfile rather than by rewriting the manifest to include transient repository details.
 
