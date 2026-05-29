@@ -154,7 +154,9 @@ def _run_publish(args: argparse.Namespace) -> None:
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    from importlib.metadata import version as _pkg_version
     parser = argparse.ArgumentParser(prog="dbpm")
+    parser.add_argument("--version", action="version", version=f"dbpm {_pkg_version('dbpm')}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     check = subparsers.add_parser("check-core", help="Verify Core is available in a target database")

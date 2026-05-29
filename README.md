@@ -56,9 +56,10 @@ uv run dbpm install --lockfile dbpm-lock.json --env development
 - Core provenance staging through `pkg_application.stage_deployment_provenance_p`
 - Environment-aware deployment plans
 - Install, upgrade, reinstall, resume, and validate workflows
+- ZIP artifact publishing to GitHub Packages and generic Maven repositories
+- GPG artifact signing and lockfile-driven signature verification
 
-## Still Planned
-- Package signing
+## Roadmap
 - APEX integration
 - Rich artifact registry
 
