@@ -592,7 +592,7 @@ def _get_installed_state(args: argparse.Namespace, application_name: str) -> dic
 def _should_read_installed_state(mode: str, is_core: bool) -> bool:
     if not is_core:
         return True
-    return mode in {"upgrade", "resume", "validate"}
+    return mode in {"bootstrap-core", "upgrade", "resume", "validate"}
 
 
 def _get_reverse_dependencies(args: argparse.Namespace, application_name: str) -> list[str]:
@@ -612,6 +612,14 @@ def _enforce_installed_state(plan: dict[str, object]) -> None:
         app_name = package.get("application_name")
 
     status = state.get("deploy_status") if isinstance(state, dict) else None
+
+    if mode == "bootstrap-core":
+        if state is None:
+            return
+        raise DbpmError(
+            f"{app_name} is already installed with status {status}; "
+            f"use upgrade, resume, or reinstall instead of bootstrap-core"
+        )
 
     if mode == "install":
         if state is None:

@@ -1303,6 +1303,69 @@ def test_install_blocked_when_core_deployment_is_not_complete(
     assert "resume or reinstall Core" in err
 
 
+def _write_core_bootstrap_package(path: Path) -> None:
+    path.mkdir()
+    (path / "dbpm.yaml").write_text(
+        """
+package:
+  name: core
+  version: "3.4.0"
+
+scripts:
+  install: Deployment_Manifests/deploy.sql
+""",
+        encoding="utf-8",
+    )
+
+
+def test_bootstrap_core_blocks_when_core_is_already_installed(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+):
+    package = tmp_path / "core"
+    _write_core_bootstrap_package(package)
+
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState("CORE", "3.4.0", "C", "abc"),
+    )
+
+    def fail_execute_plan(*args, **kwargs):
+        raise AssertionError("bootstrap-core should not execute when Core is already installed")
+
+    monkeypatch.setattr(cli, "execute_plan", fail_execute_plan)
+
+    assert cli.main(["bootstrap-core", str(package), "--connect", "user/pass@db"]) == 2
+
+    err = capsys.readouterr().err
+    assert "CORE is already installed with status C" in err
+    assert "instead of bootstrap-core" in err
+
+
+def test_bootstrap_core_runs_when_core_is_not_installed(tmp_path: Path, monkeypatch):
+    package = tmp_path / "core"
+    _write_core_bootstrap_package(package)
+    calls = {}
+
+    def fake_get_application_state(**kwargs):
+        calls["application_name"] = kwargs["application_name"]
+        return None
+
+    def fake_execute_plan(plan, *, connect: str, runner: str):
+        calls["plan"] = plan
+        return 0
+
+    monkeypatch.setattr(cli, "get_application_state", fake_get_application_state)
+    monkeypatch.setattr(cli, "execute_plan", fake_execute_plan)
+
+    assert cli.main(["bootstrap-core", str(package), "--connect", "user/pass@db"]) == 0
+
+    assert calls["application_name"] == "CORE"
+    assert calls["plan"]["installed_state"] is None
+
+
 def test_bootstrap_core_skips_core_version_check(tmp_path: Path, monkeypatch):
     package = tmp_path / "package"
     _write_package_requiring_core(package, core_version="3.4.0")
