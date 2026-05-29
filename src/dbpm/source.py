@@ -619,7 +619,7 @@ def _check_gpg_signature(artifact_path: Path, asc_path: Path, artifact_file_name
 
 
 def _artifact_cache_dir() -> Path:
-    return Path(os.environ.get("DBPM_CACHE_DIR", Path.home() / ".dbpm" / "cache")).resolve()
+    return Path(os.environ.get("DBPM_CACHE_DIR", Path.home() / ".dbpm" / "cache")).expanduser().resolve()
 
 
 def _download(url: str, destination: Path) -> None:

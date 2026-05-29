@@ -64,7 +64,7 @@ def execute_plan(
 
 def _new_execution_context() -> _ExecutionContext:
     run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    log_dir = Path(os.environ.get("DBPM_LOG_DIR", ".dbpm-logs")).resolve()
+    log_dir = Path(os.environ.get("DBPM_LOG_DIR", ".dbpm-logs")).expanduser().resolve()
     return _ExecutionContext(run_id=run_id, log_dir=log_dir)
 
 

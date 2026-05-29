@@ -51,6 +51,30 @@ scripts:
     assert script_path.exists()
 
 
+def test_cache_dir_expands_quoted_home(tmp_path: Path, monkeypatch):
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("DBPM_CACHE_DIR", "~/.local/cache/dbpm")
+    archive_path = tmp_path / "demo.zip"
+    with ZipFile(archive_path, "w") as archive:
+        archive.writestr(
+            "demo/dbpm.yaml",
+            """
+package:
+  name: demo
+  version: "0.1.0"
+
+scripts:
+  install: deploy.sql
+""",
+        )
+        archive.writestr("demo/deploy.sql", "PROMPT deploy\n")
+
+    source = load_package_source(str(archive_path))
+
+    assert source.work_path.is_relative_to(home / ".local" / "cache" / "dbpm")
+
+
 def test_load_package_from_zip_without_base_directory(tmp_path: Path):
     archive_path = tmp_path / "demo.zip"
     with ZipFile(archive_path, "w") as archive:

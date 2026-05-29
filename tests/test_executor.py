@@ -66,6 +66,30 @@ def test_execute_plan_runs_delete_pre_action_before_script(tmp_path, monkeypatch
     assert logs[0].read_text(encoding="utf-8") == "deployed\n"
 
 
+def test_log_dir_expands_quoted_home(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("DBPM_LOG_DIR", "~/.local/state/dbpm_logs")
+    plan = {
+        "mode": "install",
+        "package": {
+            "application_name": "DEMO",
+        },
+        "pre_actions": [],
+        "execution": {
+            "script_ref": "deploy.sql",
+            "arguments": [],
+        },
+    }
+
+    with patch("dbpm.executor.subprocess.Popen") as popen:
+        popen.return_value = _FakeProcess(stdout="deployed\n")
+        execute_plan(plan, connect="user/pass@db", runner="sql")
+
+    logs = list((home / ".local" / "state" / "dbpm_logs").glob("*-001-DEMO-install.log"))
+    assert len(logs) == 1
+
+
 def test_execute_plan_runs_multi_package_children_in_order(tmp_path, monkeypatch):
     monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
     plan = {
