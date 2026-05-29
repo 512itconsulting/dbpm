@@ -15,9 +15,6 @@ package:
   name: demo
   version: "0.1.0"
 
-core:
-  minimum_version: "3.0.0"
-
 scripts:
   install: Deployment_Manifests/deploy.sql
   validate: Tests/smoke_test.sql
@@ -730,9 +727,6 @@ package:
   name: demo
   version: "1.0.1"
 
-core:
-  minimum_version: "3.0.0"
-
 scripts:
   install: Deployment_Manifests/deploy.sql
   upgrade: Deployment_Manifests/upgrade.sql
@@ -1082,7 +1076,6 @@ def _write_maven_upgrade_package(path: Path, *, version: str, upgrade_from: str 
     upgrade_from_line = f"  upgrade_from: \"{upgrade_from}\"\n" if upgrade_from else ""
     manifest = (
         f"package:\n  name: demo\n  version: \"{version}\"\n"
-        f"core:\n  minimum_version: \"3.0.0\"\n"
         f"scripts:\n  install: deploy.sql\n  upgrade: upgrade.sql\n{upgrade_from_line}"
     )
     with ZipFile(path, "w") as archive:
@@ -1221,6 +1214,83 @@ scripts:
     err = capsys.readouterr().err
     assert "Cannot upgrade CONSUMER from 1.0.0 to 2.0.0" in err
     assert "DOWNSTREAM" in err
+
+
+# ---------------------------------------------------------------------------
+# Core minimum version preflight
+# ---------------------------------------------------------------------------
+
+
+def _write_package_requiring_core(path: Path, core_version: str = "3.4.0") -> None:
+    path.mkdir()
+    (path / "dbpm.yaml").write_text(
+        f"""
+package:
+  name: demo
+  version: "1.0.1"
+
+core:
+  minimum_version: "{core_version}"
+
+scripts:
+  install: deploy.sql
+  upgrade: upgrade.sql
+""",
+        encoding="utf-8",
+    )
+
+
+def test_install_blocked_when_core_too_old(tmp_path: Path, monkeypatch, capsys):
+    package = tmp_path / "package"
+    _write_package_requiring_core(package, core_version="3.4.0")
+
+    monkeypatch.setattr(cli, "get_application_state", lambda **kwargs: (
+        None if kwargs["application_name"] != "CORE"
+        else ApplicationState("CORE", "3.2.0", "C", "abc")
+    ))
+
+    assert cli.main(["install", str(package), "--connect", "user/pass@db"]) == 2
+
+    err = capsys.readouterr().err
+    assert "Core 3.4.0" in err
+    assert "3.2.0" in err
+    assert "Upgrade Core first" in err
+
+
+def test_install_proceeds_when_core_meets_requirement(tmp_path: Path, monkeypatch):
+    package = tmp_path / "package"
+    _write_package_requiring_core(package, core_version="3.2.0")
+
+    monkeypatch.setattr(cli, "get_application_state", lambda **kwargs: (
+        None if kwargs["application_name"] != "CORE"
+        else ApplicationState("CORE", "3.4.0", "C", "abc")
+    ))
+    monkeypatch.setattr(cli, "execute_plan", lambda *a, **kw: 0)
+
+    assert cli.main(["install", str(package), "--connect", "user/pass@db"]) == 0
+
+
+def test_install_blocked_when_core_not_installed(tmp_path: Path, monkeypatch, capsys):
+    package = tmp_path / "package"
+    _write_package_requiring_core(package, core_version="3.4.0")
+
+    monkeypatch.setattr(cli, "get_application_state", lambda **kwargs: None)
+
+    assert cli.main(["install", str(package), "--connect", "user/pass@db"]) == 2
+
+    err = capsys.readouterr().err
+    assert "Core is not installed" in err
+    assert "bootstrap-core" in err
+
+
+def test_bootstrap_core_skips_core_version_check(tmp_path: Path, monkeypatch):
+    package = tmp_path / "package"
+    _write_package_requiring_core(package, core_version="3.4.0")
+
+    monkeypatch.setattr(cli, "get_application_state", lambda **kwargs: None)
+    monkeypatch.setattr(cli, "execute_plan", lambda *a, **kw: 0)
+
+    assert cli.main(["bootstrap-core", str(package), "--connect", "user/pass@db"]) == 0
 
 
 def _version_aware_cli_download(tmp_path: Path, name: str):

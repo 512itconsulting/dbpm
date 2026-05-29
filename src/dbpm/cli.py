@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from .chain import ChainError, resolve_upgrade_chain
+from .resolver import parse_version
 from .publisher import PublishReceipt, build_artifact, publish_to_repository, verify_publish
 from .db import check_core, get_application_state, get_deployment_provenance, get_reverse_dependencies
 from .environment import resolve_environment
@@ -465,12 +466,14 @@ def _execute_or_explain(plan: dict[str, object], args: argparse.Namespace) -> No
                 raise DbpmError("Multi-package plan entries must be objects")
             _execute_or_explain_policy(child_plan)
             _enforce_installed_state(child_plan)
+            _enforce_core_minimum_version(child_plan, args)
             _enforce_major_upgrade_dependencies(child_plan, allow_dependent_break)
         execute_plan(plan, connect=_connect_string(args), runner=args.runner)
         return
 
     _execute_or_explain_policy(plan)
     _enforce_installed_state(plan)
+    _enforce_core_minimum_version(plan, args)
     _enforce_major_upgrade_dependencies(plan, getattr(args, "allow_dependent_break", False))
     execute_plan(plan, connect=_connect_string(args), runner=args.runner)
 
@@ -492,6 +495,7 @@ def _execute_upgrade_chain(plan: dict[str, object], args: argparse.Namespace) ->
                 step_plan["installed_state"] = fresh_state
         _execute_or_explain_policy(step_plan)
         _enforce_installed_state(step_plan)
+        _enforce_core_minimum_version(step_plan, args)
         _enforce_major_upgrade_dependencies(step_plan, allow_dependent_break)
         execute_plan(step_plan, connect=_connect_string(args), runner=args.runner)
 
@@ -523,6 +527,35 @@ def _enforce_major_upgrade_dependencies(
         f"Provide updated dependent versions with --dependency-source, "
         f"or use --allow-dependent-break to override."
     )
+
+
+def _enforce_core_minimum_version(plan: dict[str, object], args: argparse.Namespace) -> None:
+    if plan.get("mode") == "bootstrap-core":
+        return
+    core = plan.get("core")
+    if not isinstance(core, dict):
+        return
+    required = core.get("minimum_version")
+    if not isinstance(required, str):
+        return
+    installed_state = _get_installed_state(args, "CORE")
+    if installed_state is None:
+        raise DbpmError(
+            f"This package requires Core {required} or newer, but Core is not installed. "
+            f"Install Core first with: dbpm bootstrap-core"
+        )
+    installed = installed_state.get("version")
+    if not isinstance(installed, str):
+        return
+    try:
+        if parse_version(installed) < parse_version(required):
+            raise DbpmError(
+                f"This package requires Core {required} or newer; "
+                f"Core {installed} is installed. "
+                f"Upgrade Core first with: dbpm upgrade <core-source> --connect ..."
+            )
+    except ValueError:
+        pass
 
 
 def _major(version: str) -> int:
