@@ -37,7 +37,7 @@ uv run dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.databas
 uv run dbpm install --lockfile dbpm-lock.json --env development
 ```
 
-## Current MVP
+## Features
 - Package manifests through `dbpm.yaml`, `dbpm.yml`, `dbpm.json`, or `package.dbpm.yaml`
 - Local package directory sources
 - Local ZIP package sources
@@ -59,12 +59,17 @@ uv run dbpm install --lockfile dbpm-lock.json --env development
 - ZIP artifact publishing to GitHub Packages and generic Maven repositories
 - GPG artifact signing and lockfile-driven signature verification
 
+## Known Limitations
+- Multi-package dependency execution does not support `reinstall`.
+- Lockfile database provenance reconciliation requires Core 3.3.0 or newer.
+- Non-lockfile installs use the coordinate-based cache without checksum verification; the lockfile path has full SHA-256 verification.
+
 ## Roadmap
 - APEX integration
 - Rich artifact registry
 
 ## Status
-Early-stage experimental project. The current MVP has been live-tested against GitHub Packages artifacts for:
+Live-tested against GitHub Packages artifacts for:
 
 - `core`
 - `utl_interval`
