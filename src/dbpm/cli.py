@@ -459,11 +459,13 @@ def _execute_or_explain(plan: dict[str, object], args: argparse.Namespace) -> No
 
     packages = plan.get("packages")
     if isinstance(packages, list):
+        allow_dependent_break = getattr(args, "allow_dependent_break", False)
         for child_plan in packages:
             if not isinstance(child_plan, dict):
                 raise DbpmError("Multi-package plan entries must be objects")
             _execute_or_explain_policy(child_plan)
             _enforce_installed_state(child_plan)
+            _enforce_major_upgrade_dependencies(child_plan, allow_dependent_break)
         execute_plan(plan, connect=_connect_string(args), runner=args.runner)
         return
 

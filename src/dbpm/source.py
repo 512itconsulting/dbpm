@@ -597,7 +597,7 @@ def _check_or_skip_signature(
     asc_cache = zip_path.with_name(zip_path.name + ".asc")
     if not asc_cache.exists():
         try:
-            _download(artifact_url + ".asc", asc_cache)
+            _download(expected_signature_url, asc_cache)
         except SourceError:
             raise SourceError(
                 f"Signature required but not found for {zip_path.name}"

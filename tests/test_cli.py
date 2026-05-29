@@ -1167,6 +1167,62 @@ def test_minor_upgrade_with_dependents_is_not_blocked(tmp_path: Path, monkeypatc
     assert cli.main(["upgrade", str(package), "--connect", "user/pass@db"]) == 0
 
 
+def test_major_upgrade_with_dependents_is_blocked_for_multi_package_plan(
+    tmp_path: Path, monkeypatch, capsys
+):
+    dep = tmp_path / "dep"
+    consumer = tmp_path / "consumer"
+    _write_package_with_upgrade(dep)
+    consumer.mkdir()
+    (consumer / "dbpm.yaml").write_text(
+        """
+package:
+  name: consumer
+  version: "2.0.0"
+
+dependencies:
+  - name: demo
+    version: "^1.0.0"
+
+scripts:
+  install: deploy.sql
+  upgrade: upgrade.sql
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState(kwargs["application_name"], "1.0.0", "C", "abc"),
+    )
+
+    def fake_reverse_deps(**kwargs):
+        if kwargs.get("application_name") == "CONSUMER":
+            return ["DOWNSTREAM"]
+        return []
+
+    monkeypatch.setattr(cli, "get_reverse_dependencies", fake_reverse_deps)
+
+    assert (
+        cli.main(
+            [
+                "upgrade",
+                str(consumer),
+                "--dependency-source",
+                str(dep),
+                "--connect",
+                "user/pass@db",
+            ]
+        )
+        == 2
+    )
+
+    err = capsys.readouterr().err
+    assert "Cannot upgrade CONSUMER from 1.0.0 to 2.0.0" in err
+    assert "DOWNSTREAM" in err
+
+
 def _version_aware_cli_download(tmp_path: Path, name: str):
     import re
 

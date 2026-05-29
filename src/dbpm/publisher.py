@@ -67,14 +67,6 @@ def generate_pom(manifest: PackageManifest, publish_config: PublishConfig) -> st
     version = manifest.version
 
     deps_xml = ""
-    if manifest.core_minimum_version:
-        deps_xml += (
-            f"    <dependency>\n"
-            f"      <groupId>{_xml_escape(group)}</groupId>\n"
-            f"      <artifactId>core</artifactId>\n"
-            f"      <version>{_xml_escape(manifest.core_minimum_version)}</version>\n"
-            f"    </dependency>\n"
-        )
     for dep in manifest.dependencies:
         deps_xml += (
             f"    <dependency>\n"
@@ -289,6 +281,26 @@ def _upload(url: str, data: bytes, content_type: str, token: str | None) -> None
         raise PublishError(f"Upload failed: {url} ({exc})") from exc
 
 
+def _fetch_text_or_none(url: str, token: str | None) -> str | None:
+    """Fetch URL as text, returning None on 404. Raises PublishError for all other failures."""
+    request = urllib.request.Request(url)
+    if token:
+        user = os.environ.get("DBPM_MAVEN_USER") or os.environ.get("DBPM_GITHUB_USER") or "x-access-token"
+        credential = base64.b64encode(f"{user}:{token}".encode("utf-8")).decode("ascii")
+        request.add_header("Authorization", f"Basic {credential}")
+    try:
+        with urllib.request.urlopen(request) as response:
+            return response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return None
+        raise PublishError(
+            f"Failed to fetch {url} (HTTP {exc.code} {exc.reason})"
+        ) from exc
+    except OSError as exc:
+        raise PublishError(f"Failed to fetch {url} ({exc})") from exc
+
+
 def _download_text(url: str, token: str | None) -> str:
     request = urllib.request.Request(url)
     if token:
@@ -335,15 +347,20 @@ def _build_updated_metadata(
 ) -> bytes:
     last_updated = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
 
-    try:
-        existing = _download_text(metadata_url, token)
-        root = ElementTree.fromstring(existing)
-        versions_el = root.find("./versioning/versions")
-        existing_versions = [
-            el.text for el in (versions_el or []) if el.text  # type: ignore[arg-type]
-        ]
-    except (PublishError, ElementTree.ParseError):
+    existing_text = _fetch_text_or_none(metadata_url, token)
+    if existing_text is None:
         existing_versions = []
+    else:
+        try:
+            root = ElementTree.fromstring(existing_text)
+            versions_el = root.find("./versioning/versions")
+            existing_versions = [
+                el.text for el in (versions_el if versions_el is not None else []) if el.text  # type: ignore[arg-type]
+            ]
+        except ElementTree.ParseError as exc:
+            raise PublishError(
+                f"Failed to parse existing maven-metadata.xml at {metadata_url}"
+            ) from exc
 
     if version not in existing_versions:
         existing_versions.append(version)

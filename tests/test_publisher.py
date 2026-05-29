@@ -9,8 +9,12 @@ import pytest
 
 from dbpm.errors import PublishError
 from dbpm.manifest import Dependency, PackageManifest, PublishConfig, ScriptSet
+import urllib.error
+
 from dbpm.publisher import (
     PublishReceipt,
+    _build_updated_metadata,
+    _fetch_text_or_none,
     _parse_publish_target,
     _xml_escape,
     build_artifact,
@@ -121,11 +125,10 @@ def test_generate_pom_basic_structure(manifest: PackageManifest, publish_config:
     assert "<description>Interval utilities</description>" in pom
 
 
-def test_generate_pom_includes_core_dependency(manifest: PackageManifest, publish_config: PublishConfig):
+def test_generate_pom_excludes_core_dependency(manifest: PackageManifest, publish_config: PublishConfig):
     pom = generate_pom(manifest, publish_config)
 
-    assert "<artifactId>core</artifactId>" in pom
-    assert "<version>3.0.0</version>" in pom
+    assert "<artifactId>core</artifactId>" not in pom
 
 
 def test_generate_pom_includes_manifest_dependencies(manifest: PackageManifest, publish_config: PublishConfig):
@@ -264,3 +267,68 @@ def test_xml_escape():
     assert _xml_escape("<tag>") == "&lt;tag&gt;"
     assert _xml_escape('"quoted"') == "&quot;quoted&quot;"
     assert _xml_escape("plain") == "plain"
+
+
+# ---------------------------------------------------------------------------
+# _fetch_text_or_none
+# ---------------------------------------------------------------------------
+
+
+def test_fetch_text_or_none_returns_none_on_404(monkeypatch):
+    def fake_urlopen(req):
+        raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    assert _fetch_text_or_none("http://example.com/file.xml", None) is None
+
+
+def test_fetch_text_or_none_raises_on_non_404(monkeypatch):
+    def fake_urlopen(req):
+        raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", {}, None)
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    with pytest.raises(PublishError, match="403"):
+        _fetch_text_or_none("http://example.com/file.xml", None)
+
+
+# ---------------------------------------------------------------------------
+# _build_updated_metadata
+# ---------------------------------------------------------------------------
+
+
+def test_build_updated_metadata_starts_fresh_on_404(monkeypatch):
+    monkeypatch.setattr("dbpm.publisher._fetch_text_or_none", lambda *a, **kw: None)
+    result = _build_updated_metadata("http://x/maven-metadata.xml", "com.example", "pkg", "1.0.0", None)
+    xml = result.decode("utf-8")
+    assert "<version>1.0.0</version>" in xml
+    assert xml.count("<version>") == 1
+
+
+def test_build_updated_metadata_appends_to_existing(monkeypatch):
+    existing = (
+        '<?xml version="1.0"?><metadata>'
+        "<versioning><versions>"
+        "<version>1.0.0</version>"
+        "</versions></versioning>"
+        "</metadata>"
+    )
+    monkeypatch.setattr("dbpm.publisher._fetch_text_or_none", lambda *a, **kw: existing)
+    result = _build_updated_metadata("http://x/maven-metadata.xml", "com.example", "pkg", "1.1.0", None)
+    xml = result.decode("utf-8")
+    assert "<version>1.0.0</version>" in xml
+    assert "<version>1.1.0</version>" in xml
+
+
+def test_build_updated_metadata_raises_on_fetch_error(monkeypatch):
+    def fail(*a, **kw):
+        raise PublishError("HTTP 503 Service Unavailable")
+
+    monkeypatch.setattr("dbpm.publisher._fetch_text_or_none", fail)
+    with pytest.raises(PublishError, match="503"):
+        _build_updated_metadata("http://x/maven-metadata.xml", "com.example", "pkg", "1.0.0", None)
+
+
+def test_build_updated_metadata_raises_on_parse_error(monkeypatch):
+    monkeypatch.setattr("dbpm.publisher._fetch_text_or_none", lambda *a, **kw: "not xml {{{{")
+    with pytest.raises(PublishError, match="parse"):
+        _build_updated_metadata("http://x/maven-metadata.xml", "com.example", "pkg", "1.0.0", None)
