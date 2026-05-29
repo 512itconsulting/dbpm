@@ -1283,6 +1283,26 @@ def test_install_blocked_when_core_not_installed(tmp_path: Path, monkeypatch, ca
     assert "bootstrap-core" in err
 
 
+def test_install_blocked_when_core_deployment_is_not_complete(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+):
+    package = tmp_path / "package"
+    _write_package_requiring_core(package, core_version="3.4.0")
+
+    monkeypatch.setattr(cli, "get_application_state", lambda **kwargs: (
+        None if kwargs["application_name"] != "CORE"
+        else ApplicationState("CORE", "3.4.0", "F", "abc")
+    ))
+
+    assert cli.main(["install", str(package), "--connect", "user/pass@db"]) == 2
+
+    err = capsys.readouterr().err
+    assert "Core deployment status is F" in err
+    assert "resume or reinstall Core" in err
+
+
 def test_bootstrap_core_skips_core_version_check(tmp_path: Path, monkeypatch):
     package = tmp_path / "package"
     _write_package_requiring_core(package, core_version="3.4.0")

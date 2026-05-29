@@ -544,6 +544,12 @@ def _enforce_core_minimum_version(plan: dict[str, object], args: argparse.Namesp
             f"This package requires Core {required} or newer, but Core is not installed. "
             f"Install Core first with: dbpm bootstrap-core"
         )
+    status = installed_state.get("deploy_status")
+    if status != "C":
+        raise DbpmError(
+            f"This package requires Core {required} or newer, but Core deployment "
+            f"status is {status}; resume or reinstall Core first."
+        )
     installed = installed_state.get("version")
     if not isinstance(installed, str):
         return
