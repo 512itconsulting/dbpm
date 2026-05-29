@@ -142,6 +142,53 @@ scripts:
         )
 
 
+def test_upgrade_from_tilde_constraint_parses():
+    manifest = parse_manifest(
+        """
+package:
+  name: demo
+  version: "1.3.0"
+scripts:
+  upgrade: upgrade.sql
+  upgrade_from: "~1.2.0"
+""",
+        "dbpm.yaml",
+    )
+
+    assert manifest.scripts.upgrade_from == "~1.2.0"
+
+
+def test_upgrade_from_tilde_invalid_base_fails():
+    with pytest.raises(ManifestError, match="upgrade_from"):
+        parse_manifest(
+            """
+package:
+  name: demo
+  version: "1.3.0"
+scripts:
+  upgrade: upgrade.sql
+  upgrade_from: "~1.2"
+""",
+            "dbpm.yaml",
+        )
+
+
+def test_dependency_tilde_constraint_accepted():
+    manifest = parse_manifest(
+        """
+package:
+  name: demo
+  version: "1.0.0"
+dependencies:
+  - name: utl_interval
+    version: "~1.2.0"
+""",
+        "dbpm.yaml",
+    )
+
+    assert manifest.dependencies[0].version == "~1.2.0"
+
+
 def test_invalid_dependency_shape_fails():
     with pytest.raises(ManifestError, match="dependencies"):
         parse_manifest(

@@ -156,7 +156,7 @@ def _state_satisfies_dependency(state: dict[str, str], version: str) -> bool:
 
 
 def _assert_supported_constraint(version: str) -> None:
-    normalized = version.removeprefix("^")
+    normalized = version.removeprefix("^").removeprefix("~")
     parts = normalized.split(".")
     if len(parts) != 3 or not all(part.isdigit() for part in parts):
         raise DependencyError(f"Unsupported dependency version constraint: {version}")
@@ -175,6 +175,13 @@ def _version_satisfies(candidate: str, constraint: str) -> bool:
             return False
         next_major = (base_version[0] + 1, 0, 0)
         return candidate_version < next_major
+    if constraint.startswith("~"):
+        candidate_version = _parse_version(candidate)
+        base_version = _parse_version(constraint[1:])
+        if candidate_version < base_version:
+            return False
+        next_minor = (base_version[0], base_version[1] + 1, 0)
+        return candidate_version < next_minor
     return candidate == constraint
 
 

@@ -156,7 +156,7 @@ def _parse_scripts(data: dict[str, Any], source_name: str) -> ScriptSet:
 
 
 def _valid_version_constraint(value: str) -> bool:
-    normalized = value.removeprefix("^")
+    normalized = value.removeprefix("^").removeprefix("~")
     parts = normalized.split(".")
     return len(parts) == 3 and all(part.isdigit() for part in parts)
 

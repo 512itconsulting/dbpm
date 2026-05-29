@@ -4,8 +4,41 @@ import pytest
 
 from dbpm.environment import resolve_environment
 from dbpm.errors import DependencyError
-from dbpm.resolver import create_multi_package_plan
+from dbpm.resolver import create_multi_package_plan, version_satisfies
 from dbpm.source import load_package_source
+
+
+# ── tilde constraint tests ───────────────────────────────────────────────────
+
+def test_tilde_satisfies_same_version():
+    assert version_satisfies("1.2.3", "~1.2.3") is True
+
+
+def test_tilde_satisfies_higher_patch():
+    assert version_satisfies("1.2.9", "~1.2.3") is True
+
+
+def test_tilde_does_not_satisfy_lower_patch():
+    assert version_satisfies("1.2.2", "~1.2.3") is False
+
+
+def test_tilde_does_not_satisfy_next_minor():
+    assert version_satisfies("1.3.0", "~1.2.3") is False
+
+
+def test_tilde_does_not_satisfy_different_major():
+    assert version_satisfies("2.2.3", "~1.2.3") is False
+
+
+def test_tilde_zero_patch_covers_full_minor():
+    assert version_satisfies("1.2.0", "~1.2.0") is True
+    assert version_satisfies("1.2.99", "~1.2.0") is True
+    assert version_satisfies("1.3.0", "~1.2.0") is False
+
+
+def test_tilde_invalid_base_raises():
+    with pytest.raises(DependencyError):
+        version_satisfies("1.2.3", "~1.2")
 
 
 def _write_package(
