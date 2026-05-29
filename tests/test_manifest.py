@@ -202,3 +202,75 @@ dependencies:
 """,
             "dbpm.yaml",
         )
+
+
+# ---------------------------------------------------------------------------
+# publish: section
+# ---------------------------------------------------------------------------
+
+
+def test_parse_manifest_with_publish_section():
+    manifest = parse_manifest(
+        """
+package:
+  name: utl_interval
+  version: "1.0.0"
+
+publish:
+  group: com.example.database
+  artifact_id: utl_interval
+""",
+        "dbpm.yaml",
+    )
+
+    assert manifest.publish is not None
+    assert manifest.publish.group == "com.example.database"
+    assert manifest.publish.artifact_id == "utl_interval"
+
+
+def test_parse_manifest_publish_without_artifact_id():
+    manifest = parse_manifest(
+        """
+package:
+  name: utl_interval
+  version: "1.0.0"
+
+publish:
+  group: com.example.database
+""",
+        "dbpm.yaml",
+    )
+
+    assert manifest.publish is not None
+    assert manifest.publish.group == "com.example.database"
+    assert manifest.publish.artifact_id is None
+
+
+def test_parse_manifest_publish_absent():
+    manifest = parse_manifest(
+        """
+package:
+  name: utl_interval
+  version: "1.0.0"
+""",
+        "dbpm.yaml",
+    )
+
+    assert manifest.publish is None
+
+
+def test_parse_manifest_publish_missing_group_raises():
+    from dbpm.errors import ManifestError
+
+    with pytest.raises(ManifestError, match="group"):
+        parse_manifest(
+            """
+package:
+  name: utl_interval
+  version: "1.0.0"
+
+publish:
+  artifact_id: utl_interval
+""",
+            "dbpm.yaml",
+        )

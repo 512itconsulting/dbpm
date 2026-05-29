@@ -12,6 +12,12 @@ MANIFEST_NAMES = ("dbpm.yaml", "dbpm.yml", "dbpm.json", "package.dbpm.yaml")
 
 
 @dataclass(frozen=True)
+class PublishConfig:
+    group: str
+    artifact_id: str | None = None
+
+
+@dataclass(frozen=True)
 class ScriptSet:
     install: str | None = None
     upgrade: str | None = None
@@ -39,6 +45,7 @@ class PackageManifest:
     core_minimum_version: str | None
     dependencies: tuple[Dependency, ...]
     scripts: ScriptSet
+    publish: PublishConfig | None = None
 
     @property
     def is_core(self) -> bool:
@@ -54,6 +61,7 @@ def parse_manifest(text: str, source_name: str) -> PackageManifest:
     database = _optional_mapping(data, "database")
     core = _optional_mapping(data, "core")
     scripts = _optional_mapping(data, "scripts")
+    publish_data = _optional_mapping(data, "publish")
 
     name = _required_string(package, "name", source_name)
     version = _required_string(package, "version", source_name)
@@ -71,6 +79,7 @@ def parse_manifest(text: str, source_name: str) -> PackageManifest:
         core_minimum_version=_optional_string(core, "minimum_version"),
         dependencies=tuple(dependencies),
         scripts=_parse_scripts(scripts, source_name),
+        publish=_parse_publish_config(publish_data, source_name) if publish_data else None,
     )
 
 
@@ -137,6 +146,14 @@ def _required_string(data: dict[str, Any], key: str, source_name: str) -> str:
 def _optional_string(data: dict[str, Any], key: str) -> str | None:
     value = data.get(key)
     return None if value is None else str(value)
+
+
+def _parse_publish_config(data: dict[str, Any], source_name: str) -> PublishConfig:
+    group = _required_string(data, "group", source_name)
+    return PublishConfig(
+        group=group,
+        artifact_id=_optional_string(data, "artifact_id"),
+    )
 
 
 def _parse_scripts(data: dict[str, Any], source_name: str) -> ScriptSet:

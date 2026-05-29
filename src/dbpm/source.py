@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import urllib.parse
 import urllib.error
 import urllib.request
@@ -75,15 +76,22 @@ def load_package_source(
     *,
     expected_checksum: str | None = None,
     expected_checksum_alg: str | None = None,
+    expected_signature_url: str | None = None,
 ) -> PackageSource:
     sha256_expected = expected_checksum if expected_checksum_alg == "SHA-256" else None
 
     if raw_path.startswith("gh-maven:"):
-        return _load_github_maven_source(raw_path, expected_checksum=sha256_expected)
+        return _load_github_maven_source(
+            raw_path, expected_checksum=sha256_expected, expected_signature_url=expected_signature_url
+        )
     if raw_path.startswith("maven:"):
-        return _load_maven_source(raw_path, expected_checksum=sha256_expected)
+        return _load_maven_source(
+            raw_path, expected_checksum=sha256_expected, expected_signature_url=expected_signature_url
+        )
     if raw_path.startswith(("http://", "https://")):
-        return _load_url_zip_source(raw_path, expected_checksum=sha256_expected)
+        return _load_url_zip_source(
+            raw_path, expected_checksum=sha256_expected, expected_signature_url=expected_signature_url
+        )
 
     path = Path(raw_path).resolve()
     if path.is_dir():
@@ -157,7 +165,12 @@ def _load_zip_source(path: Path) -> PackageSource:
     )
 
 
-def _load_github_maven_source(raw_source: str, *, expected_checksum: str | None = None) -> PackageSource:
+def _load_github_maven_source(
+    raw_source: str,
+    *,
+    expected_checksum: str | None = None,
+    expected_signature_url: str | None = None,
+) -> PackageSource:
     coordinate = _parse_github_maven_source(raw_source)
     repository_url = f"https://maven.pkg.github.com/{coordinate['owner']}/{coordinate['repo']}/"
     artifact_url = _maven_artifact_url(repository_url, coordinate)
@@ -165,7 +178,7 @@ def _load_github_maven_source(raw_source: str, *, expected_checksum: str | None 
     coord_cache = coord_cache / coordinate["group"].replace(".", "/") / coordinate["artifact"]
     artifact_file_name = Path(urllib.parse.urlparse(artifact_url).path).name
     coord_cache = coord_cache / coordinate["version"] / artifact_file_name
-    zip_path = _resolve_remote_zip(artifact_url, coord_cache, expected_checksum)
+    zip_path = _resolve_remote_zip(artifact_url, coord_cache, expected_checksum, expected_signature_url)
 
     source = _load_zip_source(zip_path)
     return PackageSource(
@@ -182,7 +195,12 @@ def _load_github_maven_source(raw_source: str, *, expected_checksum: str | None 
     )
 
 
-def _load_maven_source(raw_source: str, *, expected_checksum: str | None = None) -> PackageSource:
+def _load_maven_source(
+    raw_source: str,
+    *,
+    expected_checksum: str | None = None,
+    expected_signature_url: str | None = None,
+) -> PackageSource:
     coordinate = _parse_maven_source(raw_source)
     artifact_url = _maven_artifact_url(coordinate["repository_url"], coordinate)
     repository_hash = hashlib.sha256(coordinate["repository_url"].encode("utf-8")).hexdigest()
@@ -190,7 +208,7 @@ def _load_maven_source(raw_source: str, *, expected_checksum: str | None = None)
     coord_cache = coord_cache / coordinate["group"].replace(".", "/") / coordinate["artifact"]
     artifact_file_name = Path(urllib.parse.urlparse(artifact_url).path).name
     coord_cache = coord_cache / coordinate["version"] / artifact_file_name
-    zip_path = _resolve_remote_zip(artifact_url, coord_cache, expected_checksum)
+    zip_path = _resolve_remote_zip(artifact_url, coord_cache, expected_checksum, expected_signature_url)
 
     source = _load_zip_source(zip_path)
     return PackageSource(
@@ -207,13 +225,18 @@ def _load_maven_source(raw_source: str, *, expected_checksum: str | None = None)
     )
 
 
-def _load_url_zip_source(url: str, *, expected_checksum: str | None = None) -> PackageSource:
+def _load_url_zip_source(
+    url: str,
+    *,
+    expected_checksum: str | None = None,
+    expected_signature_url: str | None = None,
+) -> PackageSource:
     artifact_file_name = Path(urllib.parse.urlparse(url).path).name
     if not artifact_file_name.lower().endswith(".zip"):
         raise SourceError(f"URL package sources must reference a ZIP artifact: {url}")
     coord_cache = _artifact_cache_dir() / "url" / hashlib.sha256(url.encode("utf-8")).hexdigest()
     coord_cache = coord_cache / artifact_file_name
-    zip_path = _resolve_remote_zip(url, coord_cache, expected_checksum)
+    zip_path = _resolve_remote_zip(url, coord_cache, expected_checksum, expected_signature_url)
 
     source = _load_zip_source(zip_path)
     return PackageSource(
@@ -528,6 +551,7 @@ def _resolve_remote_zip(
     artifact_url: str,
     coord_cache_path: Path,
     expected_checksum: str | None,
+    expected_signature_url: str | None = None,
 ) -> Path:
     artifact_file_name = coord_cache_path.name
 
@@ -535,6 +559,7 @@ def _resolve_remote_zip(
     if expected_checksum:
         csum_path = _checksum_cache_path(expected_checksum, artifact_file_name)
         if csum_path.exists():
+            _check_or_skip_signature(artifact_url, csum_path, expected_signature_url)
             return csum_path
 
     # Download if not in coordinate cache
@@ -555,8 +580,42 @@ def _resolve_remote_zip(
         if not csum_path.exists():
             csum_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(coord_cache_path, csum_path)
+        _check_or_skip_signature(artifact_url, csum_path, expected_signature_url)
+        return csum_path
 
+    _check_or_skip_signature(artifact_url, coord_cache_path, expected_signature_url)
     return coord_cache_path
+
+
+def _check_or_skip_signature(
+    artifact_url: str,
+    zip_path: Path,
+    expected_signature_url: str | None,
+) -> None:
+    if not expected_signature_url:
+        return
+    asc_cache = zip_path.with_name(zip_path.name + ".asc")
+    if not asc_cache.exists():
+        try:
+            _download(artifact_url + ".asc", asc_cache)
+        except SourceError:
+            raise SourceError(
+                f"Signature required but not found for {zip_path.name}"
+            )
+    _check_gpg_signature(zip_path, asc_cache, zip_path.name)
+
+
+def _check_gpg_signature(artifact_path: Path, asc_path: Path, artifact_file_name: str) -> None:
+    try:
+        result = subprocess.run(
+            ["gpg", "--verify", str(asc_path), str(artifact_path)],
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        raise SourceError("GPG is not installed; cannot verify artifact signature") from exc
+    if result.returncode != 0:
+        raise SourceError(f"GPG signature verification failed for {artifact_file_name}")
 
 
 def _artifact_cache_dir() -> Path:

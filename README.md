@@ -98,6 +98,7 @@ Common variables:
 | [`dbpm reinstall`](docs/commands/reinstall.md) | Destructively reinstall a package |
 | [`dbpm resume`](docs/commands/resume.md) | Resume a running or failed deployment |
 | [`dbpm validate`](docs/commands/validate.md) | Run a package's validation script |
+| [`dbpm publish`](docs/commands/publish.md) | Build and publish a package to a Maven repository with GPG signing |
 
 Run `dbpm <command> --help` for a quick flag reference. See [docs/commands/source-types.md](docs/commands/source-types.md) for the full source and version constraint syntax.
 

@@ -20,3 +20,7 @@ class DependencyError(DbpmError):
 
 class ExecutionError(DbpmError):
     """Raised when a deployment command fails."""
+
+
+class PublishError(DbpmError):
+    """Raised when a package cannot be published."""

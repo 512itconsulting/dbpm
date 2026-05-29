@@ -1269,3 +1269,114 @@ def test_upgrade_chain_executes_steps_in_order(tmp_path: Path, monkeypatch):
     assert cli.main(["upgrade", raw, "--connect", "user/pass@db"]) == 0
 
     assert executed_versions == ["1.1.0", "1.2.0", "1.3.0"]
+
+
+# ---------------------------------------------------------------------------
+# publish
+# ---------------------------------------------------------------------------
+
+
+def _write_publish_package(path: Path) -> None:
+    path.mkdir()
+    (path / "dbpm.yaml").write_text(
+        """
+package:
+  name: demo
+  version: "0.1.0"
+
+publish:
+  group: com.example.database
+  artifact_id: demo
+
+scripts:
+  install: Deployment_Manifests/deploy.sql
+""",
+        encoding="utf-8",
+    )
+
+
+def test_publish_dry_run(tmp_path: Path, capsys, monkeypatch):
+    package = tmp_path / "package"
+    _write_publish_package(package)
+    monkeypatch.setenv("DBPM_CACHE_DIR", str(tmp_path / "cache"))
+
+    ret = cli.main([
+        "publish",
+        str(package),
+        "--target", "gh-maven:acme/myrepo",
+        "--signing-key", "test@example.com",
+        "--dry-run",
+    ])
+
+    assert ret == 0
+    out = capsys.readouterr().out
+    assert "DRY_RUN" in out
+    assert "demo-0.1.0.zip" in out
+    assert "demo-0.1.0.pom" in out
+    assert "gh-maven:acme/myrepo" in out
+
+
+def test_publish_requires_target(tmp_path: Path):
+    package = tmp_path / "package"
+    _write_publish_package(package)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["publish", str(package), "--signing-key", "key"])
+
+    assert exc_info.value.code != 0
+
+
+def test_publish_missing_signing_key_fails(tmp_path: Path, capsys, monkeypatch):
+    package = tmp_path / "package"
+    _write_publish_package(package)
+    monkeypatch.delenv("DBPM_SIGNING_KEY", raising=False)
+    monkeypatch.setenv("DBPM_CACHE_DIR", str(tmp_path / "cache"))
+
+    ret = cli.main(["publish", str(package), "--target", "gh-maven:acme/myrepo"])
+
+    assert ret == 2
+    assert "signing key" in capsys.readouterr().err.lower()
+
+
+def test_publish_no_publish_config_fails(tmp_path: Path, capsys, monkeypatch):
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        "package:\n  name: demo\n  version: '0.1.0'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DBPM_CACHE_DIR", str(tmp_path / "cache"))
+
+    ret = cli.main([
+        "publish",
+        str(package),
+        "--target", "gh-maven:acme/myrepo",
+        "--signing-key", "key",
+    ])
+
+    assert ret == 2
+    err = capsys.readouterr().err
+    assert "publish" in err.lower()
+
+
+def test_publish_group_override(tmp_path: Path, capsys, monkeypatch):
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        "package:\n  name: demo\n  version: '0.1.0'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DBPM_CACHE_DIR", str(tmp_path / "cache"))
+
+    ret = cli.main([
+        "publish",
+        str(package),
+        "--target", "gh-maven:acme/myrepo",
+        "--group", "com.override",
+        "--signing-key", "key",
+        "--dry-run",
+    ])
+
+    assert ret == 0
+    out = capsys.readouterr().out
+    assert "com.override" in out

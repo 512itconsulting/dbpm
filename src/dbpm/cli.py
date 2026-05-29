@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from .chain import ChainError, resolve_upgrade_chain
+from .publisher import PublishReceipt, build_artifact, publish_to_repository, verify_publish
 from .db import check_core, get_application_state, get_deployment_provenance, get_reverse_dependencies
 from .environment import resolve_environment
 from .errors import DbpmError
@@ -34,6 +35,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
+        if args.command == "publish":
+            _run_publish(args)
+            return 0
         if args.command == "plan":
             plan = _build_plan(args.mode, args, include_installed_state=bool(args.connect))
             _print_json(plan)
@@ -99,6 +103,54 @@ def main(argv: list[str] | None = None) -> int:
 
     parser.error("No command selected")
     return 2
+
+
+def _run_publish(args: argparse.Namespace) -> None:
+    from pathlib import Path
+    from .errors import PublishError
+    from .manifest import PublishConfig
+
+    source = load_package_source(args.source)
+    manifest = source.manifest
+
+    publish_config = manifest.publish
+    if args.group or args.artifact_id:
+        group = args.group or (publish_config.group if publish_config else None)
+        if not group:
+            raise DbpmError("--group is required when publish.group is not set in the manifest")
+        artifact_id = args.artifact_id or (publish_config.artifact_id if publish_config else None)
+        publish_config = PublishConfig(group=group, artifact_id=artifact_id)
+    elif publish_config is None:
+        raise DbpmError(
+            "No publish configuration found. Add a publish: section to dbpm.yaml or use --group"
+        )
+
+    if not args.signing_key:
+        raise DbpmError(
+            "A signing key is required. Use --signing-key or set DBPM_SIGNING_KEY"
+        )
+
+    if args.dry_run:
+        artifact_id = publish_config.artifact_id or manifest.name
+        version = manifest.version
+        artifact_name = f"{artifact_id}-{version}.zip"
+        pom_name = f"{artifact_id}-{version}.pom"
+        print(f"DRY_RUN: would publish {artifact_name} to {args.target}")
+        print(f"  artifact: {artifact_name}")
+        print(f"  pom:      {pom_name}")
+        print(f"  checksums: {artifact_name}.sha256, {artifact_name}.sha1")
+        print(f"  signature: {artifact_name}.asc")
+        print(f"  group:     {publish_config.group}")
+        print(f"  artifact_id: {artifact_id}")
+        print(f"  version:   {version}")
+        print(f"  signing_key: {args.signing_key}")
+        return
+
+    source_path = source.path
+    artifact_path = build_artifact(source_path, manifest, publish_config)
+    receipt = publish_to_repository(args.target, manifest, publish_config, artifact_path, args.signing_key)
+    verify_publish(args.target, manifest, publish_config, manifest.version, receipt.checksum)
+    print(f"PUBLISHED={receipt.artifact_url}")
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -174,6 +226,32 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_common_args(validate)
     _add_execution_args(validate)
     _add_dependency_source_args(validate)
+
+    publish = subparsers.add_parser("publish", help="Build and publish a package to a Maven repository")
+    publish.add_argument("source", help="Local package directory or ZIP to publish")
+    publish.add_argument(
+        "--target",
+        required=True,
+        help="Publish target: gh-maven:owner/repo or maven:https://...",
+    )
+    publish.add_argument(
+        "--group",
+        default=None,
+        help="Maven group ID (overrides publish.group in manifest)",
+    )
+    publish.add_argument(
+        "--artifact-id",
+        default=None,
+        dest="artifact_id",
+        help="Maven artifact ID (overrides publish.artifact_id in manifest)",
+    )
+    publish.add_argument(
+        "--signing-key",
+        default=os.environ.get("DBPM_SIGNING_KEY"),
+        dest="signing_key",
+        help="GPG key ID, fingerprint, or email (default: DBPM_SIGNING_KEY)",
+    )
+    publish.add_argument("--dry-run", action="store_true", help="Print what would be published without uploading")
 
     return parser
 
@@ -291,11 +369,21 @@ def _build_plan_from_lockfile(
     lockfile = load_lockfile(lockfile_path)
     root_entry, dep_entries = lockfile_package_sources_with_checksums(lockfile)
 
-    root_uri, root_checksum, root_alg = root_entry
-    root_source = load_package_source(root_uri, expected_checksum=root_checksum, expected_checksum_alg=root_alg)
+    root_uri, root_checksum, root_alg, root_sig_url = root_entry
+    root_source = load_package_source(
+        root_uri,
+        expected_checksum=root_checksum,
+        expected_checksum_alg=root_alg,
+        expected_signature_url=root_sig_url,
+    )
     dep_sources = [
-        load_package_source(uri, expected_checksum=checksum, expected_checksum_alg=alg)
-        for uri, checksum, alg in dep_entries
+        load_package_source(
+            uri,
+            expected_checksum=checksum,
+            expected_checksum_alg=alg,
+            expected_signature_url=sig_url,
+        )
+        for uri, checksum, alg, sig_url in dep_entries
     ]
 
     environment = resolve_environment(args.env)

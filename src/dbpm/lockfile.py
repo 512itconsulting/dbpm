@@ -140,8 +140,8 @@ def deployment_provenance_requests(lockfile: dict[str, object]) -> list[tuple[st
 
 def lockfile_package_sources_with_checksums(
     lockfile: dict[str, object],
-) -> tuple[tuple[str, str | None, str | None], list[tuple[str, str | None, str | None]]]:
-    """Return (root_entry, dep_entries) where each entry is (uri, checksum, checksum_alg)."""
+) -> tuple[tuple[str, str | None, str | None, str | None], list[tuple[str, str | None, str | None, str | None]]]:
+    """Return (root_entry, dep_entries) where each entry is (uri, checksum, checksum_alg, signature_url)."""
     packages_by_app = _locked_packages_by_app(lockfile)
     execution_order = lockfile.get("execution_order", [])
     root_application_name = lockfile.get("root_application_name")
@@ -257,7 +257,7 @@ def _compare_lockfiles(
                 )
         actual_artifact = _dict(actual_package.get("artifact"))
         expected_artifact = _dict(expected_package.get("artifact"))
-        for field in ("uri", "checksum", "checksum_alg", "coordinate"):
+        for field in ("uri", "checksum", "checksum_alg", "signature_url", "coordinate"):
             if actual_artifact.get(field) != expected_artifact.get(field):
                 errors.append(
                     f"{app_name} artifact {field} mismatch: "
@@ -283,7 +283,7 @@ def _package_source_reference(package: dict[str, object]) -> str:
 
 def _package_source_with_checksum(
     package: dict[str, object],
-) -> tuple[str, str | None, str | None]:
+) -> tuple[str, str | None, str | None, str | None]:
     artifact = _dict(package.get("artifact"))
     source = _dict(package.get("source"))
     uri = artifact.get("uri") or source.get("path")
@@ -292,10 +292,12 @@ def _package_source_with_checksum(
         raise LockfileError(f"{app_name} lockfile entry has no usable source URI")
     checksum = artifact.get("checksum")
     checksum_alg = artifact.get("checksum_alg")
+    signature_url = artifact.get("signature_url")
     return (
         uri,
         checksum if isinstance(checksum, str) else None,
         checksum_alg if isinstance(checksum_alg, str) else None,
+        signature_url if isinstance(signature_url, str) else None,
     )
 
 
@@ -326,6 +328,7 @@ def _locked_package(package_plan: dict[str, object]) -> dict[str, object]:
             "uri": payload.get("artifact_uri") or source.get("path"),
             "checksum": payload.get("artifact_checksum"),
             "checksum_alg": payload.get("artifact_checksum_alg"),
+            "signature_url": payload.get("artifact_signature_url"),
             "file_name": payload.get("artifact_file_name"),
             "repository_type": payload.get("artifact_repository_type"),
             "group_id": payload.get("artifact_group_id"),

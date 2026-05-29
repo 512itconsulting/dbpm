@@ -201,10 +201,11 @@ def test_lockfile_package_sources_with_checksums(tmp_path: Path, monkeypatch):
 
     root_entry, dep_entries = lockfile_package_sources_with_checksums(lockfile)
 
-    root_uri, root_checksum, root_alg = root_entry
+    root_uri, root_checksum, root_alg, root_sig_url = root_entry
     assert str(artifact) in root_uri or root_uri == str(artifact)
     assert root_alg == "SHA-256"
     assert root_checksum is not None and len(root_checksum) == 64
+    assert root_sig_url is None
     assert dep_entries == []
 
 
