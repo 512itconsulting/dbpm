@@ -45,6 +45,9 @@ This document tracks what the current dbpm MVP can do and what remains before th
 - Reinstall preflight blocks applications with installed dependents.
 - Local multi-package installs, upgrades, and validations order dependency sources before consumers and fail clearly for missing, mismatched, unsupported, or cyclic dependencies.
 - Lockfile-aware artifact cache: content-addressed by SHA-256, populated on verified download, hit on subsequent lockfile installs without re-download.
+- Tilde range constraint support (`~X.Y.Z`): patch-compatible ranges alongside exact and caret.
+- Stepwise upgrade chain planning: chains through published minor-version milestones when a direct upgrade is not safe; respects `scripts.upgrade_from` constraint in manifests.
+- Major upgrade dependent compatibility check: blocks upgrade to a new major version when installed dependents may have incompatible constraints; `--allow-dependent-break` overrides.
 - Opt-in live database integration test for Core.
 - Unit-test wrapper that unsets live database variables before running pytest.
 - Dev database proof with `utl_interval` install, upgrade, reinstall, and validate.
@@ -67,11 +70,5 @@ dbpm validate
 ## Known Gaps
 
 - Multi-package dependency execution does not yet support reinstall.
-- Dependency resolution supports exact `major.minor.patch` and caret-compatible constraints.
-- Upgrade execution does not yet resolve or run intermediate package versions. Target upgrade scripts must handle the installed-to-target version transition, such as `1.0.0` directly to `1.3.0`.
 - Lockfile database provenance reconciliation requires Core 3.3.0 or newer.
-- Lockfile-driven installs verify artifact checksums and use a content-addressed cache keyed by SHA-256 digest. Non-lockfile installs still use the coordinate-based cache without checksum verification.
-
-## Next Recommended Work
-
-1. Add stepwise upgrade chain planning for ordered version-to-version migrations.
+- Non-lockfile installs use the coordinate-based cache without checksum verification. The lockfile path has full SHA-256 verification; plain installs do not.

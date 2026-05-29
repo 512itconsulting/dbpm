@@ -32,7 +32,6 @@ Define the smallest useful dbpm implementation.
 - lockfile-driven install without restating package sources
 
 ## Deferred
-- stepwise upgrade chain planning for ordered version-to-version migrations
 - package publishing
 - signing
 - APEX integration
@@ -62,7 +61,10 @@ Define the smallest useful dbpm implementation.
 - include artifact checksum in staged Core provenance when deploying ZIP artifacts or local package directories
 - read installed state from Core
 - resolve exact semantic version dependencies
+- resolve tilde-compatible semantic version dependencies, such as `~1.2.0`
 - resolve caret-compatible semantic version dependencies, such as `^1.0.0`
+- chain stepwise upgrades through published minor-version milestones when a direct upgrade requires a version gap
+- block major version upgrades when installed dependents may have incompatible constraints
 - block normal install when the package is already installed
 - upgrade complete installed applications to a higher semantic version
 - upgrade supplied dependency sources only when the dependency is already installed, complete, and lower than the supplied source version
