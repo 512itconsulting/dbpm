@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./scripts/test-unit.sh tests/test_publisher.py tests/test_manifest.py tests/test_cli.py -x -q)",
+      "Bash(./scripts/test-unit.sh -q)"
+    ]
+  }
+}

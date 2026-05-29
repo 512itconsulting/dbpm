@@ -43,3 +43,7 @@ dbpm-env.ps1
 dbpm-env.sh
 setenv.ps1
 setenv.sh
+
+# Claude Code — local overrides and ephemeral planning files.
+.claude/settings.local.json
+.claude/plans/
