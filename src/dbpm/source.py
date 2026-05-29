@@ -594,14 +594,14 @@ def _check_or_skip_signature(
 ) -> None:
     if not expected_signature_url:
         return
-    asc_cache = zip_path.with_name(zip_path.name + ".asc")
-    if not asc_cache.exists():
-        try:
-            _download(expected_signature_url, asc_cache)
-        except SourceError:
-            raise SourceError(
-                f"Signature required but not found for {zip_path.name}"
-            )
+    signature_key = hashlib.sha256(expected_signature_url.encode("utf-8")).hexdigest()
+    asc_cache = zip_path.with_name(f"{zip_path.name}.{signature_key}.asc")
+    try:
+        _download(expected_signature_url, asc_cache)
+    except SourceError:
+        raise SourceError(
+            f"Signature required but not found for {zip_path.name}"
+        )
     _check_gpg_signature(zip_path, asc_cache, zip_path.name)
 
 

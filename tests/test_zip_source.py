@@ -571,3 +571,38 @@ def test_checksum_cache_hit_skips_download(tmp_path: Path, monkeypatch):
     # Second load hits the checksum cache — no download
     load_package_source(coord, expected_checksum=expected, expected_checksum_alg="SHA-256")
     assert len(download_calls) == 1
+
+
+def test_signature_verification_uses_expected_url_even_with_stale_colocated_signature(
+    tmp_path: Path,
+    monkeypatch,
+):
+    from dbpm.source import _check_or_skip_signature
+
+    artifact = tmp_path / "artifact.zip"
+    artifact.write_bytes(b"zip")
+    (tmp_path / "artifact.zip.asc").write_bytes(b"stale signature")
+    signature_url = "https://repo.example.test/signatures/artifact.zip.asc"
+    downloaded: list[str] = []
+    verified: list[Path] = []
+
+    def fake_download(url: str, destination: Path) -> None:
+        downloaded.append(url)
+        destination.write_bytes(b"expected signature")
+
+    def fake_check_gpg_signature(artifact_path: Path, asc_path: Path, artifact_file_name: str) -> None:
+        verified.append(asc_path)
+        assert asc_path.read_bytes() == b"expected signature"
+
+    monkeypatch.setattr("dbpm.source._download", fake_download)
+    monkeypatch.setattr("dbpm.source._check_gpg_signature", fake_check_gpg_signature)
+
+    _check_or_skip_signature(
+        "https://repo.example.test/artifacts/artifact.zip",
+        artifact,
+        signature_url,
+    )
+
+    assert downloaded == [signature_url]
+    assert verified
+    assert verified[0].name != "artifact.zip.asc"
