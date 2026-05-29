@@ -58,7 +58,6 @@ uv run dbpm install --lockfile dbpm-lock.json --env development
 - Install, upgrade, reinstall, resume, and validate workflows
 
 ## Still Planned
-- Roll-forward migrations
 - Package signing
 - APEX integration
 - Rich artifact registry
