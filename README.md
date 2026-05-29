@@ -87,19 +87,19 @@ Common variables:
 
 ## Commands
 
-```text
-dbpm check-core
-dbpm plan
-dbpm lock
-dbpm bootstrap-core
-dbpm install
-dbpm upgrade
-dbpm reinstall
-dbpm resume
-dbpm validate
-```
+| Command | Description |
+|---|---|
+| [`dbpm check-core`](docs/commands/check-core.md) | Verify Core is installed and meets a minimum version |
+| [`dbpm plan`](docs/commands/plan.md) | Generate and print a deployment plan without executing |
+| [`dbpm lock`](docs/commands/lock.md) | Write or verify a dependency lockfile |
+| [`dbpm bootstrap-core`](docs/commands/bootstrap-core.md) | Install Core into an empty schema |
+| [`dbpm install`](docs/commands/install.md) | Install a package not yet registered in Core |
+| [`dbpm upgrade`](docs/commands/upgrade.md) | Upgrade an installed package to a higher version |
+| [`dbpm reinstall`](docs/commands/reinstall.md) | Destructively reinstall a package |
+| [`dbpm resume`](docs/commands/resume.md) | Resume a running or failed deployment |
+| [`dbpm validate`](docs/commands/validate.md) | Run a package's validation script |
 
-Run `dbpm <command> --help` for command-specific options.
+Run `dbpm <command> --help` for a quick flag reference. See [docs/commands/source-types.md](docs/commands/source-types.md) for the full source and version constraint syntax.
 
 During development, examples use `uv run dbpm ...` so uv runs the project console script in the project environment. If the project has already been installed into a virtual environment, the generated console script can also be called directly: `.venv/bin/dbpm` on Linux/macOS or `.\.venv\Scripts\dbpm.exe` on Windows.
 
