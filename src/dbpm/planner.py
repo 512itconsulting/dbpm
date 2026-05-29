@@ -178,7 +178,7 @@ def _post_actions_for_mode(
     installed_state: dict[str, str] | None,
 ) -> list[dict[str, object]]:
     actions: list[dict[str, object]] = []
-    if mode == "bootstrap-core" and _can_record_bootstrap_provenance(manifest):
+    if mode in {"bootstrap-core", "reinstall"} and _can_record_core_post_deploy_provenance(manifest):
         actions.append(
             {
                 "type": "record_deployment_provenance",
@@ -209,7 +209,7 @@ def _can_stage_provenance(
     return _parse_semver(installed_version) >= (3, 2, 0)
 
 
-def _can_record_bootstrap_provenance(manifest: PackageManifest) -> bool:
+def _can_record_core_post_deploy_provenance(manifest: PackageManifest) -> bool:
     return manifest.is_core and _parse_semver(manifest.version) >= (3, 4, 0)
 
 
