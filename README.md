@@ -22,7 +22,7 @@ Maven-compatible repositories may be useful for publishing immutable package art
 - Resolve dependencies automatically
 - Support [semantic versioning](https://semver.org/)
 - Enable repeatable deployments
-- Use Core as the in-database install registry and deployment substrate
+- Use [Core](https://github.com/512itconsulting/core) as the in-database install registry and deployment substrate
 - Support schema evolution
 - Inject deployment provenance from package artifacts
 - Lock deployments to immutable artifact identities
@@ -105,4 +105,4 @@ Run `dbpm <command> --help` for command-specific options.
 During development, examples use `uv run dbpm ...` so uv runs the project console script in the project environment. If the project has already been installed into a virtual environment, the generated console script can also be called directly: `.venv/bin/dbpm` on Linux/macOS or `.\.venv\Scripts\dbpm.exe` on Windows.
 
 ## Related Projects
-- [core](https://github.com/rsantmyer/core)
+- [core](https://github.com/512itconsulting/core)
