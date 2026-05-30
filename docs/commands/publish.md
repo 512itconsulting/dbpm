@@ -31,6 +31,8 @@ dbpm publish source --target TARGET
 
 ## Manifest configuration
 
+`dbpm publish` uses the dbpm package manifest (`dbpm.yaml`, `dbpm.yml`, `dbpm.json`, or `package.dbpm.yaml`) as the publishing source of truth. A checked-in `pom.xml` is not required for dbpm-native publishing.
+
 Add a `publish:` section to `dbpm.yaml` to avoid repeating coordinates on every publish:
 
 ```yaml
@@ -40,6 +42,12 @@ publish:
 ```
 
 `group` is required if the `publish:` section is present and `--group` is not provided on the command line.
+
+## Maven POM files
+
+dbpm generates the uploaded `{artifact_id}-{version}.pom` from the package manifest and publish configuration. Repositories that are published only through `dbpm publish` may remove checked-in `pom.xml` files once no other build, CI, or legacy publishing workflow depends on them.
+
+Checked-in `pom.xml` files are considered optional legacy compatibility. dbpm can still consume older ZIP artifacts that derive package metadata from a `pom.xml`, but new dbpm-native packages should prefer dbpm manifests.
 
 ## Environment variables
 
