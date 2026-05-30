@@ -68,7 +68,7 @@ For a guided setup, see [Getting Started](docs/getting-started.md).
 
 ## Roadmap
 - APEX integration
-- Rich artifact registry
+- [Rich artifact registry](docs/rich-artifact-registry.md)
 
 ## Status
 Live-tested against GitHub Packages artifacts for:
