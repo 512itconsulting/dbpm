@@ -37,6 +37,8 @@ uv run dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.databas
 uv run dbpm install --lockfile dbpm-lock.json --env development
 ```
 
+For a guided setup, see [Getting Started](docs/getting-started.md).
+
 ## Features
 - Package manifests through `dbpm.yaml`, `dbpm.yml`, `dbpm.json`, or `package.dbpm.yaml`
 - Local package directory sources
