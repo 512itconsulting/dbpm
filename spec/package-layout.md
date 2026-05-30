@@ -13,16 +13,29 @@ dbpm packages should support the Oracle-native repository layout already used by
   dbpm.yaml
   README.md
   LICENSE
-  Deployment_Manifests/
-  Packages/
-  Tables/
-  Types/
-  Functions/
-  Procedures/
-  Metadata/
-  Tests/
+  deployment_manifests/
+  packages/
+  tables/
+  types/
+  functions/
+  procedures/
+  metadata/
+  tests/
   docs/
 ```
+
+Directory names should be lower case with underscores where needed. Database object filenames should match the Oracle object name in upper case and use lower-case extensions:
+
+```text
+tables/REGISTRY_PACKAGE.sql
+packages/PKG_REGISTRY_RESOLVE.pks
+packages/PKG_REGISTRY_RESOLVE.pkb
+types/TYP_INTERVAL.tps
+types/TYP_INTERVAL.tpb
+views/REGISTRY_PACKAGE_V.sql
+```
+
+This convention keeps object mapping obvious for database developers while avoiding mixed-case folder drift across operating systems. dbpm should not infer package behavior from these directory names; script entry points remain manifest-declared.
 
 ## Artifact Metadata
 
@@ -62,3 +75,45 @@ When dbpm executes a SQLcl project artifact, it may run a manifest-declared SQLc
 The exact object directories are package-specific. A package does not need every directory listed above, but deployment entry points should be declared in `dbpm.yaml` rather than inferred from directory names alone.
 
 Committed `deploy_wrapper.sql` files may be kept as human convenience entry points, but dbpm should execute the manifest-declared scripts directly so it can inject provenance and enforce deployment policy.
+
+## Future Workspace Support
+
+Some repositories contain multiple related dbpm packages plus non-database code. dbpm should eventually support an explicit workspace file at the repository root:
+
+```text
+/
+  dbpm-workspace.yaml
+  os/
+    src/
+    etc/
+  database/
+    job_control/
+      dbpm.yaml
+      deployment_manifests/
+      tables/
+      packages/
+    replacement_vars/
+      dbpm.yaml
+      deployment_manifests/
+      tables/
+      packages/
+    application_package/
+      dbpm.yaml
+      deployment_manifests/
+      tables/
+      packages/
+      metadata/
+```
+
+A future `dbpm-workspace.yaml` could declare package roots:
+
+```yaml
+packages:
+  - database/job_control
+  - database/replacement_vars
+  - database/application_package
+```
+
+Workspace support should let dbpm plan, lock, validate, and install multiple local packages together while preserving normal package boundaries. Local workspace packages should be usable as dependency sources during development, with lockfiles recording the exact resolved artifact identities for reproducible CI and production deployments.
+
+Workspace support is a future enhancement. The MVP package contract remains a single package root with a `dbpm.yaml` manifest.
