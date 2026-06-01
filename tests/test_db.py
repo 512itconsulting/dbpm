@@ -1,5 +1,6 @@
 from dbpm.db import (
     ApplicationState,
+    SqlResult,
     _application_state_sql,
     _core_check_sql,
     _delete_application_sql,
@@ -12,6 +13,8 @@ from dbpm.db import (
     _record_deployment_provenance_sql,
     _reverse_dependencies_sql,
     _stage_deployment_provenance_sql,
+    get_application_state,
+    get_reverse_dependencies,
 )
 
 
@@ -125,6 +128,19 @@ def test_parse_application_state_not_found():
     assert _parse_application_state("") is None
 
 
+def test_get_application_state_treats_missing_core_registry_as_not_installed(monkeypatch):
+    monkeypatch.setattr(
+        "dbpm.db.run_sql_script",
+        lambda **kwargs: SqlResult(
+            returncode=2,
+            stdout='SQL Error: ORA-00942: table or view "ADMIN"."APPLICATION" does not exist',
+            stderr="",
+        ),
+    )
+
+    assert get_application_state(connect="user/pass@db", runner="sql", application_name="CORE") is None
+
+
 def test_reverse_dependencies_sql_queries_app_dependency():
     sql = _reverse_dependencies_sql("utl_interval")
 
@@ -162,3 +178,16 @@ def test_parse_reverse_dependencies():
     )
 
     assert dependencies == ["JOB_CONTROL", "MY_APP"]
+
+
+def test_get_reverse_dependencies_treats_missing_core_registry_as_empty(monkeypatch):
+    monkeypatch.setattr(
+        "dbpm.db.run_sql_script",
+        lambda **kwargs: SqlResult(
+            returncode=2,
+            stdout='SQL Error: ORA-00942: table or view "ADMIN"."APP_DEPENDENCY" does not exist',
+            stderr="",
+        ),
+    )
+
+    assert get_reverse_dependencies(connect="user/pass@db", runner="sql", application_name="DEMO") == []

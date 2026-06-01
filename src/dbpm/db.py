@@ -146,6 +146,8 @@ def get_application_state(
         label="dbpm-application-state",
     )
     if result.returncode != 0:
+        if _is_missing_core_registry_table(result):
+            return None
         raise ExecutionError(_format_sql_failure(f"Application state query failed for {application_name}", result))
     return _parse_application_state(result.stdout)
 
@@ -163,6 +165,8 @@ def get_reverse_dependencies(
         label="dbpm-reverse-dependencies",
     )
     if result.returncode != 0:
+        if _is_missing_core_registry_table(result):
+            return []
         raise ExecutionError(_format_sql_failure(f"Reverse dependency query failed for {application_name}", result))
     return _parse_reverse_dependencies(result.stdout)
 
@@ -476,6 +480,16 @@ def _parse_semver(value: str) -> tuple[int, int, int]:
 def _format_sql_failure(message: str, result: SqlResult) -> str:
     details = "\n".join(part for part in (result.stdout.strip(), result.stderr.strip()) if part)
     return f"{message} with exit code {result.returncode}" + (f":\n{details}" if details else "")
+
+
+def _is_missing_core_registry_table(result: SqlResult) -> bool:
+    text = f"{result.stdout}\n{result.stderr}".upper()
+    return "ORA-00942" in text and (
+        '"APPLICATION"' in text
+        or " FROM APPLICATION" in text
+        or '"APP_DEPENDENCY"' in text
+        or " FROM APP_DEPENDENCY" in text
+    )
 
 
 def _sql_literal(value: str) -> str:
