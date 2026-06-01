@@ -76,9 +76,9 @@ The exact object directories are package-specific. A package does not need every
 
 Committed `deploy_wrapper.sql` files may be kept as human convenience entry points, but dbpm should execute the manifest-declared scripts directly so it can inject provenance and enforce deployment policy.
 
-## Future Workspace Support
+## Workspace Support
 
-Some repositories contain multiple related dbpm packages plus non-database code. dbpm should eventually support an explicit workspace file at the repository root:
+Some repositories contain multiple related dbpm packages plus non-database code. dbpm supports an explicit workspace file at the repository root:
 
 ```text
 /
@@ -105,15 +105,18 @@ Some repositories contain multiple related dbpm packages plus non-database code.
       metadata/
 ```
 
-A future `dbpm-workspace.yaml` could declare package roots:
+`dbpm-workspace.yaml` declares package roots:
 
 ```yaml
-packages:
-  - database/job_control
-  - database/replacement_vars
-  - database/application_package
+workspace:
+  packages:
+    - database/job_control
+    - database/replacement_vars
+    - database/application_package
 ```
 
-Workspace support should let dbpm plan, lock, validate, and install multiple local packages together while preserving normal package boundaries. Local workspace packages should be usable as dependency sources during development, with lockfiles recording the exact resolved artifact identities for reproducible CI and production deployments.
+Each listed package root still contains its own package manifest, such as `dbpm.yaml`. Workspace support helps dbpm discover and select a package root; it does not replace package manifests or infer package behavior from folder names.
 
-Workspace support is a future enhancement. The MVP package contract remains a single package root with a `dbpm.yaml` manifest.
+Commands can select a package from a workspace root with `--package`, and `dbpm workspace list` shows the package names, application names, versions, and paths declared by the workspace. Local workspace packages may be used as dependency sources during development, with lockfiles recording the exact resolved artifact identities for reproducible CI and production deployments.
+
+The single package-root contract remains valid: invoking dbpm directly against a directory with a package manifest behaves as it did before workspace support.

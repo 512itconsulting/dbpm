@@ -22,6 +22,7 @@ dbpm install --lockfile [PATH] [--env ENV] [--approve] [--dry-run]
 | `--env` | `development` | Target environment name. |
 | `--approve` | false | Approve policy-gated actions. |
 | `--dry-run` | false | Print the deployment plan as JSON without executing. |
+| `--package` | none | Package name or application name to select when `source` is a workspace root. |
 | `--dependency-source` | none | Additional source that may satisfy a dependency declared in the manifest. Repeatable. Cannot be combined with `--lockfile`. |
 | `--registry-url` | `DBPM_REGISTRY_URL` or `https://dbpm.io` | Registry base URL for `registry:` sources. |
 | `--lockfile` | `dbpm-lock.json` | Install from a resolved lockfile. If the flag is given without a value, defaults to `dbpm-lock.json`. Cannot be combined with `source` or `--dependency-source`. |
@@ -39,6 +40,8 @@ dbpm fails before running any deployment script if:
 - A declared dependency version cannot be satisfied by the provided source.
 
 For `registry:` root sources, dbpm automatically resolves missing manifest dependencies from the same registry unless an explicit `--dependency-source` already satisfies them.
+
+For workspace roots, dbpm selects the requested package root with `--package`. Sibling workspace packages may satisfy local development dependencies automatically, while explicit `--dependency-source` values take precedence.
 
 ## Lockfile installs
 
@@ -75,6 +78,11 @@ dbpm install \
 Install from the dbpm registry:
 ```sh
 dbpm install registry:simple_scheduler@^1.1.0 --connect user/pass@db
+```
+
+Install a package from a workspace root:
+```sh
+dbpm install ~/repos/my_workspace --package simple_scheduler --connect user/pass@db
 ```
 
 Install from a lockfile:

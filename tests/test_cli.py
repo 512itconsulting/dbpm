@@ -26,6 +26,45 @@ scripts:
     )
 
 
+def _write_workspace_package(
+    path: Path,
+    name: str,
+    version: str = "0.1.0",
+    *,
+    dependencies: str = "",
+    publish: str = "",
+) -> None:
+    path.mkdir(parents=True)
+    (path / "dbpm.yaml").write_text(
+        f"""
+package:
+  name: {name}
+  version: "{version}"
+
+{dependencies}
+{publish}
+scripts:
+  install: deploy.sql
+  validate: validate.sql
+""",
+        encoding="utf-8",
+    )
+    (path / "deploy.sql").write_text("PROMPT deploy\n", encoding="utf-8")
+    (path / "validate.sql").write_text("PROMPT validate\n", encoding="utf-8")
+
+
+def _write_workspace_manifest(path: Path, package_paths: list[str]) -> None:
+    entries = "\n".join(f"    - {item}" for item in package_paths)
+    (path / "dbpm-workspace.yaml").write_text(
+        f"""
+workspace:
+  packages:
+{entries}
+""",
+        encoding="utf-8",
+    )
+
+
 def _write_registry_zip(
     path: Path,
     name: str,
@@ -150,6 +189,154 @@ scripts:
     assert cli.main(["plan", str(consumer)]) == 2
 
     assert "Missing dependency source for CONSUMER: DEMO 0.1.0" in capsys.readouterr().err
+
+
+def test_workspace_list_prints_package_summaries(tmp_path: Path, capsys):
+    _write_workspace_package(tmp_path / "database" / "utl_interval", "utl_interval", "1.0.0")
+    _write_workspace_package(tmp_path / "database" / "simple_scheduler", "simple_scheduler", "1.1.0")
+    _write_workspace_manifest(
+        tmp_path,
+        ["database/utl_interval", "database/simple_scheduler"],
+    )
+
+    assert cli.main(["workspace", "list", str(tmp_path)]) == 0
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["workspace_root"] == str(tmp_path)
+    assert [package["name"] for package in output["packages"]] == [
+        "utl_interval",
+        "simple_scheduler",
+    ]
+
+
+def test_plan_workspace_root_selects_package(tmp_path: Path, capsys):
+    _write_workspace_package(tmp_path / "database" / "utl_interval", "utl_interval", "1.0.0")
+    _write_workspace_package(tmp_path / "database" / "simple_scheduler", "simple_scheduler", "1.1.0")
+    _write_workspace_manifest(
+        tmp_path,
+        ["database/utl_interval", "database/simple_scheduler"],
+    )
+
+    assert cli.main(["plan", str(tmp_path), "--package", "simple_scheduler"]) == 0
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["schema_version"] == "dbpm.plan.v0"
+    assert output["package"]["application_name"] == "SIMPLE_SCHEDULER"
+    assert output["source"]["path"].endswith("database/simple_scheduler")
+
+
+def test_plan_workspace_root_without_package_fails_when_ambiguous(tmp_path: Path, capsys):
+    _write_workspace_package(tmp_path / "database" / "utl_interval", "utl_interval", "1.0.0")
+    _write_workspace_package(tmp_path / "database" / "simple_scheduler", "simple_scheduler", "1.1.0")
+    _write_workspace_manifest(
+        tmp_path,
+        ["database/utl_interval", "database/simple_scheduler"],
+    )
+
+    assert cli.main(["plan", str(tmp_path)]) == 2
+
+    assert "Workspace contains multiple packages" in capsys.readouterr().err
+
+
+def test_plan_workspace_root_auto_uses_sibling_dependency(tmp_path: Path, capsys):
+    _write_workspace_package(tmp_path / "database" / "utl_interval", "utl_interval", "1.0.0")
+    _write_workspace_package(
+        tmp_path / "database" / "simple_scheduler",
+        "simple_scheduler",
+        "1.1.0",
+        dependencies="""
+dependencies:
+  - name: utl_interval
+    version: "1.0.0"
+""",
+    )
+    _write_workspace_manifest(
+        tmp_path,
+        ["database/utl_interval", "database/simple_scheduler"],
+    )
+
+    assert cli.main(["plan", str(tmp_path), "--package", "simple_scheduler"]) == 0
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["schema_version"] == "dbpm.multi-plan.v0"
+    assert output["execution_order"] == ["UTL_INTERVAL", "SIMPLE_SCHEDULER"]
+
+
+def test_explicit_dependency_source_overrides_workspace_sibling(tmp_path: Path, capsys):
+    explicit = tmp_path / "explicit_interval"
+    _write_workspace_package(tmp_path / "database" / "utl_interval", "utl_interval", "1.0.0")
+    _write_workspace_package(
+        tmp_path / "database" / "simple_scheduler",
+        "simple_scheduler",
+        "1.1.0",
+        dependencies="""
+dependencies:
+  - name: utl_interval
+    version: "2.0.0"
+""",
+    )
+    _write_workspace_package(explicit, "utl_interval", "2.0.0")
+    _write_workspace_manifest(
+        tmp_path,
+        ["database/utl_interval", "database/simple_scheduler"],
+    )
+
+    assert (
+        cli.main(
+            [
+                "plan",
+                str(tmp_path),
+                "--package",
+                "simple_scheduler",
+                "--dependency-source",
+                str(explicit),
+            ]
+        )
+        == 0
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["execution_order"] == ["UTL_INTERVAL", "SIMPLE_SCHEDULER"]
+    dep_plan = output["packages"][0]
+    assert dep_plan["package"]["version"] == "2.0.0"
+
+
+def test_publish_workspace_root_dry_run_selects_package(tmp_path: Path, capsys):
+    _write_workspace_package(
+        tmp_path / "database" / "utl_interval",
+        "utl_interval",
+        "1.0.0",
+        publish="""
+publish:
+  group: com.example.database
+""",
+    )
+    _write_workspace_package(tmp_path / "database" / "simple_scheduler", "simple_scheduler", "1.1.0")
+    _write_workspace_manifest(
+        tmp_path,
+        ["database/utl_interval", "database/simple_scheduler"],
+    )
+
+    assert (
+        cli.main(
+            [
+                "publish",
+                str(tmp_path),
+                "--package",
+                "utl_interval",
+                "--target",
+                "maven:https://repo.example.test/releases",
+                "--signing-key",
+                "signing@example.test",
+                "--dry-run",
+            ]
+        )
+        == 0
+    )
+
+    output = capsys.readouterr().out
+    assert "DRY_RUN: would publish utl_interval-1.0.0.zip" in output
+    assert "group:     com.example.database" in output
 
 
 def test_plan_registry_source_auto_resolves_dependencies(tmp_path: Path, monkeypatch, capsys):

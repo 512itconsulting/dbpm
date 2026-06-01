@@ -19,6 +19,7 @@ dbpm plan source [--mode MODE] [--env ENV] [--approve]
 | `--mode` | `install` | Deployment mode to plan. One of: `bootstrap-core`, `install`, `upgrade`, `reinstall`, `resume`, `validate`. |
 | `--env` | `development` | Target environment name. |
 | `--approve` | false | Approve policy-gated actions. |
+| `--package` | none | Package name or application name to select when `source` is a workspace root. |
 | `--dependency-source` | none | Additional source that may satisfy a dependency declared in the manifest. Repeatable. |
 | `--registry-url` | `DBPM_REGISTRY_URL` or `https://dbpm.io` | Registry base URL for `registry:` sources. |
 | `--connect` | `DBPM_CONNECT` | Connect string. When provided, the plan includes the currently installed state from Core. |
@@ -54,6 +55,11 @@ dbpm plan gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simpl
 Plan from the dbpm registry:
 ```sh
 dbpm plan registry:simple_scheduler@^1.1.0 --registry-url https://dbpm.io
+```
+
+Plan a package from a workspace root:
+```sh
+dbpm plan ~/repos/my_workspace --package simple_scheduler
 ```
 
 Plan a local package:

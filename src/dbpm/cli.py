@@ -29,6 +29,12 @@ from .planner import create_plan
 from .provenance import resolve_provenance
 from .resolver import create_multi_package_plan
 from .source import load_package_source
+from .workspace import (
+    is_workspace_root,
+    load_workspace,
+    select_workspace_package,
+    workspace_dependency_sources,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -38,6 +44,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "publish":
             _run_publish(args)
+            return 0
+        if args.command == "workspace":
+            _run_workspace(args)
             return 0
         if args.command == "plan":
             plan = _build_plan(args.mode, args, include_installed_state=bool(args.connect))
@@ -87,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.command == "install" and args.lockfile:
                 plan = _build_plan_from_lockfile(args, include_installed_state=not args.dry_run)
             else:
-                if args.command == "install" and args.source is None:
+                if args.command == "install" and args.source is None and not getattr(args, "package", None):
                     raise DbpmError("install requires a source or --lockfile")
                 include_installed = not args.dry_run or (
                     args.command == "upgrade" and bool(args.connect)
@@ -111,7 +120,8 @@ def _run_publish(args: argparse.Namespace) -> None:
     from .errors import PublishError
     from .manifest import PublishConfig
 
-    source = load_package_source(args.source)
+    source_arg, _, _ = _resolve_workspace_source_arg(args.source, args)
+    source = load_package_source(source_arg)
     manifest = source.manifest
 
     publish_config = manifest.publish
@@ -152,6 +162,14 @@ def _run_publish(args: argparse.Namespace) -> None:
     receipt = publish_to_repository(args.target, manifest, publish_config, artifact_path, args.signing_key)
     verify_publish(args.target, manifest, publish_config, manifest.version, receipt.checksum)
     print(f"PUBLISHED={receipt.artifact_url}")
+
+
+def _run_workspace(args: argparse.Namespace) -> None:
+    if args.workspace_command == "list":
+        workspace = load_workspace(args.workspace)
+        _print_json(workspace.as_dict())
+        return
+    raise DbpmError("Unknown workspace command")
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -234,8 +252,23 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_execution_args(validate)
     _add_dependency_source_args(validate)
 
+    workspace = subparsers.add_parser("workspace", help="Inspect a dbpm workspace")
+    workspace_subparsers = workspace.add_subparsers(dest="workspace_command", required=True)
+    workspace_list = workspace_subparsers.add_parser("list", help="List packages in a dbpm workspace")
+    workspace_list.add_argument(
+        "workspace",
+        nargs="?",
+        default=".",
+        help="Workspace root or dbpm-workspace.yaml path, default: current directory",
+    )
+
     publish = subparsers.add_parser("publish", help="Build and publish a package to a Maven repository")
     publish.add_argument("source", help="Local package directory or ZIP to publish")
+    publish.add_argument(
+        "--package",
+        dest="package",
+        help="Package name or application name to select when source is a workspace root",
+    )
     publish.add_argument(
         "--target",
         required=True,
@@ -270,6 +303,11 @@ def _add_common_args(parser: argparse.ArgumentParser, *, source_required: bool =
         parser.add_argument("source", nargs="?", help="Package source: local directory, ZIP, URL, Maven coordinate, or registry source")
     parser.add_argument("--env", default="development", help="Target environment name")
     parser.add_argument("--approve", action="store_true", help="Approve policy-gated actions")
+    parser.add_argument(
+        "--package",
+        dest="package",
+        help="Package name or application name to select when source is a workspace root",
+    )
     parser.add_argument(
         "--registry-url",
         default=None,
@@ -310,10 +348,18 @@ def _build_plan(
     *,
     include_installed_state: bool = False,
 ) -> dict[str, object]:
-    source = load_package_source(args.source, registry_url=getattr(args, "registry_url", None))
+    source_arg, workspace, selected_workspace_package = _resolve_workspace_source_arg(args.source, args)
+    source = load_package_source(source_arg, registry_url=getattr(args, "registry_url", None))
+    explicit_dependency_sources = list(getattr(args, "dependency_source", []))
+    workspace_sources = workspace_dependency_sources(
+        workspace,
+        selected_workspace_package,
+        explicit_dependency_sources,
+    )
+    dependency_source_args = [*workspace_sources, *explicit_dependency_sources]
     dependency_sources = [
         load_package_source(raw_path, registry_url=getattr(args, "registry_url", None))
-        for raw_path in getattr(args, "dependency_source", [])
+        for raw_path in dependency_source_args
     ]
     provenance = resolve_provenance(source)
     environment = resolve_environment(args.env)
@@ -354,7 +400,7 @@ def _build_plan(
     if mode == "upgrade" and installed_state is not None:
         installed_version = installed_state.get("version")
         if isinstance(installed_version, str):
-            chain = resolve_upgrade_chain(source, args.source, installed_version)
+            chain = resolve_upgrade_chain(source, source_arg, installed_version)
             if len(chain) > 1:
                 return _build_chain_plan(chain, args, installed_version, environment, allow_destructive)
 
@@ -369,6 +415,35 @@ def _build_plan(
         confirm_delete_system=confirm_delete_system,
         approve=args.approve,
     )
+
+
+def _resolve_workspace_source_arg(
+    raw_source: str | None,
+    args: argparse.Namespace,
+) -> tuple[str, object | None, object | None]:
+    selector = getattr(args, "package", None)
+    source_text = raw_source
+    if source_text is None and selector:
+        source_text = "."
+    if source_text is None:
+        raise DbpmError("Source is required")
+
+    if _is_remote_or_coordinate_source(source_text):
+        return source_text, None, None
+
+    source_path = Path(source_text).expanduser()
+    if not source_path.exists():
+        return source_text, None, None
+    source_path = source_path.resolve()
+    if is_workspace_root(source_path):
+        workspace = load_workspace(source_path)
+        selected = select_workspace_package(workspace, selector)
+        return str(selected.path), workspace, selected
+    return source_text, None, None
+
+
+def _is_remote_or_coordinate_source(value: str) -> bool:
+    return value.startswith(("registry:", "gh-maven:", "maven:", "http://", "https://"))
 
 
 def _build_plan_from_lockfile(

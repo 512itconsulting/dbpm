@@ -6,6 +6,7 @@ Build a ZIP artifact from a local package directory and publish it to a Maven-co
 
 ```
 dbpm publish source --target TARGET
+             [--package NAME]
              [--group GROUP] [--artifact-id ID]
              [--signing-key KEY]
              [--dry-run]
@@ -17,6 +18,7 @@ dbpm publish source --target TARGET
 |---|---|---|
 | `source` | required | Local package directory or ZIP to publish. |
 | `--target` | required | Repository to publish to. See [target formats](#target-formats). |
+| `--package` | none | Package name or application name to select when `source` is a workspace root. |
 | `--group` | `publish.group` in manifest | Maven group ID. Overrides the `publish:` section of `dbpm.yaml`. |
 | `--artifact-id` | `publish.artifact_id` or package name | Maven artifact ID. Overrides the `publish:` section of `dbpm.yaml`. |
 | `--signing-key` | `DBPM_SIGNING_KEY` | GPG key ID, fingerprint, or email used to sign the artifact. Required. |
@@ -108,5 +110,11 @@ dbpm publish ~/repos/utl_interval \
 dbpm publish ~/repos/utl_interval \
   --target maven:https://repo.example.com/maven2 \
   --group com.example.database \
+  --signing-key $DBPM_SIGNING_KEY
+
+# Publish a package selected from a workspace root
+dbpm publish ~/repos/my_workspace \
+  --package utl_interval \
+  --target gh-maven:512itconsulting/utl_interval \
   --signing-key $DBPM_SIGNING_KEY
 ```

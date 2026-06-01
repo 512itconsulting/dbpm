@@ -41,6 +41,7 @@ For a guided setup, see [Getting Started](docs/getting-started.md).
 
 ## Features
 - Package manifests through `dbpm.yaml`, `dbpm.yml`, `dbpm.json`, or `package.dbpm.yaml`
+- Workspace manifests through `dbpm-workspace.yaml` for repositories with multiple package roots
 - Local package directory sources
 - Local ZIP package sources
 - GitHub Maven ZIP package sources with `gh-maven:owner/repo:group:artifact:version[:extension]`
@@ -108,6 +109,7 @@ Common variables:
 | [`dbpm resume`](docs/commands/resume.md) | Resume a running or failed deployment |
 | [`dbpm validate`](docs/commands/validate.md) | Run a package's validation script |
 | [`dbpm publish`](docs/commands/publish.md) | Build and publish a package to a Maven repository with GPG signing |
+| [`dbpm workspace list`](docs/commands/workspace.md) | List packages declared by a workspace manifest |
 
 Run `dbpm <command> --help` for a quick flag reference. See [docs/commands/source-types.md](docs/commands/source-types.md) for the full source and version constraint syntax.
 

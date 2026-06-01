@@ -2,6 +2,29 @@
 
 All commands that accept a `source` argument support the following source forms.
 
+## Workspace root
+
+```
+/path/to/repo --package package_name
+```
+
+A directory containing `dbpm-workspace.yaml` may be used as a source when paired with `--package`. The workspace manifest selects a package root, and dbpm then treats that package root like an ordinary local directory source.
+
+Example workspace manifest:
+```yaml
+workspace:
+  packages:
+    - database/utl_interval
+    - database/simple_scheduler
+```
+
+Example command:
+```sh
+dbpm plan /path/to/repo --package simple_scheduler
+```
+
+When a selected workspace package has dependencies, sibling workspace packages may satisfy them automatically. Explicit `--dependency-source` values take precedence.
+
 ## Local directory
 
 ```

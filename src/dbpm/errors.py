@@ -24,3 +24,7 @@ class ExecutionError(DbpmError):
 
 class PublishError(DbpmError):
     """Raised when a package cannot be published."""
+
+
+class WorkspaceError(DbpmError):
+    """Raised when a dbpm workspace cannot be read or selected."""
