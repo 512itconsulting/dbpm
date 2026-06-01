@@ -17,6 +17,7 @@ from xml.etree import ElementTree
 
 from .errors import SourceError
 from .manifest import MANIFEST_NAMES, PackageManifest, parse_manifest
+from .registry import RegistryResolution, resolve_registry_source
 
 
 TREE_CHECKSUM_ALG = "TREE-SHA-256"
@@ -50,6 +51,12 @@ class PackageSource:
     artifact_checksum_alg: str | None = None
     artifact_uri: str | None = None
     work_path: Path | None = None
+    artifact_signature_url: str | None = None
+    publisher_key_fingerprint: str | None = None
+    registry_url: str | None = None
+    registry_package: str | None = None
+    registry_constraint: str | None = None
+    warnings: list[dict[str, object]] | None = None
 
     @property
     def display_path(self) -> str:
@@ -77,20 +84,33 @@ def load_package_source(
     expected_checksum: str | None = None,
     expected_checksum_alg: str | None = None,
     expected_signature_url: str | None = None,
+    expected_publisher_key_fingerprint: str | None = None,
+    registry_url: str | None = None,
 ) -> PackageSource:
     sha256_expected = expected_checksum if expected_checksum_alg == "SHA-256" else None
 
+    if raw_path.startswith("registry:"):
+        return _load_registry_source(raw_path, registry_url=registry_url)
     if raw_path.startswith("gh-maven:"):
         return _load_github_maven_source(
-            raw_path, expected_checksum=sha256_expected, expected_signature_url=expected_signature_url
+            raw_path,
+            expected_checksum=sha256_expected,
+            expected_signature_url=expected_signature_url,
+            expected_publisher_key_fingerprint=expected_publisher_key_fingerprint,
         )
     if raw_path.startswith("maven:"):
         return _load_maven_source(
-            raw_path, expected_checksum=sha256_expected, expected_signature_url=expected_signature_url
+            raw_path,
+            expected_checksum=sha256_expected,
+            expected_signature_url=expected_signature_url,
+            expected_publisher_key_fingerprint=expected_publisher_key_fingerprint,
         )
     if raw_path.startswith(("http://", "https://")):
         return _load_url_zip_source(
-            raw_path, expected_checksum=sha256_expected, expected_signature_url=expected_signature_url
+            raw_path,
+            expected_checksum=sha256_expected,
+            expected_signature_url=expected_signature_url,
+            expected_publisher_key_fingerprint=expected_publisher_key_fingerprint,
         )
 
     path = Path(raw_path).resolve()
@@ -170,6 +190,7 @@ def _load_github_maven_source(
     *,
     expected_checksum: str | None = None,
     expected_signature_url: str | None = None,
+    expected_publisher_key_fingerprint: str | None = None,
 ) -> PackageSource:
     coordinate = _parse_github_maven_source(raw_source)
     repository_url = f"https://maven.pkg.github.com/{coordinate['owner']}/{coordinate['repo']}/"
@@ -192,6 +213,8 @@ def _load_github_maven_source(
         artifact_checksum_alg=source.artifact_checksum_alg,
         artifact_uri=artifact_url,
         work_path=source.work_path,
+        artifact_signature_url=expected_signature_url,
+        publisher_key_fingerprint=expected_publisher_key_fingerprint,
     )
 
 
@@ -200,6 +223,7 @@ def _load_maven_source(
     *,
     expected_checksum: str | None = None,
     expected_signature_url: str | None = None,
+    expected_publisher_key_fingerprint: str | None = None,
 ) -> PackageSource:
     coordinate = _parse_maven_source(raw_source)
     artifact_url = _maven_artifact_url(coordinate["repository_url"], coordinate)
@@ -222,6 +246,8 @@ def _load_maven_source(
         artifact_checksum_alg=source.artifact_checksum_alg,
         artifact_uri=artifact_url,
         work_path=source.work_path,
+        artifact_signature_url=expected_signature_url,
+        publisher_key_fingerprint=expected_publisher_key_fingerprint,
     )
 
 
@@ -230,6 +256,7 @@ def _load_url_zip_source(
     *,
     expected_checksum: str | None = None,
     expected_signature_url: str | None = None,
+    expected_publisher_key_fingerprint: str | None = None,
 ) -> PackageSource:
     artifact_file_name = Path(urllib.parse.urlparse(url).path).name
     if not artifact_file_name.lower().endswith(".zip"):
@@ -250,6 +277,45 @@ def _load_url_zip_source(
         artifact_checksum_alg=source.artifact_checksum_alg,
         artifact_uri=url,
         work_path=source.work_path,
+        artifact_signature_url=expected_signature_url,
+        publisher_key_fingerprint=expected_publisher_key_fingerprint,
+    )
+
+
+def _load_registry_source(raw_source: str, *, registry_url: str | None = None) -> PackageSource:
+    resolution = resolve_registry_source(raw_source, registry_url=registry_url)
+    source = _load_url_zip_source(
+        resolution.artifact_url,
+        expected_checksum=resolution.artifact_checksum,
+        expected_signature_url=resolution.artifact_signature_url,
+        expected_publisher_key_fingerprint=resolution.publisher_key_fingerprint,
+    )
+    registry_source = resolution.source
+    return _with_registry_metadata(source, resolution, registry_source.package if registry_source else None)
+
+
+def _with_registry_metadata(
+    source: PackageSource,
+    resolution: RegistryResolution,
+    registry_package: str | None,
+) -> PackageSource:
+    return PackageSource(
+        path=source.path,
+        source_type=source.source_type,
+        root=source.root,
+        manifest_name=source.manifest_name,
+        manifest=source.manifest,
+        metadata=source.metadata,
+        artifact_checksum=source.artifact_checksum,
+        artifact_checksum_alg=source.artifact_checksum_alg,
+        artifact_uri=source.artifact_uri,
+        work_path=source.work_path,
+        artifact_signature_url=resolution.artifact_signature_url,
+        publisher_key_fingerprint=resolution.publisher_key_fingerprint,
+        registry_url=resolution.registry_url,
+        registry_package=registry_package or resolution.package,
+        registry_constraint=resolution.source.constraint if resolution.source else None,
+        warnings=resolution.warnings,
     )
 
 

@@ -45,6 +45,7 @@ For a guided setup, see [Getting Started](docs/getting-started.md).
 - Local ZIP package sources
 - GitHub Maven ZIP package sources with `gh-maven:owner/repo:group:artifact:version[:extension]`
 - Generic Maven ZIP package sources with `maven:repository-url::group:artifact:version[:extension]`
+- dbpm registry sources with `registry:package@constraint`
 - HTTPS ZIP artifact sources for lockfile installs
 - Maven snapshot ZIP resolution through `maven-metadata.xml`
 - SHA-256 checksum capture for ZIP artifacts and deterministic TREE-SHA-256 capture for local directories

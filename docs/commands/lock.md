@@ -7,6 +7,7 @@ Write a dependency lockfile for a resolved install plan, or verify that an exist
 ```
 dbpm lock source [--env ENV] [--approve]
                [--dependency-source SOURCE]...
+               [--registry-url URL]
                [--output PATH]
                [--check] [--check-db]
                [--connect STRING] [--runner EXEC]
@@ -20,6 +21,7 @@ dbpm lock source [--env ENV] [--approve]
 | `--env` | `development` | Target environment name. |
 | `--approve` | false | Approve policy-gated actions. |
 | `--dependency-source` | none | Additional source that may satisfy a dependency declared in the manifest. Repeatable. |
+| `--registry-url` | `DBPM_REGISTRY_URL` or `https://dbpm.io` | Registry base URL for `registry:` sources. |
 | `--output` | `dbpm-lock.json` | Path to write the lockfile. |
 | `--check` | false | Verify the existing lockfile matches the current source resolution instead of writing a new one. |
 | `--check-db` | false | With `--check`: also verify that installed database versions and Core provenance rows match the lockfile. Requires `--connect`. |
@@ -47,6 +49,7 @@ For each package in the dependency graph:
 - Package name, application name, and version
 - Artifact URI (Maven URL or local path)
 - SHA-256 checksum of the artifact
+- Detached signature URL and publisher key fingerprint when supplied by a registry or lockfile
 - Full provenance metadata (source commit, build ID, artifact coordinates)
 - Dependency declarations
 
@@ -58,6 +61,11 @@ Write a lockfile:
 ```sh
 dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 \
   --dependency-source gh-maven:512itconsulting/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
+```
+
+Write a lockfile from the dbpm registry:
+```sh
+dbpm lock registry:simple_scheduler@^1.1.0 --registry-url https://dbpm.io
 ```
 
 Verify the lockfile matches the current resolution (CI use):

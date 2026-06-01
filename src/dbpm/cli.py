@@ -265,11 +265,16 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _add_common_args(parser: argparse.ArgumentParser, *, source_required: bool = True) -> None:
     if source_required:
-        parser.add_argument("source", help="Package source: local directory, ZIP, URL, or Maven coordinate")
+        parser.add_argument("source", help="Package source: local directory, ZIP, URL, Maven coordinate, or registry source")
     else:
-        parser.add_argument("source", nargs="?", help="Package source: local directory, ZIP, URL, or Maven coordinate")
+        parser.add_argument("source", nargs="?", help="Package source: local directory, ZIP, URL, Maven coordinate, or registry source")
     parser.add_argument("--env", default="development", help="Target environment name")
     parser.add_argument("--approve", action="store_true", help="Approve policy-gated actions")
+    parser.add_argument(
+        "--registry-url",
+        default=None,
+        help="Registry base URL for registry: sources, default: DBPM_REGISTRY_URL or https://dbpm.io",
+    )
 
 
 def _add_execution_args(parser: argparse.ArgumentParser) -> None:
@@ -282,7 +287,7 @@ def _add_dependency_source_args(parser: argparse.ArgumentParser) -> None:
         "--dependency-source",
         action="append",
         default=[],
-        help="Local package directory or ZIP that may satisfy a manifest dependency",
+        help="Package source that may satisfy a manifest dependency",
     )
 
 
@@ -305,9 +310,9 @@ def _build_plan(
     *,
     include_installed_state: bool = False,
 ) -> dict[str, object]:
-    source = load_package_source(args.source)
+    source = load_package_source(args.source, registry_url=getattr(args, "registry_url", None))
     dependency_sources = [
-        load_package_source(raw_path)
+        load_package_source(raw_path, registry_url=getattr(args, "registry_url", None))
         for raw_path in getattr(args, "dependency_source", [])
     ]
     provenance = resolve_provenance(source)
@@ -378,12 +383,13 @@ def _build_plan_from_lockfile(
     lockfile = load_lockfile(lockfile_path)
     root_entry, dep_entries = lockfile_package_sources_with_checksums(lockfile)
 
-    root_uri, root_checksum, root_alg, root_sig_url = root_entry
+    root_uri, root_checksum, root_alg, root_sig_url, root_publisher_key = root_entry
     root_source = load_package_source(
         root_uri,
         expected_checksum=root_checksum,
         expected_checksum_alg=root_alg,
         expected_signature_url=root_sig_url,
+        expected_publisher_key_fingerprint=root_publisher_key,
     )
     dep_sources = [
         load_package_source(
@@ -391,8 +397,9 @@ def _build_plan_from_lockfile(
             expected_checksum=checksum,
             expected_checksum_alg=alg,
             expected_signature_url=sig_url,
+            expected_publisher_key_fingerprint=publisher_key,
         )
-        for uri, checksum, alg, sig_url in dep_entries
+        for uri, checksum, alg, sig_url, publisher_key in dep_entries
     ]
 
     environment = resolve_environment(args.env)

@@ -1,10 +1,13 @@
 import json
+import hashlib
 from pathlib import Path
+from zipfile import ZipFile
 
 import pytest
 
 from dbpm import cli
 from dbpm.db import ApplicationState, SqlResult
+from dbpm.registry import RegistryResolution, RegistrySource
 
 
 def _write_package(path: Path) -> None:
@@ -23,8 +26,56 @@ scripts:
     )
 
 
+def _write_registry_zip(
+    path: Path,
+    name: str,
+    version: str,
+    *,
+    dependencies: str = "",
+) -> None:
+    with ZipFile(path, "w") as archive:
+        archive.writestr(
+            f"{name}/dbpm.yaml",
+            f"""
+package:
+  name: {name}
+  version: "{version}"
+
+{dependencies}
+scripts:
+  install: deploy.sql
+""",
+        )
+        archive.writestr(f"{name}/deploy.sql", "PROMPT deploy\n")
+
+
+def _registry_resolution(
+    package: str,
+    version: str,
+    artifact_url: str,
+    checksum: str,
+    constraint: str,
+    *,
+    warning: dict[str, object] | None = None,
+) -> RegistryResolution:
+    warnings = [warning] if warning else []
+    return RegistryResolution(
+        package=package,
+        version=version,
+        artifact_url=artifact_url,
+        artifact_checksum=checksum,
+        artifact_signature_url=f"{artifact_url}.asc",
+        publisher_key_fingerprint="FINGERPRINT",
+        registry_url="https://registry.example",
+        source=RegistrySource(package, constraint),
+        warning=warning,
+        warnings=warnings,
+    )
+
+
 @pytest.fixture(autouse=True)
-def _no_reverse_dependencies(monkeypatch):
+def _no_reverse_dependencies(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("DBPM_CACHE_DIR", str(tmp_path / "cache"))
     monkeypatch.setattr(cli, "get_reverse_dependencies", lambda **kwargs: [])
 
 
@@ -99,6 +150,178 @@ scripts:
     assert cli.main(["plan", str(consumer)]) == 2
 
     assert "Missing dependency source for CONSUMER: DEMO 0.1.0" in capsys.readouterr().err
+
+
+def test_plan_registry_source_auto_resolves_dependencies(tmp_path: Path, monkeypatch, capsys):
+    scheduler = tmp_path / "simple_scheduler.zip"
+    interval = tmp_path / "utl_interval.zip"
+    _write_registry_zip(
+        scheduler,
+        "simple_scheduler",
+        "1.1.0",
+        dependencies="""
+dependencies:
+  - name: utl_interval
+    version: "^1.0.0"
+""",
+    )
+    _write_registry_zip(interval, "utl_interval", "1.0.0")
+    artifacts = {
+        "https://repo.example/simple_scheduler-1.1.0.zip": scheduler,
+        "https://repo.example/utl_interval-1.0.0.zip": interval,
+    }
+    checksums = {
+        url: hashlib.sha256(path.read_bytes()).hexdigest()
+        for url, path in artifacts.items()
+    }
+    resolved = {
+        "registry:simple_scheduler@^1.1.0": _registry_resolution(
+            "simple_scheduler",
+            "1.1.0",
+            "https://repo.example/simple_scheduler-1.1.0.zip",
+            checksums["https://repo.example/simple_scheduler-1.1.0.zip"],
+            "^1.1.0",
+            warning={"code": "yanked_version", "message": "Yanked"},
+        ),
+        "registry:utl_interval@^1.0.0": _registry_resolution(
+            "utl_interval",
+            "1.0.0",
+            "https://repo.example/utl_interval-1.0.0.zip",
+            checksums["https://repo.example/utl_interval-1.0.0.zip"],
+            "^1.0.0",
+        ),
+    }
+
+    monkeypatch.setattr("dbpm.source.resolve_registry_source", lambda raw, registry_url=None: resolved[raw])
+    monkeypatch.setattr("dbpm.source._check_gpg_signature", lambda *args: None)
+
+    def fake_download(url: str, destination: Path) -> None:
+        if url.endswith(".asc"):
+            destination.write_bytes(b"sig")
+        else:
+            destination.write_bytes(artifacts[url].read_bytes())
+
+    monkeypatch.setattr("dbpm.source._download", fake_download)
+
+    assert (
+        cli.main(
+            [
+                "plan",
+                "registry:simple_scheduler@^1.1.0",
+                "--registry-url",
+                "https://registry.example",
+            ]
+        )
+        == 0
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["schema_version"] == "dbpm.multi-plan.v0"
+    assert output["execution_order"] == ["UTL_INTERVAL", "SIMPLE_SCHEDULER"]
+    assert output["packages"][1]["warnings"] == [{"code": "yanked_version", "message": "Yanked"}]
+
+
+def test_explicit_dependency_source_wins_over_registry_auto_resolution(tmp_path: Path, monkeypatch, capsys):
+    scheduler = tmp_path / "simple_scheduler.zip"
+    explicit = tmp_path / "explicit_interval"
+    _write_registry_zip(
+        scheduler,
+        "simple_scheduler",
+        "1.1.0",
+        dependencies="""
+dependencies:
+  - name: utl_interval
+    version: "1.0.0"
+""",
+    )
+    explicit.mkdir()
+    (explicit / "dbpm.yaml").write_text(
+        """
+package:
+  name: utl_interval
+  version: "1.0.0"
+
+scripts:
+  install: deploy.sql
+""",
+        encoding="utf-8",
+    )
+    (explicit / "deploy.sql").write_text("PROMPT deploy\n", encoding="utf-8")
+    checksum = hashlib.sha256(scheduler.read_bytes()).hexdigest()
+
+    def fake_resolve(raw: str, registry_url: str | None = None) -> RegistryResolution:
+        if raw != "registry:simple_scheduler@^1.1.0":
+            pytest.fail(f"unexpected registry dependency lookup: {raw}")
+        return _registry_resolution(
+            "simple_scheduler",
+            "1.1.0",
+            "https://repo.example/simple_scheduler-1.1.0.zip",
+            checksum,
+            "^1.1.0",
+        )
+
+    monkeypatch.setattr("dbpm.source.resolve_registry_source", fake_resolve)
+    monkeypatch.setattr("dbpm.source._check_gpg_signature", lambda *args: None)
+    monkeypatch.setattr(
+        "dbpm.source._download",
+        lambda url, destination: destination.write_bytes(b"sig" if url.endswith(".asc") else scheduler.read_bytes()),
+    )
+
+    assert (
+        cli.main(
+            [
+                "plan",
+                "registry:simple_scheduler@^1.1.0",
+                "--dependency-source",
+                str(explicit),
+            ]
+        )
+        == 0
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["execution_order"] == ["UTL_INTERVAL", "SIMPLE_SCHEDULER"]
+
+
+def test_install_from_registry_lockfile_does_not_call_registry(tmp_path: Path, monkeypatch, capsys):
+    package = tmp_path / "utl_interval.zip"
+    lockfile = tmp_path / "dbpm-lock.json"
+    _write_registry_zip(package, "utl_interval", "1.0.0")
+    artifact_url = "https://repo.example/utl_interval-1.0.0.zip"
+    checksum = hashlib.sha256(package.read_bytes()).hexdigest()
+
+    monkeypatch.setattr(
+        "dbpm.source.resolve_registry_source",
+        lambda raw, registry_url=None: _registry_resolution(
+            "utl_interval",
+            "1.0.0",
+            artifact_url,
+            checksum,
+            "1.0.0",
+        ),
+    )
+    monkeypatch.setattr("dbpm.source._check_gpg_signature", lambda *args: None)
+
+    def fake_download(url: str, destination: Path) -> None:
+        destination.write_bytes(b"sig" if url.endswith(".asc") else package.read_bytes())
+
+    monkeypatch.setattr("dbpm.source._download", fake_download)
+
+    assert cli.main(["lock", "registry:utl_interval@1.0.0", "--output", str(lockfile)]) == 0
+    locked = json.loads(lockfile.read_text(encoding="utf-8"))["packages"][0]
+    assert locked["artifact"]["uri"] == artifact_url
+    assert locked["artifact"]["signature_url"] == f"{artifact_url}.asc"
+    assert locked["artifact"]["publisher_key_fingerprint"] == "FINGERPRINT"
+    capsys.readouterr()
+
+    def fail_registry_lookup(raw: str, registry_url: str | None = None) -> RegistryResolution:
+        pytest.fail("locked install should not call registry")
+
+    monkeypatch.setattr("dbpm.source.resolve_registry_source", fail_registry_lookup)
+
+    assert cli.main(["install", "--lockfile", str(lockfile), "--dry-run"]) == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["package"]["application_name"] == "UTL_INTERVAL"
 
 
 def test_lock_writes_lockfile(tmp_path: Path, capsys):

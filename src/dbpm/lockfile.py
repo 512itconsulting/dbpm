@@ -140,8 +140,11 @@ def deployment_provenance_requests(lockfile: dict[str, object]) -> list[tuple[st
 
 def lockfile_package_sources_with_checksums(
     lockfile: dict[str, object],
-) -> tuple[tuple[str, str | None, str | None, str | None], list[tuple[str, str | None, str | None, str | None]]]:
-    """Return (root_entry, dep_entries) where each entry is (uri, checksum, checksum_alg, signature_url)."""
+) -> tuple[
+    tuple[str, str | None, str | None, str | None, str | None],
+    list[tuple[str, str | None, str | None, str | None, str | None]],
+]:
+    """Return (root_entry, dep_entries) with artifact URI, checksum, signature, and key metadata."""
     packages_by_app = _locked_packages_by_app(lockfile)
     execution_order = lockfile.get("execution_order", [])
     root_application_name = lockfile.get("root_application_name")
@@ -257,7 +260,7 @@ def _compare_lockfiles(
                 )
         actual_artifact = _dict(actual_package.get("artifact"))
         expected_artifact = _dict(expected_package.get("artifact"))
-        for field in ("uri", "checksum", "checksum_alg", "signature_url", "coordinate"):
+        for field in ("uri", "checksum", "checksum_alg", "signature_url", "publisher_key_fingerprint", "coordinate"):
             if actual_artifact.get(field) != expected_artifact.get(field):
                 errors.append(
                     f"{app_name} artifact {field} mismatch: "
@@ -283,7 +286,7 @@ def _package_source_reference(package: dict[str, object]) -> str:
 
 def _package_source_with_checksum(
     package: dict[str, object],
-) -> tuple[str, str | None, str | None, str | None]:
+) -> tuple[str, str | None, str | None, str | None, str | None]:
     artifact = _dict(package.get("artifact"))
     source = _dict(package.get("source"))
     uri = artifact.get("uri") or source.get("path")
@@ -293,11 +296,13 @@ def _package_source_with_checksum(
     checksum = artifact.get("checksum")
     checksum_alg = artifact.get("checksum_alg")
     signature_url = artifact.get("signature_url")
+    publisher_key = artifact.get("publisher_key_fingerprint")
     return (
         uri,
         checksum if isinstance(checksum, str) else None,
         checksum_alg if isinstance(checksum_alg, str) else None,
         signature_url if isinstance(signature_url, str) else None,
+        publisher_key if isinstance(publisher_key, str) else None,
     )
 
 
@@ -323,12 +328,16 @@ def _locked_package(package_plan: dict[str, object]) -> dict[str, object]:
             "path": source.get("path"),
             "root": source.get("root"),
             "manifest": source.get("manifest"),
+            "registry_url": source.get("registry_url"),
+            "registry_package": source.get("registry_package"),
+            "registry_constraint": source.get("registry_constraint"),
         },
         "artifact": {
             "uri": payload.get("artifact_uri") or source.get("path"),
             "checksum": payload.get("artifact_checksum"),
             "checksum_alg": payload.get("artifact_checksum_alg"),
             "signature_url": payload.get("artifact_signature_url"),
+            "publisher_key_fingerprint": payload.get("publisher_key_fingerprint"),
             "file_name": payload.get("artifact_file_name"),
             "repository_type": payload.get("artifact_repository_type"),
             "group_id": payload.get("artifact_group_id"),
@@ -349,6 +358,7 @@ def _locked_package(package_plan: dict[str, object]) -> dict[str, object]:
             "build_time": payload.get("build_time"),
         },
         "dependencies": package_plan.get("dependencies", []),
+        "warnings": package_plan.get("warnings", []),
     }
 
 

@@ -4,7 +4,7 @@ from .environment import EnvironmentPolicy
 from .errors import DependencyError
 from .planner import create_plan
 from .provenance import resolve_provenance
-from .source import PackageSource
+from .source import PackageSource, load_package_source
 
 
 def create_multi_package_plan(
@@ -122,10 +122,14 @@ def _resolve_dependency_order(
                     satisfied_apps.add(dep_app)
                 continue
             if dep_source is None:
-                raise DependencyError(
-                    f"Missing dependency source for {item.manifest.application_name}: "
-                    f"{dep_app} {dependency.version}"
-                )
+                dep_source = _registry_dependency_source(item, dependency.name, dependency.version)
+                if dep_source is not None:
+                    available[dep_source.manifest.application_name] = dep_source
+                else:
+                    raise DependencyError(
+                        f"Missing dependency source for {item.manifest.application_name}: "
+                        f"{dep_app} {dependency.version}"
+                    )
             if not _version_satisfies(dep_source.manifest.version, dependency.version):
                 raise DependencyError(
                     f"Dependency source {dep_app} version {dep_source.manifest.version} "
@@ -138,6 +142,21 @@ def _resolve_dependency_order(
 
     visit(source)
     return ordered, satisfied
+
+
+def _registry_dependency_source(
+    source: PackageSource,
+    dependency_name: str,
+    dependency_constraint: str,
+) -> PackageSource | None:
+    if not source.registry_url:
+        return None
+    if _application_name(dependency_name) == "CORE":
+        return None
+    return load_package_source(
+        f"registry:{dependency_name}@{dependency_constraint}",
+        registry_url=source.registry_url,
+    )
 
 
 def _dependency_mode(mode: str) -> str:
