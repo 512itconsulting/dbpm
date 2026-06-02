@@ -138,18 +138,21 @@ dbpm trusts the registry's yanked/deprecated policy in v1. Range resolution, exa
 
 ## Command Coverage
 
-V1 registry integration covers:
+Implemented consumer registry integration covers:
 
 - `dbpm plan`
 - `dbpm lock`
 - non-lockfile `dbpm install`
-- `dbpm search`
-- `dbpm info`
+- `dbpm upgrade`
+- `dbpm reinstall`
+- `dbpm resume`
+- `dbpm validate`
+- `dbpm bootstrap-core`
 
 Deferred:
 
-- `dbpm upgrade` registry resolution
-- `dbpm validate` registry resolution
+- compatibility-aware registry resolution using Core and Oracle version filters
+- consumer discovery commands such as `dbpm search` and `dbpm info`
 - registry publishing or index mutation from dbpm
 
 Locked installs bypass the registry entirely:
@@ -160,7 +163,23 @@ dbpm install --lockfile dbpm-lock.json
 
 Lockfile installation uses the exact artifact URL, checksum, and signature URL recorded in the lockfile.
 
-## Search And Info
+## Future Enhancements
+
+The registry service now includes additional read and publisher APIs. dbpm does not need these for basic `registry:` installs, but they are useful follow-up milestones.
+
+### Compatibility-Aware Resolution
+
+The registry resolve endpoint accepts optional filters:
+
+```text
+GET /resolve?package=<name>&constraint=<constraint>&core_version=<version>&oracle_version=<release>
+```
+
+Future dbpm versions should pass known Core and Oracle compatibility values when resolving registry sources. This lets the registry select only versions compatible with the installed Core version and the target Oracle release instead of resolving by semantic version constraint alone.
+
+The first slice should keep these filters optional. If dbpm cannot determine the installed Core version before planning, it should continue to resolve without `core_version` rather than block basic registry installs.
+
+### Search And Info
 
 Add consumer discovery commands:
 
@@ -179,6 +198,48 @@ GET /packages/<name>
 ```
 
 The default output is human-readable text. `--json` prints raw registry JSON.
+
+`dbpm info` may also call `GET /packages/<name>/versions/<version>` when the user asks for a specific version.
+
+### Registry Indexing From dbpm
+
+The registry provides a metadata-only index endpoint:
+
+```text
+POST /packages/<name>/versions/index
+```
+
+Future dbpm versions can add a producer workflow after `dbpm publish` uploads an artifact to immutable storage. Two reasonable command shapes are:
+
+```sh
+dbpm registry index <package-root> --registry-url https://dbpm.io --token-env DBPM_REGISTRY_TOKEN
+dbpm publish <package-root> --target gh-maven:owner/repo --index-registry https://dbpm.io
+```
+
+This workflow should submit artifact metadata that dbpm already knows after publish:
+
+- publisher name;
+- package name and version;
+- artifact URL;
+- SHA-256 checksum;
+- detached signature URL;
+- publisher key fingerprint;
+- Core and Oracle compatibility fields;
+- manifest dependencies beyond Core.
+
+dbpm should not upload ZIP bytes to the registry. The registry remains a metadata and verification service; artifacts and signatures stay in external immutable storage.
+
+### Publisher Key Fingerprint Support
+
+Production registry indexing requires `artifact_signature_url` and `publisher_key_fingerprint` together. dbpm already creates detached signatures for published artifacts, but a future registry-indexing workflow should also determine or accept the publisher key fingerprint.
+
+Acceptable first-slice options:
+
+- add `--publisher-key-fingerprint` to registry indexing commands;
+- derive the fingerprint from the configured GPG signing key when possible;
+- allow `DBPM_PUBLISHER_KEY_FINGERPRINT` as an automation-friendly default.
+
+When both a derived and explicit fingerprint are present, the explicit CLI value should win.
 
 ## Verification And Lockfiles
 
