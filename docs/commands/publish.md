@@ -51,6 +51,27 @@ dbpm generates the uploaded `{artifact_id}-{version}.pom` from the package manif
 
 Checked-in `pom.xml` files are considered optional legacy compatibility. dbpm can still consume older ZIP artifacts that derive package metadata from a `pom.xml`, but new dbpm-native packages should prefer dbpm manifests.
 
+## Package ignore file
+
+When publishing from a package directory, dbpm honors a package-root `.dbpmignore` file. Ignored files are excluded from both local directory checksums and published ZIP artifacts.
+
+The syntax is intentionally small:
+
+- Blank lines and `#` comments are ignored.
+- File patterns such as `pom.xml` or `*.log` match path components anywhere in the package.
+- Directory patterns such as `assembly/` exclude that directory and its contents.
+- Path patterns such as `docs/maven/**` match paths relative to the package root.
+- Negation patterns such as `!deploy.sql` are not supported yet and fail with a clear error.
+
+Example for a dbpm-native package after removing Maven publishing:
+
+```gitignore
+pom.xml
+assembly/
+```
+
+`.dbpmignore` itself is included in the artifact unless it is explicitly ignored.
+
 ## Environment variables
 
 | Variable | Description |

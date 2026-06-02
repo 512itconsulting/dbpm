@@ -197,6 +197,31 @@ def test_build_artifact_metadata_uses_publish_config_override(
     assert parsed["artifact.version"] == "1.2.3"
 
 
+def test_build_artifact_honors_dbpmignore(
+    tmp_path: Path,
+    manifest: PackageManifest,
+    publish_config: PublishConfig,
+):
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "dbpm.yaml").write_text("package:\n  name: utl_interval\n  version: 1.2.3\n")
+    (pkg / "deploy.sql").write_text("PROMPT deploy;\n")
+    (pkg / ".dbpmignore").write_text("pom.xml\nassembly/\n")
+    (pkg / "pom.xml").write_text("<project />\n")
+    (pkg / "assembly").mkdir()
+    (pkg / "assembly" / "package.xml").write_text("ignored\n")
+
+    with patch("dbpm.publisher._git_metadata", return_value=_git_metadata()):
+        artifact_path = build_artifact(pkg, manifest, publish_config)
+
+    with zipfile.ZipFile(artifact_path) as archive:
+        names = archive.namelist()
+
+    assert "utl_interval-1.2.3/pom.xml" not in names
+    assert "utl_interval-1.2.3/assembly/package.xml" not in names
+    assert "utl_interval-1.2.3/.dbpmignore" in names
+
+
 def test_dbpm_built_zip_populates_plan_artifact_provenance(tmp_path: Path):
     package = _write_installable_package(tmp_path)
     manifest = PackageManifest(

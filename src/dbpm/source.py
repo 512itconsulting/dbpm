@@ -37,6 +37,15 @@ TREE_CHECKSUM_EXCLUDES = (
     "*.egg-info",
     "*.log",
 )
+DBPMIGNORE_NAME = ".dbpmignore"
+
+
+@dataclass(frozen=True)
+class TreeIgnorePattern:
+    pattern: str
+    directory_only: bool = False
+    rooted: bool = False
+    has_path_separator: bool = False
 
 
 @dataclass(frozen=True)
@@ -591,10 +600,14 @@ def _tree_sha256(path: Path) -> str:
 
 
 def _tree_files(path: Path) -> list[Path]:
+    ignore_patterns = _load_dbpmignore(path)
     files: list[Path] = []
     for item in path.rglob("*"):
         relative_parts = item.relative_to(path).parts
         if _tree_path_excluded(relative_parts):
+            continue
+        relative_path = item.relative_to(path).as_posix()
+        if _tree_path_ignored(relative_path, relative_parts, ignore_patterns):
             continue
         if item.is_file():
             files.append(item)
@@ -607,6 +620,75 @@ def _tree_path_excluded(relative_parts: tuple[str, ...]) -> bool:
         for part in relative_parts
         for pattern in TREE_CHECKSUM_EXCLUDES
     )
+
+
+def _load_dbpmignore(path: Path) -> list[TreeIgnorePattern]:
+    ignore_path = path / DBPMIGNORE_NAME
+    if not ignore_path.exists():
+        return []
+    if not ignore_path.is_file():
+        raise SourceError(f"{DBPMIGNORE_NAME} must be a file: {ignore_path}")
+
+    patterns: list[TreeIgnorePattern] = []
+    lines = ignore_path.read_text(encoding="utf-8").splitlines()
+    for line_number, raw_line in enumerate(lines, start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("!"):
+            raise SourceError(
+                f"{DBPMIGNORE_NAME}:{line_number}: negation patterns are not supported yet"
+            )
+        pattern = line.replace("\\", "/")
+        rooted = pattern.startswith("/")
+        pattern = pattern.lstrip("/")
+        directory_only = pattern.endswith("/")
+        pattern = pattern.rstrip("/")
+        if not pattern:
+            continue
+        patterns.append(
+            TreeIgnorePattern(
+                pattern=pattern,
+                directory_only=directory_only,
+                rooted=rooted,
+                has_path_separator="/" in pattern,
+            )
+        )
+    return patterns
+
+
+def _tree_path_ignored(
+    relative_path: str,
+    relative_parts: tuple[str, ...],
+    patterns: list[TreeIgnorePattern],
+) -> bool:
+    return any(
+        _matches_ignore_pattern(relative_path, relative_parts, pattern)
+        for pattern in patterns
+    )
+
+
+def _matches_ignore_pattern(
+    relative_path: str,
+    relative_parts: tuple[str, ...],
+    pattern: TreeIgnorePattern,
+) -> bool:
+    if pattern.has_path_separator or pattern.rooted:
+        if fnmatch(relative_path, pattern.pattern):
+            return True
+        if pattern.directory_only:
+            return relative_path == pattern.pattern or relative_path.startswith(
+                f"{pattern.pattern}/"
+            )
+        return False
+
+    if pattern.directory_only:
+        return any(
+            part == pattern.pattern or fnmatch(part, pattern.pattern)
+            for part in relative_parts[:-1]
+        )
+
+    return any(fnmatch(part, pattern.pattern) for part in relative_parts)
 
 
 def _checksum_cache_path(checksum: str, file_name: str) -> Path:

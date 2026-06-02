@@ -49,6 +49,19 @@ dbpm should read this metadata when deploying packaged artifacts.
 
 The metadata file is part of the built artifact, not the source manifest. Source templates for build metadata may exist under `assembly/` or an equivalent build directory, but generated metadata should be what dbpm consumes from packaged artifacts.
 
+## Package Ignore
+
+Package roots may include a `.dbpmignore` file to exclude producer-side files from local directory checksums and dbpm-built ZIP artifacts.
+
+This is intended for files that belong to repository maintenance or legacy build workflows rather than the deployable package payload, such as:
+
+```gitignore
+pom.xml
+assembly/
+```
+
+The ignore file itself remains part of the package source unless explicitly ignored.
+
 ## Artifact Distribution
 
 The built package artifact should be a normal archive, such as a ZIP file, that dbpm can retrieve over HTTP(S) and unpack without invoking Maven.

@@ -415,6 +415,90 @@ scripts:
     assert load_package_source(str(package)).artifact_checksum == baseline
 
 
+def test_directory_tree_checksum_honors_dbpmignore(tmp_path: Path):
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: demo
+  version: "0.1.0"
+
+scripts:
+  install: deploy.sql
+""",
+        encoding="utf-8",
+    )
+    (package / "deploy.sql").write_text("PROMPT deploy\n", encoding="utf-8")
+    (package / ".dbpmignore").write_text(
+        """
+# legacy Maven inputs
+pom.xml
+assembly/
+docs/maven/**
+""",
+        encoding="utf-8",
+    )
+    (package / "pom.xml").write_text("<project />\n", encoding="utf-8")
+    (package / "assembly").mkdir()
+    (package / "assembly" / "package.xml").write_text("ignored\n", encoding="utf-8")
+    (package / "docs" / "maven").mkdir(parents=True)
+    (package / "docs" / "maven" / "legacy.md").write_text("ignored\n", encoding="utf-8")
+
+    baseline = load_package_source(str(package)).artifact_checksum
+
+    (package / "pom.xml").write_text("<project>changed</project>\n", encoding="utf-8")
+    (package / "assembly" / "package.xml").write_text("changed\n", encoding="utf-8")
+    (package / "docs" / "maven" / "legacy.md").write_text("changed\n", encoding="utf-8")
+
+    assert load_package_source(str(package)).artifact_checksum == baseline
+
+
+def test_directory_tree_checksum_keeps_dbpmignore_by_default(tmp_path: Path):
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: demo
+  version: "0.1.0"
+
+scripts:
+  install: deploy.sql
+""",
+        encoding="utf-8",
+    )
+    (package / "deploy.sql").write_text("PROMPT deploy\n", encoding="utf-8")
+    (package / ".dbpmignore").write_text("pom.xml\n", encoding="utf-8")
+
+    baseline = load_package_source(str(package)).artifact_checksum
+
+    (package / ".dbpmignore").write_text("pom.xml\nassembly/\n", encoding="utf-8")
+
+    assert load_package_source(str(package)).artifact_checksum != baseline
+
+
+def test_dbpmignore_negation_fails_clearly(tmp_path: Path):
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: demo
+  version: "0.1.0"
+
+scripts:
+  install: deploy.sql
+""",
+        encoding="utf-8",
+    )
+    (package / "deploy.sql").write_text("PROMPT deploy\n", encoding="utf-8")
+    (package / ".dbpmignore").write_text("*.sql\n!deploy.sql\n", encoding="utf-8")
+
+    with pytest.raises(SourceError, match="negation patterns are not supported"):
+        load_package_source(str(package))
+
+
 def test_directory_tree_checksum_is_stable_across_root_paths(tmp_path: Path):
     first = tmp_path / "first"
     second = tmp_path / "second"

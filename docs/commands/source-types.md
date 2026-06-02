@@ -34,6 +34,8 @@ C:\path\to\package
 
 A directory containing a `dbpm.yaml`, `dbpm.yml`, `dbpm.json`, or `package.dbpm.yaml` manifest at its root. dbpm computes a deterministic `TREE-SHA-256` checksum over the source tree, excluding VCS, cache, build output, virtual environment, and log directories.
 
+Local directory sources may also include a package-root `.dbpmignore`. Ignore patterns apply to local directory checksums and to `dbpm publish` ZIP contents. File patterns such as `pom.xml`, directory patterns such as `assembly/`, and root-relative path patterns such as `docs/maven/**` are supported. Negation patterns are not supported yet.
+
 ## Local ZIP
 
 ```
