@@ -96,5 +96,6 @@ def _artifact_metadata(metadata: dict[str, str]) -> dict[str, str]:
         "build.id",
         "build.url",
         "build.time",
+        "build.source",
     )
     return {key: metadata[key] for key in keys if key in metadata}

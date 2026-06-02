@@ -2101,3 +2101,39 @@ def test_publish_group_override(tmp_path: Path, capsys, monkeypatch):
     assert ret == 0
     out = capsys.readouterr().out
     assert "com.override" in out
+
+
+def test_publish_cli_overrides_reach_artifact_build(tmp_path: Path, monkeypatch):
+    package = tmp_path / "package"
+    _write_publish_package(package)
+    artifact_path = tmp_path / "artifact.zip"
+    artifact_path.write_bytes(b"zip")
+    captured = {}
+
+    def fake_build_artifact(source_path, manifest, publish_config):
+        captured["source_path"] = source_path
+        captured["group"] = publish_config.group
+        captured["artifact_id"] = publish_config.artifact_id
+        return artifact_path
+
+    class Receipt:
+        artifact_url = "https://example.test/demo.zip"
+        checksum = "abc123"
+
+    monkeypatch.setattr(cli, "build_artifact", fake_build_artifact)
+    monkeypatch.setattr(cli, "publish_to_repository", lambda *args: Receipt())
+    monkeypatch.setattr(cli, "verify_publish", lambda *args: None)
+
+    ret = cli.main([
+        "publish",
+        str(package),
+        "--target", "gh-maven:acme/myrepo",
+        "--group", "com.override",
+        "--artifact-id", "core",
+        "--signing-key", "key",
+    ])
+
+    assert ret == 0
+    assert captured["source_path"] == package
+    assert captured["group"] == "com.override"
+    assert captured["artifact_id"] == "core"

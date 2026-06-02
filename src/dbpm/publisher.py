@@ -42,13 +42,13 @@ def build_artifact(source_path: Path, manifest: PackageManifest, publish_config:
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / zip_name
 
-    git_commit = _git_commit_id(source_path)
     build_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    properties = (
-        f"build.version={version}\n"
-        f"build.time={build_time}\n"
-        f"build.source=dbpm\n"
-        f"git.commit.id={git_commit}\n"
+    properties = _build_properties(
+        group=publish_config.group,
+        artifact_id=artifact_id,
+        version=version,
+        build_time=build_time,
+        git_metadata=_git_metadata(source_path),
     )
 
     files = _tree_files(source_path)
@@ -393,10 +393,49 @@ def _sha1(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _git_commit_id(source_path: Path) -> str:
+def _build_properties(
+    *,
+    group: str,
+    artifact_id: str,
+    version: str,
+    build_time: str,
+    git_metadata: dict[str, str],
+) -> str:
+    values = {
+        "artifact.groupId": group,
+        "artifact.artifactId": artifact_id,
+        "artifact.version": version,
+        "artifact.extension": "zip",
+        "build.version": version,
+        "build.time": build_time,
+        "build.source": "dbpm",
+        "git.commit.id": git_metadata.get("git.commit.id", ""),
+        "git.commit.id.abbrev": git_metadata.get("git.commit.id.abbrev", ""),
+        "git.branch": git_metadata.get("git.branch", ""),
+        "git.dirty": git_metadata.get("git.dirty", ""),
+    }
+    return "".join(f"{key}={value}\n" for key, value in values.items())
+
+
+def _git_metadata(source_path: Path) -> dict[str, str]:
+    commit = _git(source_path, "rev-parse", "HEAD")
+    abbrev = _git(source_path, "rev-parse", "--short", "HEAD")
+    branch = _git(source_path, "rev-parse", "--abbrev-ref", "HEAD")
+    status = _git(source_path, "status", "--porcelain")
+    if abbrev is None and commit:
+        abbrev = commit[:7]
+    return {
+        "git.commit.id": commit or "",
+        "git.commit.id.abbrev": abbrev or "",
+        "git.branch": branch or "",
+        "git.dirty": "" if status is None else str(bool(status)).lower(),
+    }
+
+
+def _git(source_path: Path, *args: str) -> str | None:
     try:
         result = subprocess.run(
-            ["git", "-C", str(source_path), "rev-parse", "HEAD"],
+            ["git", "-C", str(source_path), *args],
             capture_output=True,
             text=True,
             timeout=5,
@@ -405,7 +444,7 @@ def _git_commit_id(source_path: Path) -> str:
             return result.stdout.strip()
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
-    return ""
+    return None
 
 
 def _xml_escape(text: str) -> str:

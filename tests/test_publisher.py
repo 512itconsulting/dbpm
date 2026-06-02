@@ -7,9 +7,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from dbpm.environment import resolve_environment
 from dbpm.errors import PublishError
 from dbpm.manifest import Dependency, PackageManifest, PublishConfig, ScriptSet
 import urllib.error
+from dbpm.planner import create_plan
+from dbpm.provenance import resolve_provenance
 
 from dbpm.publisher import (
     PublishReceipt,
@@ -21,6 +24,7 @@ from dbpm.publisher import (
     generate_pom,
     sign_artifact,
 )
+from dbpm.source import load_package_source
 
 
 @pytest.fixture
@@ -50,6 +54,50 @@ def _cache_dir(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("DBPM_CACHE_DIR", str(tmp_path / "cache"))
 
 
+def _git_metadata(
+    *,
+    commit: str = "abc123abc123abc123abc123abc123abc123abcd",
+    abbrev: str = "abc123a",
+    branch: str = "main",
+    dirty: str = "false",
+) -> dict[str, str]:
+    return {
+        "git.commit.id": commit,
+        "git.commit.id.abbrev": abbrev,
+        "git.branch": branch,
+        "git.dirty": dirty,
+    }
+
+
+def _parse_properties(text: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for raw_line in text.splitlines():
+        key, value = raw_line.split("=", 1)
+        values[key] = value
+    return values
+
+
+def _write_installable_package(tmp_path: Path) -> Path:
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: utl_interval
+  version: "1.2.3"
+
+core:
+  minimum_version: "3.0.0"
+
+scripts:
+  install: deploy.sql
+""",
+        encoding="utf-8",
+    )
+    (package / "deploy.sql").write_text("PROMPT deploy\n", encoding="utf-8")
+    return package
+
+
 # ---------------------------------------------------------------------------
 # build_artifact
 # ---------------------------------------------------------------------------
@@ -61,7 +109,7 @@ def test_build_artifact_creates_zip(tmp_path: Path, manifest: PackageManifest, p
     (pkg / "dbpm.yaml").write_text("package:\n  name: utl_interval\n  version: 1.2.3\n")
     (pkg / "deploy.sql").write_text("PROMPT deploy;\n")
 
-    with patch("dbpm.publisher._git_commit_id", return_value="abc123"):
+    with patch("dbpm.publisher._git_metadata", return_value=_git_metadata()):
         artifact_path = build_artifact(pkg, manifest, publish_config)
 
     assert artifact_path.exists()
@@ -84,7 +132,7 @@ def test_build_artifact_uses_manifest_name_when_artifact_id_absent(
 
     config = PublishConfig(group="com.example")
 
-    with patch("dbpm.publisher._git_commit_id", return_value=""):
+    with patch("dbpm.publisher._git_metadata", return_value=_git_metadata(commit="")):
         artifact_path = build_artifact(pkg, manifest, config)
 
     assert artifact_path.name == "utl_interval-1.2.3.zip"
@@ -99,15 +147,151 @@ def test_build_artifact_build_properties_content(
     pkg.mkdir()
     (pkg / "dbpm.yaml").write_text("package:\n  name: utl_interval\n  version: 1.2.3\n")
 
-    with patch("dbpm.publisher._git_commit_id", return_value="deadbeef"):
+    with patch(
+        "dbpm.publisher._git_metadata",
+        return_value=_git_metadata(
+            commit="deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+            abbrev="deadbee",
+            branch="main",
+            dirty="true",
+        ),
+    ):
         artifact_path = build_artifact(pkg, manifest, publish_config)
 
     with zipfile.ZipFile(artifact_path) as archive:
         props = archive.read("utl_interval-1.2.3/META-INF/utl_interval-build.properties").decode()
+    parsed = _parse_properties(props)
 
-    assert "build.version=1.2.3" in props
-    assert "build.source=dbpm" in props
-    assert "git.commit.id=deadbeef" in props
+    assert parsed["artifact.groupId"] == "com.example.database"
+    assert parsed["artifact.artifactId"] == "utl_interval"
+    assert parsed["artifact.version"] == "1.2.3"
+    assert parsed["artifact.extension"] == "zip"
+    assert parsed["build.version"] == "1.2.3"
+    assert parsed["build.source"] == "dbpm"
+    assert parsed["build.time"]
+    assert parsed["git.commit.id"] == "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+    assert parsed["git.commit.id.abbrev"] == "deadbee"
+    assert parsed["git.branch"] == "main"
+    assert parsed["git.dirty"] == "true"
+
+
+def test_build_artifact_metadata_uses_publish_config_override(
+    tmp_path: Path,
+    manifest: PackageManifest,
+):
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "dbpm.yaml").write_text("package:\n  name: utl_interval\n  version: 1.2.3\n")
+    config = PublishConfig(group="com.override.database", artifact_id="core")
+
+    with patch("dbpm.publisher._git_metadata", return_value=_git_metadata()):
+        artifact_path = build_artifact(pkg, manifest, config)
+
+    with zipfile.ZipFile(artifact_path) as archive:
+        props = archive.read("core-1.2.3/META-INF/core-build.properties").decode()
+    parsed = _parse_properties(props)
+
+    assert artifact_path.name == "core-1.2.3.zip"
+    assert parsed["artifact.groupId"] == "com.override.database"
+    assert parsed["artifact.artifactId"] == "core"
+    assert parsed["artifact.version"] == "1.2.3"
+
+
+def test_dbpm_built_zip_populates_plan_artifact_provenance(tmp_path: Path):
+    package = _write_installable_package(tmp_path)
+    manifest = PackageManifest(
+        name="utl_interval",
+        version="1.2.3",
+        application_name="UTL_INTERVAL",
+        description=None,
+        vendor=None,
+        license=None,
+        database_platform="oracle",
+        database_minimum_version=None,
+        core_minimum_version="3.0.0",
+        dependencies=(),
+        scripts=ScriptSet(install="deploy.sql"),
+    )
+    config = PublishConfig(group="com.example.database", artifact_id="utl_interval")
+
+    with patch(
+        "dbpm.publisher._git_metadata",
+        return_value=_git_metadata(
+            commit="1234567890123456789012345678901234567890",
+            abbrev="1234567",
+            branch="main",
+            dirty="false",
+        ),
+    ):
+        artifact_path = build_artifact(package, manifest, config)
+
+    source = load_package_source(str(artifact_path))
+    provenance = resolve_provenance(source)
+    plan = create_plan(
+        mode="install",
+        source=source,
+        provenance=provenance,
+        environment=resolve_environment("development"),
+    )
+
+    payload = plan["pre_actions"][0]["payload"]
+    assert payload["artifact_group_id"] == "com.example.database"
+    assert payload["artifact_id"] == "utl_interval"
+    assert payload["artifact_version"] == "1.2.3"
+    assert payload["artifact_extension"] == "zip"
+    assert payload["package_coordinate"] == "com.example.database:utl_interval:1.2.3"
+    assert payload["build_metadata_json"]["artifact"]["build.source"] == "dbpm"
+    assert provenance.dirty is False
+
+
+def test_dbpm_built_github_maven_zip_populates_plan_artifact_provenance(
+    tmp_path: Path,
+    monkeypatch,
+):
+    package = _write_installable_package(tmp_path)
+    manifest = PackageManifest(
+        name="utl_interval",
+        version="1.2.3",
+        application_name="UTL_INTERVAL",
+        description=None,
+        vendor=None,
+        license=None,
+        database_platform="oracle",
+        database_minimum_version=None,
+        core_minimum_version="3.0.0",
+        dependencies=(),
+        scripts=ScriptSet(install="deploy.sql"),
+    )
+    config = PublishConfig(group="com.example.database", artifact_id="utl_interval")
+
+    with patch("dbpm.publisher._git_metadata", return_value=_git_metadata()):
+        artifact_path = build_artifact(package, manifest, config)
+
+    def fake_download(url: str, destination: Path) -> None:
+        destination.write_bytes(artifact_path.read_bytes())
+
+    monkeypatch.setattr("dbpm.source._download", fake_download)
+
+    source = load_package_source(
+        "gh-maven:acme/core:com.example.database:utl_interval:1.2.3"
+    )
+    provenance = resolve_provenance(source)
+    plan = create_plan(
+        mode="install",
+        source=source,
+        provenance=provenance,
+        environment=resolve_environment("development"),
+    )
+
+    payload = plan["pre_actions"][0]["payload"]
+    assert payload["artifact_group_id"] == "com.example.database"
+    assert payload["artifact_id"] == "utl_interval"
+    assert payload["artifact_version"] == "1.2.3"
+    assert payload["package_coordinate"] == "com.example.database:utl_interval:1.2.3"
+    assert payload["artifact_uri"] == (
+        "https://maven.pkg.github.com/acme/core/"
+        "com/example/database/utl_interval/1.2.3/utl_interval-1.2.3.zip"
+    )
 
 
 # ---------------------------------------------------------------------------
