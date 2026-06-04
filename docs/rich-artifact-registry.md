@@ -209,11 +209,13 @@ The registry provides a metadata-only index endpoint:
 POST /packages/<name>/versions/index
 ```
 
-Future dbpm versions can add a producer workflow after `dbpm publish` uploads an artifact to immutable storage. Two reasonable command shapes are:
+`dbpm publish` writes a durable, secret-free `dbpm-publish-receipt.json` after
+upload and post-publish verification. Producers can index that receipt later or
+request indexing immediately:
 
 ```sh
 dbpm registry index <package-root> --registry-url https://dbpm.io --token-env DBPM_REGISTRY_TOKEN
-dbpm publish <package-root> --target gh-maven:owner/repo --index-registry https://dbpm.io
+dbpm publish <package-root> --target gh-maven:owner/repo --index-registry
 ```
 
 This workflow should submit artifact metadata that dbpm already knows after publish:
@@ -231,15 +233,12 @@ dbpm should not upload ZIP bytes to the registry. The registry remains a metadat
 
 ### Publisher Key Fingerprint Support
 
-Production registry indexing requires `artifact_signature_url` and `publisher_key_fingerprint` together. dbpm already creates detached signatures for published artifacts, but a future registry-indexing workflow should also determine or accept the publisher key fingerprint.
+Production registry indexing requires `artifact_signature_url` and
+`publisher_key_fingerprint` together.
 
-Acceptable first-slice options:
-
-- add `--publisher-key-fingerprint` to registry indexing commands;
-- derive the fingerprint from the configured GPG signing key when possible;
-- allow `DBPM_PUBLISHER_KEY_FINGERPRINT` as an automation-friendly default.
-
-When both a derived and explicit fingerprint are present, the explicit CLI value should win.
+`dbpm publish` derives the full primary fingerprint from its configured GPG
+signing key and records it in the publish receipt. `dbpm registry index` accepts
+an explicit `--publisher-key-fingerprint` override for existing artifacts.
 
 ## Verification And Lockfiles
 

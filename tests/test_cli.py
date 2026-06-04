@@ -2119,10 +2119,12 @@ def test_publish_cli_overrides_reach_artifact_build(tmp_path: Path, monkeypatch)
     class Receipt:
         artifact_url = "https://example.test/demo.zip"
         checksum = "abc123"
+        signature_url = "https://example.test/demo.zip.asc"
 
     monkeypatch.setattr(cli, "build_artifact", fake_build_artifact)
     monkeypatch.setattr(cli, "publish_to_repository", lambda *args: Receipt())
     monkeypatch.setattr(cli, "verify_publish", lambda *args: None)
+    monkeypatch.setattr(cli, "resolve_signing_key_fingerprint", lambda key: "FINGERPRINT")
 
     ret = cli.main([
         "publish",
@@ -2137,3 +2139,138 @@ def test_publish_cli_overrides_reach_artifact_build(tmp_path: Path, monkeypatch)
     assert captured["source_path"] == package
     assert captured["group"] == "com.override"
     assert captured["artifact_id"] == "core"
+
+
+def _write_indexable_package(path: Path) -> None:
+    path.mkdir()
+    (path / "dbpm.yaml").write_text(
+        """
+package:
+  name: demo
+  version: "1.2.3"
+  description: Demo package
+  vendor: acme
+database:
+  minimum_version: "19c"
+core:
+  minimum_version: "3.4.0"
+dependencies:
+  - name: utl_interval
+    version: "^1.0.0"
+""",
+        encoding="utf-8",
+    )
+    (path / "dbpm-publish-receipt.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "dbpm.publish-receipt.v1",
+                "package": {"name": "demo", "version": "1.2.3"},
+                "artifact": {
+                    "url": "https://repo.example/demo-1.2.3.zip",
+                    "checksum": "sha256:" + "a" * 64,
+                    "signature_url": "https://repo.example/demo-1.2.3.zip.asc",
+                    "publisher_key_fingerprint": "FINGERPRINT",
+                },
+                "published_at": "2026-06-04T12:00:00Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_registry_index_dry_run_prints_secret_free_payload(tmp_path: Path, capsys, monkeypatch):
+    package = tmp_path / "package"
+    _write_indexable_package(package)
+    monkeypatch.setenv("DBPM_REGISTRY_TOKEN", "top-secret")
+
+    ret = cli.main(["registry", "index", str(package), "--dry-run"])
+
+    assert ret == 0
+    output = capsys.readouterr().out
+    assert '"status": "active"' in output
+    assert '"constraint": "^1.0.0"' in output
+    assert "top-secret" not in output
+
+
+def test_registry_index_requires_token_before_post(tmp_path: Path, capsys, monkeypatch):
+    package = tmp_path / "package"
+    _write_indexable_package(package)
+    monkeypatch.delenv("DBPM_REGISTRY_TOKEN", raising=False)
+    monkeypatch.setattr(cli, "index_registry_version", lambda *args, **kwargs: pytest.fail("posted"))
+
+    ret = cli.main(["registry", "index", str(package)])
+
+    assert ret == 2
+    assert "DBPM_REGISTRY_TOKEN" in capsys.readouterr().err
+
+
+def test_publish_writes_custom_receipt_and_preserves_output(tmp_path: Path, capsys, monkeypatch):
+    package = tmp_path / "package"
+    _write_publish_package(package)
+    output = tmp_path / "release" / "receipt.json"
+    artifact_path = tmp_path / "artifact.zip"
+    artifact_path.write_bytes(b"zip")
+    receipt = cli.PublishReceipt(
+        artifact_url="https://repo.example/demo.zip",
+        checksum="a" * 64,
+        signature_url="https://repo.example/demo.zip.asc",
+    )
+    monkeypatch.setattr(cli, "build_artifact", lambda *args: artifact_path)
+    monkeypatch.setattr(cli, "publish_to_repository", lambda *args: receipt)
+    monkeypatch.setattr(cli, "verify_publish", lambda *args: None)
+    monkeypatch.setattr(cli, "resolve_signing_key_fingerprint", lambda key: "FINGERPRINT")
+
+    ret = cli.main(
+        [
+            "publish",
+            str(package),
+            "--target",
+            "gh-maven:acme/repo",
+            "--signing-key",
+            "key",
+            "--receipt-output",
+            str(output),
+        ]
+    )
+
+    assert ret == 0
+    assert output.exists()
+    stdout = capsys.readouterr().out
+    assert "PUBLISHED=https://repo.example/demo.zip" in stdout
+    assert f"WROTE_PUBLISH_RECEIPT={output}" in stdout
+
+
+def test_publish_index_failure_preserves_receipt_and_returns_failure(tmp_path: Path, capsys, monkeypatch):
+    package = tmp_path / "package"
+    _write_publish_package(package)
+    artifact_path = tmp_path / "artifact.zip"
+    artifact_path.write_bytes(b"zip")
+    receipt = cli.PublishReceipt(
+        artifact_url="https://repo.example/demo.zip",
+        checksum="a" * 64,
+        signature_url="https://repo.example/demo.zip.asc",
+    )
+    monkeypatch.setenv("DBPM_REGISTRY_PUBLISHER", "acme")
+    monkeypatch.setenv("DBPM_REGISTRY_DESCRIPTION", "Demo package")
+    monkeypatch.setenv("DBPM_REGISTRY_TOKEN", "top-secret")
+    monkeypatch.setattr(cli, "build_artifact", lambda *args: artifact_path)
+    monkeypatch.setattr(cli, "publish_to_repository", lambda *args: receipt)
+    monkeypatch.setattr(cli, "verify_publish", lambda *args: None)
+    monkeypatch.setattr(cli, "resolve_signing_key_fingerprint", lambda key: "FINGERPRINT")
+    monkeypatch.setattr(cli, "index_registry_version", lambda *args, **kwargs: (_ for _ in ()).throw(cli.DbpmError("HTTP 503")))
+
+    ret = cli.main(
+        [
+            "publish",
+            str(package),
+            "--target",
+            "gh-maven:acme/repo",
+            "--signing-key",
+            "key",
+            "--index-registry",
+        ]
+    )
+
+    assert ret == 2
+    assert (package / "dbpm-publish-receipt.json").exists()
+    assert "Publishing succeeded" in capsys.readouterr().err

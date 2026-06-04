@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import os
 import subprocess
 import tempfile
@@ -18,12 +19,87 @@ from .errors import PublishError
 from .manifest import PackageManifest, PublishConfig
 from .source import _artifact_cache_dir, _sha256, _tree_files
 
+PUBLISH_RECEIPT_NAME = "dbpm-publish-receipt.json"
+PUBLISH_RECEIPT_SCHEMA_VERSION = "dbpm.publish-receipt.v1"
+
 
 @dataclass(frozen=True)
 class PublishReceipt:
     artifact_url: str
     checksum: str
     signature_url: str
+
+
+def resolve_signing_key_fingerprint(key_id: str) -> str:
+    try:
+        result = subprocess.run(
+            ["gpg", "--batch", "--with-colons", "--fingerprint", "--list-secret-keys", key_id],
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        raise PublishError("GPG is not installed or not on PATH") from exc
+    if result.returncode != 0:
+        raise PublishError(f"Unable to resolve GPG signing key fingerprint: {result.stderr.strip()}")
+
+    fingerprints: list[str] = []
+    awaiting_primary_fingerprint = False
+    for line in result.stdout.splitlines():
+        fields = line.split(":")
+        record_type = fields[0] if fields else ""
+        if record_type == "sec":
+            awaiting_primary_fingerprint = True
+        elif record_type == "fpr" and awaiting_primary_fingerprint:
+            if len(fields) > 9 and fields[9]:
+                fingerprints.append(fields[9])
+            awaiting_primary_fingerprint = False
+        elif record_type not in {"tru", "uid"} and awaiting_primary_fingerprint:
+            awaiting_primary_fingerprint = False
+
+    unique = list(dict.fromkeys(fingerprints))
+    if not unique:
+        raise PublishError(f"No secret GPG key fingerprint found for {key_id!r}")
+    if len(unique) != 1:
+        raise PublishError(
+            f"GPG signing key selector {key_id!r} is ambiguous; use a full fingerprint"
+        )
+    return unique[0]
+
+
+def create_publish_receipt(
+    *,
+    manifest: PackageManifest,
+    publish_config: PublishConfig,
+    target: str,
+    receipt: PublishReceipt,
+    publisher_key_fingerprint: str,
+    published_at: str | None = None,
+) -> dict[str, object]:
+    return {
+        "schema_version": PUBLISH_RECEIPT_SCHEMA_VERSION,
+        "package": {
+            "name": manifest.name,
+            "version": manifest.version,
+        },
+        "publish": {
+            "target": target,
+            "group": publish_config.group,
+            "artifact_id": publish_config.artifact_id or manifest.name,
+        },
+        "artifact": {
+            "url": receipt.artifact_url,
+            "checksum": f"sha256:{receipt.checksum}",
+            "signature_url": receipt.signature_url,
+            "publisher_key_fingerprint": publisher_key_fingerprint,
+        },
+        "published_at": published_at
+        or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
+
+def write_publish_receipt(receipt: dict[str, object], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def build_artifact(source_path: Path, manifest: PackageManifest, publish_config: PublishConfig) -> Path:

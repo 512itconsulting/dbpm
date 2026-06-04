@@ -293,7 +293,23 @@ dbpm publish ~/repos/core \
   --signing-key "$DBPM_SIGNING_KEY"
 ```
 
+After verification, dbpm writes `dbpm-publish-receipt.json` in the package root.
+The receipt contains immutable artifact metadata but no credentials. To index it
+in a dbpm registry:
+
+```sh
+export DBPM_REGISTRY_URL="https://dbpm.io"
+export DBPM_REGISTRY_TOKEN="your-publisher-token"
+
+dbpm registry index ~/repos/core --dry-run
+dbpm registry index ~/repos/core
+```
+
+Use `--index-registry` on `dbpm publish` to perform both steps in one command.
+If indexing fails, the verified publish receipt remains available for retry.
+
 See [dbpm publish](commands/publish.md) for details.
+See [dbpm registry index](commands/registry-index.md) for indexing details.
 
 ## Troubleshooting
 

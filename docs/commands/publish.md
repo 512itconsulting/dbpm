@@ -9,6 +9,8 @@ dbpm publish source --target TARGET
              [--package NAME]
              [--group GROUP] [--artifact-id ID]
              [--signing-key KEY]
+             [--receipt-output PATH]
+             [--index-registry [URL]]
              [--dry-run]
 ```
 
@@ -22,6 +24,8 @@ dbpm publish source --target TARGET
 | `--group` | `publish.group` in manifest | Maven group ID. Overrides the `publish:` section of `dbpm.yaml`. |
 | `--artifact-id` | `publish.artifact_id` or package name | Maven artifact ID. Overrides the `publish:` section of `dbpm.yaml`. |
 | `--signing-key` | `DBPM_SIGNING_KEY` | GPG key ID, fingerprint, or email used to sign the artifact. Required. |
+| `--receipt-output` | package root/`dbpm-publish-receipt.json` | Path for the durable, secret-free publish receipt. ZIP sources default to the current directory. |
+| `--index-registry [URL]` | none | Index the verified artifact after publishing. With no URL, uses `DBPM_REGISTRY_URL` or `https://dbpm.io`. |
 | `--dry-run` | false | Print what would be published without uploading. |
 
 ## Target formats
@@ -80,6 +84,10 @@ assembly/
 | `DBPM_GITHUB_TOKEN` / `GITHUB_TOKEN` | Token for GitHub Packages targets. |
 | `DBPM_MAVEN_TOKEN` | Token for generic Maven repository targets. |
 | `DBPM_MAVEN_USER` | Username for generic Maven repository targets. |
+| `DBPM_REGISTRY_URL` | Default registry URL for `--index-registry`. |
+| `DBPM_REGISTRY_TOKEN` | Bearer token required by `--index-registry`. |
+| `DBPM_REGISTRY_PUBLISHER` | Publisher override when `package.vendor` is absent. |
+| `DBPM_REGISTRY_DESCRIPTION` | Description override when `package.description` is absent. |
 
 ## What gets uploaded
 
@@ -111,7 +119,16 @@ On success, dbpm prints:
 
 ```
 PUBLISHED=https://maven.pkg.github.com/owner/repo/com/example/utl_interval/1.0.0/utl_interval-1.0.0.zip
+WROTE_PUBLISH_RECEIPT=/path/to/package/dbpm-publish-receipt.json
 ```
+
+The JSON receipt records the verified artifact URL, SHA-256 checksum, detached
+signature URL, full primary GPG fingerprint, publish coordinates, and publication
+time. It contains no repository credentials or registry tokens and is excluded
+from later package artifacts automatically.
+
+If `--index-registry` fails, dbpm exits nonzero but preserves the receipt so the
+index request can be retried with `dbpm registry index`.
 
 ## Examples
 
@@ -126,6 +143,11 @@ dbpm publish ~/repos/utl_interval \
 dbpm publish ~/repos/utl_interval \
   --target gh-maven:512itconsulting/utl_interval \
   --signing-key $DBPM_SIGNING_KEY
+
+# Publish, verify, write a receipt, and index the artifact
+dbpm publish ~/repos/utl_interval \
+  --target gh-maven:512itconsulting/utl_interval \
+  --index-registry
 
 # Publish to a generic Maven repository
 dbpm publish ~/repos/utl_interval \

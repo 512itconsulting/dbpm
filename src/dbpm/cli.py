@@ -8,7 +8,22 @@ from pathlib import Path
 
 from .chain import ChainError, resolve_upgrade_chain
 from .resolver import parse_version
-from .publisher import PublishReceipt, build_artifact, publish_to_repository, verify_publish
+from .publisher import (
+    PUBLISH_RECEIPT_NAME,
+    PublishReceipt,
+    build_artifact,
+    create_publish_receipt,
+    publish_to_repository,
+    resolve_signing_key_fingerprint,
+    verify_publish,
+    write_publish_receipt,
+)
+from .registry import (
+    create_registry_index_payload,
+    index_registry_version,
+    load_publish_receipt,
+    registry_base_url,
+)
 from .db import check_core, get_application_state, get_deployment_provenance, get_reverse_dependencies
 from .environment import resolve_environment
 from .errors import DbpmError
@@ -44,6 +59,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "publish":
             _run_publish(args)
+            return 0
+        if args.command == "registry":
+            _run_registry(args)
             return 0
         if args.command == "workspace":
             _run_workspace(args)
@@ -157,11 +175,95 @@ def _run_publish(args: argparse.Namespace) -> None:
         print(f"  signing_key: {args.signing_key}")
         return
 
+    fingerprint = resolve_signing_key_fingerprint(args.signing_key)
     source_path = source.path
     artifact_path = build_artifact(source_path, manifest, publish_config)
     receipt = publish_to_repository(args.target, manifest, publish_config, artifact_path, args.signing_key)
     verify_publish(args.target, manifest, publish_config, manifest.version, receipt.checksum)
+    publish_receipt = create_publish_receipt(
+        manifest=manifest,
+        publish_config=publish_config,
+        target=args.target,
+        receipt=receipt,
+        publisher_key_fingerprint=fingerprint,
+    )
+    receipt_path = _publish_receipt_path(args.receipt_output, source_arg, source_path)
+    write_publish_receipt(publish_receipt, receipt_path)
     print(f"PUBLISHED={receipt.artifact_url}")
+    print(f"WROTE_PUBLISH_RECEIPT={receipt_path}")
+
+    if args.index_registry is not None:
+        try:
+            payload = create_registry_index_payload(manifest, receipt=publish_receipt)
+            token = _registry_token("DBPM_REGISTRY_TOKEN")
+            result = index_registry_version(
+                manifest.name,
+                payload,
+                registry_url=args.index_registry or None,
+                token=token,
+            )
+        except DbpmError as exc:
+            raise DbpmError(
+                f"Publishing succeeded and receipt was written to {receipt_path}, "
+                f"but registry indexing failed: {exc}"
+            ) from exc
+        print(f"INDEXED={result.get('package', manifest.name)}@{result.get('version', manifest.version)}")
+
+
+def _run_registry(args: argparse.Namespace) -> None:
+    if args.registry_command != "index":
+        raise DbpmError("Unknown registry command")
+
+    source_arg, _, _ = _resolve_workspace_source_arg(args.package_root, args)
+    source = load_package_source(source_arg)
+    package_root = source.path
+    receipt_path = Path(args.receipt) if args.receipt else package_root / PUBLISH_RECEIPT_NAME
+    receipt = (
+        load_publish_receipt(receipt_path)
+        if args.receipt or receipt_path.exists()
+        else None
+    )
+    payload = create_registry_index_payload(
+        source.manifest,
+        receipt=receipt,
+        publisher=args.publisher,
+        description=args.description,
+        artifact_url=args.artifact_url,
+        artifact_checksum=args.artifact_checksum,
+        artifact_signature_url=args.artifact_signature_url,
+        publisher_key_fingerprint=args.publisher_key_fingerprint,
+    )
+    destination = (
+        f"{registry_base_url(args.registry_url)}/packages/{source.manifest.name}/versions/index"
+    )
+    if args.dry_run:
+        _print_json({"destination": destination, "payload": payload})
+        return
+
+    token = _registry_token(args.token_env)
+    result = index_registry_version(
+        source.manifest.name,
+        payload,
+        registry_url=args.registry_url,
+        token=token,
+    )
+    print(f"INDEXED={result.get('package', source.manifest.name)}@{result.get('version', source.manifest.version)}")
+
+
+def _publish_receipt_path(receipt_output: str | None, source_arg: str, source_path: Path) -> Path:
+    if receipt_output:
+        return Path(receipt_output)
+    raw_source = Path(source_arg).expanduser()
+    if raw_source.is_file():
+        return Path.cwd() / PUBLISH_RECEIPT_NAME
+    return source_path / PUBLISH_RECEIPT_NAME
+
+
+def _registry_token(token_env: str) -> str:
+    token = os.environ.get(token_env)
+    if not token:
+        raise DbpmError(f"Registry indexing requires token environment variable {token_env}")
+    return token
 
 
 def _run_workspace(args: argparse.Namespace) -> None:
@@ -291,7 +393,36 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="signing_key",
         help="GPG key ID, fingerprint, or email (default: DBPM_SIGNING_KEY)",
     )
+    publish.add_argument(
+        "--receipt-output",
+        default=None,
+        help=f"Publish receipt path, default: package root/{PUBLISH_RECEIPT_NAME}",
+    )
+    publish.add_argument(
+        "--index-registry",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="URL",
+        help="Index the published artifact; optional URL defaults to DBPM_REGISTRY_URL or https://dbpm.io",
+    )
     publish.add_argument("--dry-run", action="store_true", help="Print what would be published without uploading")
+
+    registry = subparsers.add_parser("registry", help="Interact with a dbpm registry")
+    registry_subparsers = registry.add_subparsers(dest="registry_command", required=True)
+    registry_index = registry_subparsers.add_parser("index", help="Index a published package artifact")
+    registry_index.add_argument("package_root", nargs="?", default=".", help="Package or workspace root")
+    registry_index.add_argument("--package", help="Package name or application name for a workspace root")
+    registry_index.add_argument("--receipt", help=f"Publish receipt path, default: package root/{PUBLISH_RECEIPT_NAME}")
+    registry_index.add_argument("--registry-url", default=None, help="Registry URL, default: DBPM_REGISTRY_URL or https://dbpm.io")
+    registry_index.add_argument("--token-env", default="DBPM_REGISTRY_TOKEN", help="Environment variable containing the bearer token")
+    registry_index.add_argument("--publisher", help="Publisher override")
+    registry_index.add_argument("--description", help="Description override")
+    registry_index.add_argument("--artifact-url", help="Artifact URL override")
+    registry_index.add_argument("--artifact-checksum", help="Artifact SHA-256 override")
+    registry_index.add_argument("--artifact-signature-url", help="Detached signature URL override")
+    registry_index.add_argument("--publisher-key-fingerprint", help="Publisher GPG key fingerprint override")
+    registry_index.add_argument("--dry-run", action="store_true", help="Print the index request without sending it")
 
     return parser
 

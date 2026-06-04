@@ -15,14 +15,18 @@ from dbpm.planner import create_plan
 from dbpm.provenance import resolve_provenance
 
 from dbpm.publisher import (
+    PUBLISH_RECEIPT_NAME,
     PublishReceipt,
     _build_updated_metadata,
     _fetch_text_or_none,
     _parse_publish_target,
     _xml_escape,
     build_artifact,
+    create_publish_receipt,
     generate_pom,
+    resolve_signing_key_fingerprint,
     sign_artifact,
+    write_publish_receipt,
 )
 from dbpm.source import load_package_source
 
@@ -220,6 +224,76 @@ def test_build_artifact_honors_dbpmignore(
     assert "utl_interval-1.2.3/pom.xml" not in names
     assert "utl_interval-1.2.3/assembly/package.xml" not in names
     assert "utl_interval-1.2.3/.dbpmignore" in names
+
+
+def test_build_artifact_excludes_default_publish_receipt(
+    tmp_path: Path, manifest: PackageManifest, publish_config: PublishConfig
+):
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "dbpm.yaml").write_text("package:\n  name: utl_interval\n  version: 1.2.3\n")
+    (pkg / PUBLISH_RECEIPT_NAME).write_text('{"secret": false}\n')
+
+    with patch("dbpm.publisher._git_metadata", return_value=_git_metadata()):
+        artifact_path = build_artifact(pkg, manifest, publish_config)
+
+    with zipfile.ZipFile(artifact_path) as archive:
+        assert not any(name.endswith(PUBLISH_RECEIPT_NAME) for name in archive.namelist())
+
+
+def test_create_and_write_publish_receipt(
+    tmp_path: Path, manifest: PackageManifest, publish_config: PublishConfig
+):
+    receipt = create_publish_receipt(
+        manifest=manifest,
+        publish_config=publish_config,
+        target="gh-maven:acme/repo",
+        receipt=PublishReceipt(
+            artifact_url="https://repo.example/utl_interval-1.2.3.zip",
+            checksum="a" * 64,
+            signature_url="https://repo.example/utl_interval-1.2.3.zip.asc",
+        ),
+        publisher_key_fingerprint="FINGERPRINT",
+        published_at="2026-06-04T12:00:00Z",
+    )
+    output = tmp_path / "receipt.json"
+
+    write_publish_receipt(receipt, output)
+
+    assert receipt["schema_version"] == "dbpm.publish-receipt.v1"
+    assert receipt["artifact"]["checksum"] == "sha256:" + "a" * 64
+    assert "token" not in output.read_text(encoding="utf-8").lower()
+
+
+def test_resolve_signing_key_fingerprint_uses_primary_secret_key(monkeypatch):
+    result = MagicMock(
+        returncode=0,
+        stdout=(
+            "sec:u:255:22:KEYID:0:0::::::\n"
+            "fpr:::::::::PRIMARYFINGERPRINT:\n"
+            "ssb:u:255:18:SUBKEY:0:0::::::\n"
+            "fpr:::::::::SUBKEYFINGERPRINT:\n"
+        ),
+        stderr="",
+    )
+    monkeypatch.setattr("dbpm.publisher.subprocess.run", lambda *args, **kwargs: result)
+
+    assert resolve_signing_key_fingerprint("signing@example.test") == "PRIMARYFINGERPRINT"
+
+
+def test_resolve_signing_key_fingerprint_rejects_ambiguous_selector(monkeypatch):
+    result = MagicMock(
+        returncode=0,
+        stdout=(
+            "sec:u:255:22:ONE:0:0::::::\nfpr:::::::::FIRST:\n"
+            "sec:u:255:22:TWO:0:0::::::\nfpr:::::::::SECOND:\n"
+        ),
+        stderr="",
+    )
+    monkeypatch.setattr("dbpm.publisher.subprocess.run", lambda *args, **kwargs: result)
+
+    with pytest.raises(PublishError, match="ambiguous"):
+        resolve_signing_key_fingerprint("shared@example.test")
 
 
 def test_dbpm_built_zip_populates_plan_artifact_provenance(tmp_path: Path):
