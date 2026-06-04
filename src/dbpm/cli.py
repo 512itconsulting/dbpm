@@ -43,6 +43,7 @@ from .lockfile import (
 from .planner import create_plan
 from .provenance import resolve_provenance
 from .resolver import create_multi_package_plan
+from .script_generator import generate_scripts, resolve_generation_options
 from .source import load_package_source
 from .workspace import (
     is_workspace_root,
@@ -65,6 +66,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "workspace":
             _run_workspace(args)
+            return 0
+        if args.command == "generate-scripts":
+            _run_generate_scripts(args)
             return 0
         if args.command == "plan":
             plan = _build_plan(args.mode, args, include_installed_state=bool(args.connect))
@@ -274,6 +278,29 @@ def _run_workspace(args: argparse.Namespace) -> None:
     raise DbpmError("Unknown workspace command")
 
 
+def _run_generate_scripts(args: argparse.Namespace) -> None:
+    options = resolve_generation_options(
+        Path(args.source),
+        from_ref=args.from_ref,
+        to_ref=args.to_ref,
+        version=args.target_version,
+        application_name=args.application_name,
+        install_output=args.install_output,
+        release_upgrade_output=args.release_upgrade_output,
+        upgrade_pointer_output=args.upgrade_pointer_output,
+        deployment_type=args.deployment_type,
+        check=args.check,
+    )
+    result = generate_scripts(options)
+    for warning in result.warnings:
+        print(f"WARNING: {warning}", file=sys.stderr)
+    if args.check:
+        print("GENERATED_SCRIPTS_OK")
+        return
+    for path in result.changed:
+        print(f"WROTE={path.relative_to(options.root)}")
+
+
 def _build_parser() -> argparse.ArgumentParser:
     from importlib.metadata import version as _pkg_version
     parser = argparse.ArgumentParser(prog="dbpm")
@@ -363,6 +390,25 @@ def _build_parser() -> argparse.ArgumentParser:
         default=".",
         help="Workspace root or dbpm-workspace.yaml path, default: current directory",
     )
+
+    generate = subparsers.add_parser(
+        "generate-scripts",
+        help="Generate standalone Oracle install and upgrade scripts from Git changes",
+    )
+    generate.add_argument("source", nargs="?", default=".", help="Git repository root")
+    generate.add_argument("--from", dest="from_ref", required=True, help="Baseline Git commit or ref")
+    generate.add_argument("--to", dest="to_ref", default="HEAD", help="Target Git commit or ref, default: HEAD")
+    generate.add_argument("--version", dest="target_version", help="Target semantic version; overrides dbpm.yaml")
+    generate.add_argument("--application-name", help="Application registry name; overrides dbpm.yaml")
+    generate.add_argument(
+        "--deployment-type",
+        choices=("major", "minor", "patch"),
+        help="Upgrade deployment type; normally inferred from the version delta",
+    )
+    generate.add_argument("--install-output", help="Generated full-install script path")
+    generate.add_argument("--release-upgrade-output", help="Generated versioned upgrade script path")
+    generate.add_argument("--upgrade-pointer-output", help="Generated current-upgrade pointer path")
+    generate.add_argument("--check", action="store_true", help="Fail when generated scripts are stale or missing")
 
     publish = subparsers.add_parser("publish", help="Build and publish a package to a Maven repository")
     publish.add_argument("source", help="Local package directory or ZIP to publish")

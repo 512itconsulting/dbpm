@@ -1,4 +1,8 @@
 # dbpm
+
+See [Convention-Driven SQL Generation](docs/script-generation.md) for
+generating standalone install and versioned upgrade scripts from Git changes.
+
 **dbpm** is a package manager for Oracle database applications and reusable PL/SQL components.
 
 The goal is to bring modern dependency management, versioning, packaging, and deployment workflows to Oracle database development.
