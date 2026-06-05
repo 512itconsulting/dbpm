@@ -112,6 +112,7 @@ Common variables:
 | [`dbpm reinstall`](docs/commands/reinstall.md) | Destructively reinstall a package |
 | [`dbpm resume`](docs/commands/resume.md) | Resume a running or failed deployment |
 | [`dbpm validate`](docs/commands/validate.md) | Run a package's validation script |
+| [`dbpm generate-scripts`](docs/commands/generate-scripts.md) | Generate standalone Oracle install and upgrade scripts from Git changes |
 | [`dbpm publish`](docs/commands/publish.md) | Build and publish a package to a Maven repository with GPG signing |
 | [`dbpm registry index`](docs/commands/registry-index.md) | Index a published immutable artifact in a dbpm registry |
 | [`dbpm workspace list`](docs/commands/workspace.md) | List packages declared by a workspace manifest |

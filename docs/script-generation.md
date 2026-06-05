@@ -3,6 +3,9 @@
 `dbpm generate-scripts` generates standalone Oracle install and upgrade SQL
 from committed Git state. The generated SQL can be executed without dbpm.
 
+See [dbpm generate-scripts](commands/generate-scripts.md) for the command
+reference.
+
 See [Convention-Driven SQL Generation Design](script-generation-design.md) for
 the feature requirements, behavioral contract, and deferred scope.
 
