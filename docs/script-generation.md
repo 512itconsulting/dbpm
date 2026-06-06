@@ -65,3 +65,11 @@ before applying object changes. A modified canonical table without a matching
 `alter` or `recreate` script is emitted as commented SQL with a warning.
 
 Use `--check` in CI to fail when committed generated scripts are stale.
+
+## Type Conventions
+
+`Types/*.sql` files are treated as generic standalone type DDL. Use
+`Types/*.tps` for type specifications and `Types/*.tpb` for type bodies when
+ordering matters. dbpm emits type specifications before generic type SQL, and
+generic type SQL before type bodies. It does not inspect `.sql` contents to
+infer type spec or body intent.

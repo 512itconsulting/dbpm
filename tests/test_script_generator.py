@@ -125,6 +125,34 @@ def test_initial_generation_without_from_writes_only_install(tmp_path: Path):
     assert not (repo / "sql/update.sql").exists()
 
 
+def test_type_specs_generic_sql_and_bodies_are_ordered_in_install(tmp_path: Path):
+    repo, _ = _repo(tmp_path)
+    _write(repo, "Types/ADDRESS.tps")
+    _write(repo, "Types/ADDRESS.tpb")
+    _write(repo, "Types/COUNTRY.sql")
+    _write(repo, "Views/V_ADDRESS.sql")
+    _commit(repo, "add types")
+
+    options = resolve_generation_options(repo)
+    generate_scripts(options)
+    install = (repo / "sql/install.sql").read_text(encoding="utf-8")
+
+    type_spec = "@@../Types/ADDRESS.tps"
+    generic_type = "@@../Types/COUNTRY.sql"
+    type_body = "@@../Types/ADDRESS.tpb"
+    view = "@@../Views/V_ADDRESS.sql"
+    assert type_spec in install
+    assert generic_type in install
+    assert type_body in install
+    assert install.index(type_spec) < install.index(generic_type)
+    assert install.index(generic_type) < install.index(type_body)
+    assert install.index(type_body) < install.index(view)
+    assert "PROMPT Deploying Type Specifications" in install
+    assert "PROMPT Deploying Type Bodies" in install
+    assert "ip_object_name => 'ADDRESS'" in install
+    assert "ip_object_name => 'COUNTRY'" in install
+
+
 def test_initial_generation_check_ignores_stale_or_missing_update_outputs(tmp_path: Path):
     repo, _ = _repo(tmp_path)
     options = resolve_generation_options(repo)
@@ -136,6 +164,27 @@ def test_initial_generation_check_ignores_stale_or_missing_update_outputs(tmp_pa
 
     assert result.changed == ()
     assert {path.relative_to(repo).as_posix() for path in result.outputs} == {"sql/install.sql"}
+
+
+def test_changed_type_specs_and_bodies_are_included_in_update(tmp_path: Path):
+    repo, baseline = _repo(tmp_path)
+    _write(repo, "Types/ADDRESS.tps")
+    _write(repo, "Types/ADDRESS.tpb")
+    target = _commit(repo, "add type spec and body")
+
+    options = resolve_generation_options(repo, from_ref=baseline, to_ref=target, version="1.5.0")
+    generate_scripts(options)
+    update = (repo / options.release_upgrade_output).read_text(encoding="utf-8")
+
+    type_spec = "@@../../../Types/ADDRESS.tps"
+    type_body = "@@../../../Types/ADDRESS.tpb"
+    assert type_spec in update
+    assert type_body in update
+    assert update.index(type_spec) < update.index(type_body)
+    assert "PROMPT Deploying Type Specifications" in update
+    assert "PROMPT Deploying Type Bodies" in update
+    assert "ip_object_name => 'ADDRESS'" in update
+    assert "ip_object_type => pkg_application.c_object_type_type" in update
 
 
 @pytest.mark.parametrize(

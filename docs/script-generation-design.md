@@ -68,6 +68,18 @@ Tables/OLD_ORDERS.drop.1.5.0.sql
 - Semantic versions are parsed by dbpm; correctness never depends on OS
   filename sorting.
 
+Type specs and bodies may use explicit extensions:
+
+```text
+Types/ADDRESS.tps
+Types/ADDRESS.tpb
+Types/COUNTRY.sql
+```
+
+- `tps` files are emitted before generic `sql` type files.
+- Generic `sql` type files are emitted before `tpb` files.
+- dbpm does not inspect SQL contents to infer spec/body intent.
+
 ## Generation Behavior
 
 Full-install generation inventories canonical objects from the complete tree at

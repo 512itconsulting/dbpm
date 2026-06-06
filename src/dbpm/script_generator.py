@@ -30,7 +30,9 @@ OBJECT_DIRECTORIES = (
 GROUP_LABELS = {
     "Sequences": "Sequences",
     "Tables": "Tables",
+    "Types:spec": "Type Specifications",
     "Types": "Types",
+    "Types:body": "Type Bodies",
     "Views": "Views",
     "Functions": "Functions",
     "Procedures": "Procedures",
@@ -42,7 +44,9 @@ GROUP_LABELS = {
 OBJECT_CONSTANTS = {
     "Sequences": "pkg_application.c_object_type_sequence",
     "Tables": "pkg_application.c_object_type_table",
+    "Types:spec": "pkg_application.c_object_type_type",
     "Types": "pkg_application.c_object_type_type",
+    "Types:body": "pkg_application.c_object_type_type",
     "Views": "pkg_application.c_object_type_view",
     "Functions": "pkg_application.c_object_type_function",
     "Procedures": "pkg_application.c_object_type_procedure",
@@ -599,6 +603,14 @@ def _object_file(path: str) -> ObjectFile | None:
         if lower.endswith(".pkb"):
             return ObjectFile(path, directory, filename[:-4], "Packages:body", OBJECT_CONSTANTS["Packages:body"])
         return None
+    if directory == "Types":
+        if lower.endswith(".tps"):
+            return ObjectFile(path, directory, filename[:-4], "Types:spec", OBJECT_CONSTANTS["Types:spec"])
+        if lower.endswith(".tpb"):
+            return ObjectFile(path, directory, filename[:-4], "Types:body", OBJECT_CONSTANTS["Types:body"])
+        if lower.endswith(".sql"):
+            return ObjectFile(path, directory, filename[:-4], "Types", OBJECT_CONSTANTS["Types"])
+        return None
     if not lower.endswith(".sql") and directory != "Metadata":
         return None
     name = filename[:-4] if lower.endswith(".sql") else filename
@@ -706,7 +718,9 @@ def _group_order() -> tuple[str, ...]:
     return (
         "Sequences",
         "Tables",
+        "Types:spec",
         "Types",
+        "Types:body",
         "Views",
         "Functions",
         "Procedures",

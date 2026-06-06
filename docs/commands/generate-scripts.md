@@ -97,6 +97,24 @@ Tables/OLD_ORDERS.drop.1.5.0.sql
 A modified canonical table without a matching `alter` or `recreate` script is
 emitted as commented SQL in the upgrade script and reported as a warning.
 
+## Type conventions
+
+Type files may use generic SQL or explicit type spec/body extensions:
+
+```text
+Types/COUNTRY.sql
+Types/ADDRESS.tps
+Types/ADDRESS.tpb
+```
+
+- `*.sql` is treated as generic standalone type DDL.
+- `*.tps` is treated as a type specification.
+- `*.tpb` is treated as a type body.
+
+Use `.tps` and `.tpb` when type spec/body ordering matters. dbpm does not
+inspect SQL contents to infer whether a `.sql` file contains a type spec or
+type body.
+
 ## Examples
 
 Generate an initial full-install script from the current repository:
