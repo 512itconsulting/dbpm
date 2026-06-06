@@ -396,7 +396,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Generate standalone Oracle install and upgrade scripts from Git changes",
     )
     generate.add_argument("source", nargs="?", default=".", help="Git repository root")
-    generate.add_argument("--from", dest="from_ref", required=True, help="Baseline Git commit or ref")
+    generate.add_argument("--from", dest="from_ref", help="Baseline Git commit or ref")
     generate.add_argument("--to", dest="to_ref", default="HEAD", help="Target Git commit or ref, default: HEAD")
     generate.add_argument("--version", dest="target_version", help="Target semantic version; overrides dbpm.yaml")
     generate.add_argument("--application-name", help="Application registry name; overrides dbpm.yaml")

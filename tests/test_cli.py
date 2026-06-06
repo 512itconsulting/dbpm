@@ -1,5 +1,6 @@
 import json
 import hashlib
+import subprocess
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -65,6 +66,16 @@ workspace:
     )
 
 
+def _git(repo: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(repo), *args],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout.strip()
+
+
 def _write_registry_zip(
     path: Path,
     name: str,
@@ -110,6 +121,39 @@ def _registry_resolution(
         warning=warning,
         warnings=warnings,
     )
+
+
+def test_generate_scripts_without_from_generates_initial_install_only(tmp_path: Path, capsys):
+    repo = tmp_path / "script_repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "Test User")
+    (repo / "dbpm.yaml").write_text(
+        """
+package:
+  name: demo
+  version: "0.1.0"
+
+scripts:
+  install: sql/install.sql
+  upgrade: sql/update.sql
+generation:
+  release_upgrade_output: sql/releases/0.1.0/update.sql
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (repo / "Tables").mkdir()
+    (repo / "Tables" / "DEMO.sql").write_text("CREATE TABLE DEMO (ID NUMBER);\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "initial")
+
+    assert cli.main(["generate-scripts", str(repo)]) == 0
+
+    assert capsys.readouterr().out.strip() == "WROTE=sql/install.sql"
+    assert (repo / "sql" / "install.sql").exists()
+    assert not (repo / "sql" / "update.sql").exists()
+    assert not (repo / "sql" / "releases" / "0.1.0" / "update.sql").exists()
 
 
 @pytest.fixture(autouse=True)

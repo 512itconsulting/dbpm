@@ -10,7 +10,7 @@ differs from normal package deployments.
 ## Syntax
 
 ```text
-dbpm generate-scripts [source] --from REF [--to REF]
+dbpm generate-scripts [source] [--from REF] [--to REF]
                       [--version VERSION]
                       [--application-name NAME]
                       [--deployment-type major|minor|patch]
@@ -25,19 +25,20 @@ dbpm generate-scripts [source] --from REF [--to REF]
 | Argument | Default | Description |
 |---|---|---|
 | `source` | `.` | Git repository root. dbpm resolves this to the repository top level. |
-| `--from` | required | Baseline Git commit or ref used to build the upgrade diff. Must resolve to a commit. |
+| `--from` | none | Baseline Git commit or ref used to build the upgrade diff. Must resolve to a commit when supplied. Omit for initial full-install-only generation. |
 | `--to` | `HEAD` | Target Git commit or ref. Must resolve to a commit. |
 | `--version` | `package.version` in `dbpm.yaml` | Target semantic version. Required when the repository has no dbpm manifest. |
 | `--application-name` | normalized `package.name`, or repository directory name | Application registry name. The value is normalized the same way package names are normalized. |
-| `--deployment-type` | inferred | Upgrade deployment type. Normally inferred from the baseline and target versions. |
+| `--deployment-type` | inferred | Upgrade deployment type. Requires `--from`; normally inferred from the baseline and target versions. |
 | `--install-output` | `scripts.install` in manifest, then `Deployment_Manifests/deploy.sql` | Full-install script path, relative to the repository root. |
-| `--release-upgrade-output` | `generation.release_upgrade_output`, then `Deployment_Manifests/releases/{version}/update.sql` | Versioned upgrade script path, relative to the repository root. Supports `{version}` and `<version>` placeholders. |
-| `--upgrade-pointer-output` | `scripts.upgrade` in manifest, then `Deployment_Manifests/update.sql` | Current upgrade pointer script path, relative to the repository root. |
+| `--release-upgrade-output` | `generation.release_upgrade_output`, then `Deployment_Manifests/releases/{version}/update.sql` | Versioned upgrade script path, relative to the repository root. Requires `--from`; supports `{version}` and `<version>` placeholders. |
+| `--upgrade-pointer-output` | `scripts.upgrade` in manifest, then `Deployment_Manifests/update.sql` | Current upgrade pointer script path, relative to the repository root. Requires `--from`. |
 | `--check` | false | Do not write files. Fail if generated scripts are missing or stale. |
 
 ## Outputs
 
-By default, the command renders three files:
+Without `--from`, the command is in initial deploy mode and renders only the
+full-install script. With `--from`, the command renders three files:
 
 | Output | Description |
 |---|---|
@@ -48,7 +49,7 @@ By default, the command renders three files:
 When generated content differs from the files on disk, dbpm writes the changed
 files and prints one `WROTE=path` line for each changed output. With `--check`,
 dbpm writes nothing and prints `GENERATED_SCRIPTS_OK` only when every generated
-file already matches.
+file for the selected mode already matches.
 
 ## Manifest configuration
 
@@ -98,10 +99,16 @@ emitted as commented SQL in the upgrade script and reported as a warning.
 
 ## Examples
 
-Generate scripts from the current repository:
+Generate an initial full-install script from the current repository:
 
 ```sh
-dbpm generate-scripts . --from v1.4.0
+dbpm generate-scripts . --version 0.1.0
+```
+
+Generate install and upgrade scripts from a baseline:
+
+```sh
+dbpm generate-scripts . --from v0.1.0 --version 0.2.0
 ```
 
 Generate from an explicit target ref:
@@ -135,11 +142,12 @@ dbpm generate-scripts . \
 
 ## Notes
 
-- `--from` and `--to` must name committed Git state. Working-tree and staged
-  changes are not used for generation.
+- `--to`, and `--from` when supplied, must name committed Git state.
+  Working-tree and staged changes are not used for generation.
 - Full installs contain canonical object and metadata files only. Upgrade
   scripts register new and modified objects with Core before applying object
   changes.
+- Existing update files are not removed or checked when `--from` is omitted.
 - Use [Convention-Driven SQL Generation](../script-generation.md) for the
   convention overview and
   [Convention-Driven SQL Generation Design](../script-generation-design.md) for

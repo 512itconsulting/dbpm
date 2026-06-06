@@ -16,18 +16,19 @@ renders standalone SQL.
 Expose:
 
 ```sh
-dbpm generate-scripts . --from <git-ref> [--to <git-ref>]
+dbpm generate-scripts . [--from <git-ref>] [--to <git-ref>]
 ```
 
-- `--from` is required.
+- Omitting `--from` generates only the initial full-install script.
+- Supplying `--from` generates full-install and release-update scripts.
 - `--to` defaults to `HEAD`.
-- Both refs identify committed Git states.
+- Supplied refs identify committed Git states.
 - CLI values override `dbpm.yaml`; conventions provide remaining defaults.
 - Repositories without `dbpm.yaml` are supported when `--version` is supplied.
 - Core repositories are rejected because Core's initial install requires a
   bootstrap-aware lifecycle.
 
-Generate three distinct outputs:
+With `--from`, generate three distinct outputs:
 
 ```text
 Deployment_Manifests/deploy.sql
@@ -38,6 +39,9 @@ Deployment_Manifests/update.sql
 The top-level update script points to the versioned release update. Output
 paths are configurable through CLI options, and install/current-upgrade paths
 may default from `dbpm.yaml`.
+
+Without `--from`, generate only the full-install output. Upgrade-only CLI
+options are rejected in this mode, and manifest upgrade paths are ignored.
 
 ## Object And Table Conventions
 
@@ -70,7 +74,8 @@ Full-install generation inventories canonical objects from the complete tree at
 `--to`, registers owned objects, and deploys objects in dependency-friendly
 groups.
 
-Release-update generation uses the Git diff between `--from` and `--to`:
+When `--from` is supplied, release-update generation uses the Git diff between
+`--from` and `--to`:
 
 1. Begin deployment.
 2. Register every new or modified owned object with
@@ -109,6 +114,7 @@ to enforce committed generated scripts.
 
 - Explicit historical `--from` and `--to` refs generate deterministic output.
 - Omitting `--to` uses `HEAD`.
+- Omitting `--from` generates only the initial full-install script.
 - CLI options override manifest values.
 - Generation works without `dbpm.yaml` when required CLI inputs are supplied.
 - Full installs exclude all lifecycle scripts.

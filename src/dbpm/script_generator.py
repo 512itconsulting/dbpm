@@ -79,14 +79,14 @@ class LifecycleFile:
 @dataclass(frozen=True)
 class GenerationOptions:
     root: Path
-    from_ref: str
+    from_ref: str | None
     to_ref: str
     version: str
     application_name: str
     install_output: str
-    release_upgrade_output: str
-    upgrade_pointer_output: str
-    deployment_type: str
+    release_upgrade_output: str | None
+    upgrade_pointer_output: str | None
+    deployment_type: str | None
     check: bool = False
 
 
@@ -100,7 +100,7 @@ class GenerationResult:
 def resolve_generation_options(
     root: Path,
     *,
-    from_ref: str,
+    from_ref: str | None = None,
     to_ref: str = "HEAD",
     version: str | None = None,
     application_name: str | None = None,
@@ -112,11 +112,14 @@ def resolve_generation_options(
 ) -> GenerationOptions:
     root = root.resolve()
     root = Path(_git(root, "rev-parse", "--show-toplevel").strip()).resolve()
-    _git(root, "rev-parse", "--verify", f"{from_ref}^{{commit}}")
+    if from_ref is not None:
+        _git(root, "rev-parse", "--verify", f"{from_ref}^{{commit}}")
     _git(root, "rev-parse", "--verify", f"{to_ref}^{{commit}}")
 
     manifest, raw_manifest = _manifest_at_ref(root, to_ref)
-    previous_manifest, _ = _manifest_at_ref(root, from_ref)
+    previous_manifest = None
+    if from_ref is not None:
+        previous_manifest, _ = _manifest_at_ref(root, from_ref)
     resolved_version = version or (manifest.version if manifest else None)
     if resolved_version is None:
         raise DbpmError("Script generation requires --version when dbpm.yaml is absent")
@@ -142,6 +145,26 @@ def resolve_generation_options(
         or (manifest.scripts.install if manifest else None)
         or DEFAULT_INSTALL_OUTPUT
     )
+    if from_ref is None:
+        if deployment_type is not None:
+            raise DbpmError("--deployment-type requires --from")
+        if release_upgrade_output is not None:
+            raise DbpmError("--release-upgrade-output requires --from")
+        if upgrade_pointer_output is not None:
+            raise DbpmError("--upgrade-pointer-output requires --from")
+        return GenerationOptions(
+            root=root,
+            from_ref=None,
+            to_ref=to_ref,
+            version=resolved_version,
+            application_name=resolved_application,
+            install_output=_normalize_output(resolved_install),
+            release_upgrade_output=None,
+            upgrade_pointer_output=None,
+            deployment_type=None,
+            check=check,
+        )
+
     resolved_pointer = (
         upgrade_pointer_output
         or (manifest.scripts.upgrade if manifest else None)
@@ -184,12 +207,38 @@ def resolve_generation_options(
 
 def generate_scripts(options: GenerationOptions) -> GenerationResult:
     to_paths = _tree_paths(options.root, options.to_ref)
-    changed = _diff_paths(options.root, options.from_ref, options.to_ref)
     objects = {
         item.path: item
         for item in (_object_file(path) for path in to_paths)
         if item is not None
     }
+    install_sql = _render_install(options, objects.values())
+    rendered = {options.install_output: install_sql}
+
+    warnings: list[str] = []
+    if options.from_ref is not None:
+        assert options.release_upgrade_output is not None
+        assert options.upgrade_pointer_output is not None
+        assert options.deployment_type is not None
+        changed = _diff_paths(options.root, options.from_ref, options.to_ref)
+        update_sql, warnings = _render_update(
+            options,
+            objects,
+            _changed_lifecycle(to_paths, changed, options),
+            changed,
+        )
+        pointer_sql = _render_pointer(options)
+        rendered[options.release_upgrade_output] = update_sql
+        rendered[options.upgrade_pointer_output] = pointer_sql
+
+    return _write_generated_outputs(options, rendered, warnings)
+
+
+def _changed_lifecycle(
+    to_paths: Iterable[str],
+    changed: dict[str, str],
+    options: GenerationOptions,
+) -> list[LifecycleFile]:
     lifecycle = []
     for path in to_paths:
         item = _lifecycle_file(path)
@@ -200,16 +249,14 @@ def generate_scripts(options: GenerationOptions) -> GenerationResult:
             raise DbpmError(
                 f"Lifecycle script {item.path} targets {item.version}, expected {options.version}"
             )
+    return lifecycle
 
-    install_sql = _render_install(options, objects.values())
-    update_sql, warnings = _render_update(options, objects, lifecycle, changed)
-    pointer_sql = _render_pointer(options)
 
-    rendered = {
-        options.install_output: install_sql,
-        options.release_upgrade_output: update_sql,
-        options.upgrade_pointer_output: pointer_sql,
-    }
+def _write_generated_outputs(
+    options: GenerationOptions,
+    rendered: dict[str, str],
+    warnings: list[str],
+) -> GenerationResult:
     changed_outputs: list[Path] = []
     outputs: list[Path] = []
     for relative_path, content in rendered.items():

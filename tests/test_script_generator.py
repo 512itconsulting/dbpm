@@ -109,6 +109,57 @@ generation:
     assert "@@releases/1.5.0/update.sql &&1" in pointer
 
 
+def test_initial_generation_without_from_writes_only_install(tmp_path: Path):
+    repo, _ = _repo(tmp_path)
+
+    options = resolve_generation_options(repo)
+    result = generate_scripts(options)
+
+    assert options.from_ref is None
+    assert options.release_upgrade_output is None
+    assert options.upgrade_pointer_output is None
+    assert {path.relative_to(repo).as_posix() for path in result.outputs} == {"sql/install.sql"}
+    assert {path.relative_to(repo).as_posix() for path in result.changed} == {"sql/install.sql"}
+    assert (repo / "sql/install.sql").exists()
+    assert not (repo / "sql/releases/1.5.0/update.sql").exists()
+    assert not (repo / "sql/update.sql").exists()
+
+
+def test_initial_generation_check_ignores_stale_or_missing_update_outputs(tmp_path: Path):
+    repo, _ = _repo(tmp_path)
+    options = resolve_generation_options(repo)
+    generate_scripts(options)
+    _write(repo, "sql/update.sql", "stale update pointer\n")
+
+    check_options = resolve_generation_options(repo, check=True)
+    result = generate_scripts(check_options)
+
+    assert result.changed == ()
+    assert {path.relative_to(repo).as_posix() for path in result.outputs} == {"sql/install.sql"}
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"deployment_type": "major"}, "--deployment-type requires --from"),
+        (
+            {"release_upgrade_output": "sql/releases/{version}/update.sql"},
+            "--release-upgrade-output requires --from",
+        ),
+        ({"upgrade_pointer_output": "sql/update.sql"}, "--upgrade-pointer-output requires --from"),
+    ],
+)
+def test_initial_generation_rejects_explicit_upgrade_options(
+    tmp_path: Path,
+    kwargs: dict[str, str],
+    message: str,
+):
+    repo, _ = _repo(tmp_path)
+
+    with pytest.raises(DbpmError, match=message):
+        resolve_generation_options(repo, **kwargs)
+
+
 def test_recreate_runs_immediately_before_canonical_ddl(tmp_path: Path):
     repo, baseline = _repo(tmp_path)
     _write(repo, "Tables/ORDERS.sql", "CREATE TABLE ORDERS (NEW_ID NUMBER);\n")

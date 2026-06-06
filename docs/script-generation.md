@@ -16,12 +16,14 @@ applications.
 ## Usage
 
 ```sh
-dbpm generate-scripts . --from v1.4.0
+dbpm generate-scripts . --version 0.1.0
 dbpm generate-scripts . --from v1.4.0 --to HEAD --check
 ```
 
-`--from` is required. `--to` defaults to `HEAD`. Both values must resolve to
-commits. CLI options override `dbpm.yaml`; without a manifest, provide
+Omitting `--from` generates only the initial full-install script. Supplying
+`--from` generates the full install, the versioned release update, and the
+current update pointer. `--to` defaults to `HEAD`. Supplied refs must resolve
+to commits. CLI options override `dbpm.yaml`; without a manifest, provide
 `--version`. Other zero-configuration defaults are:
 
 ```text
