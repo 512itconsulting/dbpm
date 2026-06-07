@@ -122,20 +122,43 @@ def _scaffold_package_dirs(root: Path) -> list[Path]:
 
 
 def _package_manifest(name: str, version: str, description: str) -> str:
-    desc_line = f'  description: "{description}"' if description else '  description: ""'
-    return (
-        f"package:\n"
-        f'  name: {name}\n'
-        f'  version: "{version}"\n'
-        f"{desc_line}\n"
-        f"\n"
-        f"database:\n"
-        f"  platform: oracle\n"
-        f"\n"
-        f"scripts:\n"
-        f"  install: deployment_manifests/deploy.sql\n"
-        f"  upgrade: deployment_manifests/update.sql\n"
-    )
+    desc = description or ""
+    return f"""\
+package:
+  name: {name}
+  version: "{version}"
+  description: "{desc}"
+  # vendor: your_org_name
+  # license: Apache-2.0
+
+database:
+  platform: oracle
+  # minimum_version: "19c"  # Minimum Oracle version required by this package
+
+# Uncomment and set the minimum Core version this package requires.
+# core:
+#   minimum_version: "3.0.0"
+
+# Package dependencies beyond Core. Version constraints:
+#   exact:        "1.2.0"
+#   compatible:   "^1.2.0"  (>=1.2.0, <2.0.0)
+#   conservative: "~1.2.0"  (>=1.2.0, <1.3.0)
+# dependencies:
+#   - name: package_name
+#     version: "^1.0.0"
+
+scripts:
+  install: deployment_manifests/deploy.sql
+  upgrade: deployment_manifests/update.sql
+  # upgrade_from: "^0.0.0"  # Version constraint the upgrade script applies to
+  # validate: deployment_manifests/validate.sql
+  # uninstall: deployment_manifests/uninstall.sql
+
+# Uncomment to publish this package to a Maven-compatible repository.
+# publish:
+#   group: com.yourorg.database
+#   artifact_id: {name}     # Defaults to package name if omitted
+"""
 
 
 def _readme(name: str, description: str) -> str:

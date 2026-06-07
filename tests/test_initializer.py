@@ -84,6 +84,16 @@ def test_init_package_manifest_no_description(tmp_path: Path):
     assert 'description: ""' in text
 
 
+def test_init_package_manifest_contains_commented_sections(tmp_path: Path):
+    init_package(tmp_path, name="demo", version="0.1.0", description="", force=False)
+    text = (tmp_path / "dbpm.yaml").read_text(encoding="utf-8")
+    assert "# vendor:" in text
+    assert "# core:" in text
+    assert "# dependencies:" in text
+    assert "# validate:" in text
+    assert "# publish:" in text
+
+
 # ---------------------------------------------------------------------------
 # init_package — README and LICENSE
 # ---------------------------------------------------------------------------
