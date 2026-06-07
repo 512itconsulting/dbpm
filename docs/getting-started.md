@@ -89,6 +89,29 @@ printf '%s\n' "$DBPM_SQL_RUNNER"
 printf '%s\n' "$DBPM_CONNECT"
 ```
 
+## Start a New Package
+
+To scaffold a new package repository from scratch:
+
+```sh
+mkdir my_package
+dbpm init package my_package --name my_package --description "My Oracle package"
+```
+
+To scaffold a new workspace with multiple packages:
+
+```sh
+mkdir my_workspace
+dbpm init workspace my_workspace --package billing --package orders
+```
+
+`dbpm init` creates the standard directory layout, a self-documented `dbpm.yaml`
+manifest, a README, a LICENSE placeholder, and git-friendly placeholder files.
+Edit `dbpm.yaml` to fill in description, dependencies, and publishing config as
+needed.
+
+See [dbpm init](commands/init.md) for the full option reference.
+
 ## Understand Package Sources
 
 dbpm accepts several source formats:

@@ -110,6 +110,7 @@ Common variables:
 
 | Command | Description |
 |---|---|
+| [`dbpm init`](docs/commands/init.md) | Scaffold a new package or workspace directory |
 | [`dbpm check-core`](docs/commands/check-core.md) | Verify Core is installed and meets a minimum version |
 | [`dbpm plan`](docs/commands/plan.md) | Generate and print a deployment plan without executing |
 | [`dbpm lock`](docs/commands/lock.md) | Write or verify a dependency lockfile |
