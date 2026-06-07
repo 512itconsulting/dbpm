@@ -51,6 +51,7 @@ from .workspace import (
     select_workspace_package,
     workspace_dependency_sources,
 )
+from .initializer import init_package, init_workspace, validate_package_name
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -58,6 +59,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
+        if args.command == "init":
+            _run_init(args)
+            return 0
         if args.command == "publish":
             _run_publish(args)
             return 0
@@ -270,6 +274,24 @@ def _registry_token(token_env: str) -> str:
     return token
 
 
+def _run_init(args: argparse.Namespace) -> None:
+    root = Path(args.directory).expanduser().resolve()
+    if args.init_command == "package":
+        name = args.name or (root.name if root.name not in {".", ""} else "my_package")
+        validate_package_name(name)
+        created = init_package(root, name=name, version=args.version,
+                               description=args.description, force=args.force)
+    elif args.init_command == "workspace":
+        package_names = args.packages or ["my_package"]
+        for pkg_name in package_names:
+            validate_package_name(pkg_name)
+        created = init_workspace(root, package_names=package_names, force=args.force)
+    else:
+        raise DbpmError("Unknown init command")
+    for path in created:
+        print(f"CREATED={path}")
+
+
 def _run_workspace(args: argparse.Namespace) -> None:
     if args.workspace_command == "list":
         workspace = load_workspace(args.workspace)
@@ -390,6 +412,27 @@ def _build_parser() -> argparse.ArgumentParser:
         default=".",
         help="Workspace root or dbpm-workspace.yaml path, default: current directory",
     )
+
+    init = subparsers.add_parser("init", help="Scaffold a new package or workspace directory")
+    init_subparsers = init.add_subparsers(dest="init_command", required=True)
+
+    init_pkg = init_subparsers.add_parser("package", help="Initialize a dbpm package directory")
+    init_pkg.add_argument("directory", nargs="?", default=".", help="Target directory, default: current directory")
+    init_pkg.add_argument("--name", help="Package name (default: directory basename)")
+    init_pkg.add_argument("--version", default="0.1.0", help="Initial version (default: 0.1.0)")
+    init_pkg.add_argument("--description", default="", help="Package description")
+    init_pkg.add_argument("--force", action="store_true", help="Allow init in a non-empty directory")
+
+    init_ws = init_subparsers.add_parser("workspace", help="Initialize a dbpm workspace directory")
+    init_ws.add_argument("directory", nargs="?", default=".", help="Target directory, default: current directory")
+    init_ws.add_argument(
+        "--package",
+        action="append",
+        dest="packages",
+        metavar="NAME",
+        help="Package name to scaffold under database/ (repeatable; default: my_package)",
+    )
+    init_ws.add_argument("--force", action="store_true", help="Allow init in a non-empty directory")
 
     generate = subparsers.add_parser(
         "generate-scripts",
