@@ -95,6 +95,13 @@ Common variables:
 - `DBPM_CONNECT`: Oracle connect string
 - `DBPM_GITHUB_TOKEN`: GitHub token with package read access
 - `DBPM_GITHUB_USER`: optional GitHub username for package authentication
+- `DBPM_SIGNING_KEY`: optional default GPG key ID, fingerprint, or email for `dbpm publish`
+- `DBPM_MAVEN_TOKEN`: token for generic Maven publishing targets
+- `DBPM_MAVEN_USER`: optional username for generic Maven publishing targets
+- `DBPM_REGISTRY_URL`: optional default registry URL, default: `https://dbpm.io`
+- `DBPM_REGISTRY_TOKEN`: bearer token for registry indexing
+- `DBPM_REGISTRY_PUBLISHER`: optional registry publisher override
+- `DBPM_REGISTRY_DESCRIPTION`: optional registry description override
 - `DBPM_CACHE_DIR`: optional local artifact cache directory, default: `~/.dbpm/cache`
 - `DBPM_LOG_DIR`: optional execution log directory, default: `.dbpm-logs` in the current working directory
 - `DBPM_RUN_DB_TESTS`: optional `1` to enable live database pytest tests

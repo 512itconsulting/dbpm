@@ -8,6 +8,12 @@ $env:DBPM_CONNECT = "user/password@tns_alias_or_service"
 $env:DBPM_GITHUB_TOKEN = "github_token_with_package_read_access"
 $env:DBPM_GITHUB_USER = "github_username"
 
+# Required when publishing package artifacts.
+$env:DBPM_SIGNING_KEY = "gpg_key_id_or_fingerprint"
+# Required for generic Maven publishing targets.
+$env:DBPM_MAVEN_TOKEN = "maven_repository_token"
+$env:DBPM_MAVEN_USER = "maven_repository_username"
+
 # Required when publishing metadata to a dbpm registry.
 $env:DBPM_REGISTRY_URL = "https://dbpm.io"
 $env:DBPM_REGISTRY_TOKEN = "registry_publish_token"
@@ -18,6 +24,9 @@ $env:DBPM_REGISTRY_TOKEN = "registry_publish_token"
 # Local dbpm runtime directories.
 $env:DBPM_CACHE_DIR = ".\.dbpm-cache"
 $env:DBPM_LOG_DIR = ".\.dbpm-logs"
+
+# Optional: keep uv cache inside this repo if your home cache is unavailable.
+$env:UV_CACHE_DIR = ".\.uv-cache"
 
 # Optional: enable opt-in live database pytest tests.
 # $env:DBPM_RUN_DB_TESTS = "1"

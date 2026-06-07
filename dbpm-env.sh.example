@@ -9,6 +9,12 @@ export DBPM_CONNECT="user/password@tns_alias_or_service"
 export DBPM_GITHUB_TOKEN="github_token_with_package_read_access"
 export DBPM_GITHUB_USER="github_username"
 
+# Required when publishing package artifacts.
+export DBPM_SIGNING_KEY="gpg_key_id_or_fingerprint"
+# Required for generic Maven publishing targets.
+export DBPM_MAVEN_TOKEN="maven_repository_token"
+export DBPM_MAVEN_USER="maven_repository_username"
+
 # Required when publishing metadata to a dbpm registry.
 # Keep the full publish-token value outside source control.
 export DBPM_REGISTRY_URL="https://dbpm.io"
