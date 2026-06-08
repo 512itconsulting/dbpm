@@ -82,7 +82,8 @@ class LifecycleFile:
 
 @dataclass(frozen=True)
 class GenerationOptions:
-    root: Path
+    root: Path      # package root — where dbpm.yaml lives and outputs are written
+    git_root: Path  # git repository root — used for all git commands
     from_ref: str | None
     to_ref: str
     version: str
@@ -114,16 +115,17 @@ def resolve_generation_options(
     deployment_type: str | None = None,
     check: bool = False,
 ) -> GenerationOptions:
-    root = root.resolve()
-    root = Path(_git(root, "rev-parse", "--show-toplevel").strip()).resolve()
+    package_root = root.resolve()
+    git_root = Path(_git(package_root, "rev-parse", "--show-toplevel").strip()).resolve()
     if from_ref is not None:
-        _git(root, "rev-parse", "--verify", f"{from_ref}^{{commit}}")
-    _git(root, "rev-parse", "--verify", f"{to_ref}^{{commit}}")
+        _git(git_root, "rev-parse", "--verify", f"{from_ref}^{{commit}}")
+    _git(git_root, "rev-parse", "--verify", f"{to_ref}^{{commit}}")
 
-    manifest, raw_manifest = _manifest_at_ref(root, to_ref)
+    subpath = package_root.relative_to(git_root)
+    manifest, raw_manifest = _manifest_at_ref(git_root, subpath, to_ref)
     previous_manifest = None
     if from_ref is not None:
-        previous_manifest, _ = _manifest_at_ref(root, from_ref)
+        previous_manifest, _ = _manifest_at_ref(git_root, subpath, from_ref)
     resolved_version = version or (manifest.version if manifest else None)
     if resolved_version is None:
         raise DbpmError("Script generation requires --version when dbpm.yaml is absent")
@@ -133,7 +135,7 @@ def resolve_generation_options(
         raise DbpmError(f"Invalid target version for script generation: {resolved_version}") from exc
 
     resolved_application = application_name or (
-        manifest.application_name if manifest else _application_name(root.name)
+        manifest.application_name if manifest else _application_name(package_root.name)
     )
     resolved_application = _application_name(resolved_application)
     if resolved_application == "CORE":
@@ -157,7 +159,8 @@ def resolve_generation_options(
         if upgrade_pointer_output is not None:
             raise DbpmError("--upgrade-pointer-output requires --from")
         return GenerationOptions(
-            root=root,
+            root=package_root,
+            git_root=git_root,
             from_ref=None,
             to_ref=to_ref,
             version=resolved_version,
@@ -192,7 +195,8 @@ def resolve_generation_options(
         raise DbpmError("Install, release upgrade, and upgrade pointer outputs must be distinct")
 
     return GenerationOptions(
-        root=root,
+        root=package_root,
+        git_root=git_root,
         from_ref=from_ref,
         to_ref=to_ref,
         version=resolved_version,
@@ -210,7 +214,8 @@ def resolve_generation_options(
 
 
 def generate_scripts(options: GenerationOptions) -> GenerationResult:
-    to_paths = _tree_paths(options.root, options.to_ref)
+    subpath = options.root.relative_to(options.git_root)
+    to_paths = _tree_paths(options.git_root, subpath, options.to_ref)
     objects = {
         item.path: item
         for item in (_object_file(path) for path in to_paths)
@@ -224,7 +229,7 @@ def generate_scripts(options: GenerationOptions) -> GenerationResult:
         assert options.release_upgrade_output is not None
         assert options.upgrade_pointer_output is not None
         assert options.deployment_type is not None
-        changed = _diff_paths(options.root, options.from_ref, options.to_ref)
+        changed = _diff_paths(options.git_root, subpath, options.from_ref, options.to_ref)
         update_sql, warnings = _render_update(
             options,
             objects,
@@ -636,37 +641,52 @@ def _lifecycle_file(path: str) -> LifecycleFile | None:
     )
 
 
-def _tree_paths(root: Path, ref: str) -> list[str]:
-    output = _git(root, "ls-tree", "-r", "--name-only", ref, "--", *OBJECT_DIRECTORIES)
-    return [line for line in output.splitlines() if line]
+def _tree_paths(git_root: Path, subpath: Path, ref: str) -> list[str]:
+    if subpath == Path("."):
+        dirs = list(OBJECT_DIRECTORIES)
+        prefix = ""
+    else:
+        posix_sub = subpath.as_posix()
+        dirs = [f"{posix_sub}/{d}" for d in OBJECT_DIRECTORIES]
+        prefix = posix_sub + "/"
+    output = _git(git_root, "ls-tree", "-r", "--name-only", ref, "--", *dirs)
+    return [line[len(prefix):] for line in output.splitlines() if line]
 
 
-def _diff_paths(root: Path, from_ref: str, to_ref: str) -> dict[str, str]:
+def _diff_paths(git_root: Path, subpath: Path, from_ref: str, to_ref: str) -> dict[str, str]:
+    if subpath == Path("."):
+        dirs = list(OBJECT_DIRECTORIES)
+        prefix = ""
+    else:
+        posix_sub = subpath.as_posix()
+        dirs = [f"{posix_sub}/{d}" for d in OBJECT_DIRECTORIES]
+        prefix = posix_sub + "/"
     output = _git(
-        root,
+        git_root,
         "diff",
         "--name-status",
         "--find-renames",
         from_ref,
         to_ref,
         "--",
-        *OBJECT_DIRECTORIES,
+        *dirs,
     )
     changed: dict[str, str] = {}
     for line in output.splitlines():
         fields = line.split("\t")
         status = fields[0][0]
         if status == "R":
-            changed[fields[1]] = "D"
-            changed[fields[2]] = "A"
+            changed[fields[1][len(prefix):]] = "D"
+            changed[fields[2][len(prefix):]] = "A"
         else:
-            changed[fields[1]] = status
+            changed[fields[1][len(prefix):]] = status
     return changed
 
 
-def _manifest_at_ref(root: Path, ref: str):
+def _manifest_at_ref(git_root: Path, subpath: Path, ref: str):
     for name in MANIFEST_NAMES:
-        text = _git_optional(root, "show", f"{ref}:{name}")
+        git_path = name if subpath == Path(".") else f"{subpath.as_posix()}/{name}"
+        text = _git_optional(git_root, "show", f"{ref}:{git_path}")
         if text is None:
             continue
         manifest = parse_manifest(text, name)

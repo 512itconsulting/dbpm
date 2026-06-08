@@ -344,3 +344,37 @@ def test_new_table_with_evolution_script_is_rejected(tmp_path: Path):
 
     with pytest.raises(DbpmError, match="New table NEW_TABLE"):
         generate_scripts(options)
+
+
+def test_generate_scripts_from_workspace_subdirectory(tmp_path: Path):
+    # Git repo is the workspace root; package lives in a subdirectory.
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    _git(workspace, "init")
+    _git(workspace, "config", "user.email", "test@example.com")
+    _git(workspace, "config", "user.name", "Test User")
+
+    pkg = workspace / "packages" / "demo"
+    _write(workspace, "packages/demo/dbpm.yaml", "package:\n  name: demo\n  version: \"1.0.0\"\n")
+    _write(workspace, "packages/demo/Packages/PKG_DEMO.pks")
+    baseline = _commit(workspace, "baseline")
+
+    _write(workspace, "packages/demo/Procedures/NEW_PROC.sql")
+    target = _commit(workspace, "add procedure")
+
+    # Source is the package subdirectory, not the workspace/git root.
+    options = resolve_generation_options(pkg, from_ref=baseline, to_ref=target, version="1.1.0")
+
+    # Outputs must be written under the package root, not the workspace root.
+    assert options.root == pkg
+    assert options.git_root == workspace
+
+    result = generate_scripts(options)
+
+    install_path = pkg / options.install_output
+    assert install_path.exists(), f"Install script not found at {install_path}"
+    assert not (workspace / options.install_output).exists(), (
+        "Install script was incorrectly written to the workspace root"
+    )
+    install_sql = install_path.read_text()
+    assert "NEW_PROC" in install_sql
