@@ -221,7 +221,8 @@ def generate_scripts(options: GenerationOptions) -> GenerationResult:
         for item in (_object_file(path) for path in to_paths)
         if item is not None
     }
-    install_sql = _render_install(options, objects.values())
+    object_order = _compute_object_order(objects, options.git_root, subpath, options.to_ref)
+    install_sql = _render_install(options, objects.values(), object_order=object_order)
     rendered = {options.install_output: install_sql}
 
     warnings: list[str] = []
@@ -235,6 +236,7 @@ def generate_scripts(options: GenerationOptions) -> GenerationResult:
             objects,
             _changed_lifecycle(to_paths, changed, options),
             changed,
+            object_order=object_order,
         )
         pointer_sql = _render_pointer(options)
         rendered[options.release_upgrade_output] = update_sql
@@ -290,13 +292,19 @@ def _write_generated_outputs(
     )
 
 
-def _render_install(options: GenerationOptions, objects: Iterable[ObjectFile]) -> str:
+def _render_install(
+    options: GenerationOptions,
+    objects: Iterable[ObjectFile],
+    *,
+    object_order: dict[str, int] | None = None,
+) -> str:
     ordered = sorted(objects, key=_object_sort_key)
     registrations = [item for item in ordered if item.object_constant]
     sections = _render_object_sections(
         options.install_output,
         ordered,
         include_metadata=True,
+        object_order=object_order,
     )
     return _render_deployment(
         application_name=options.application_name,
@@ -313,6 +321,8 @@ def _render_update(
     objects: dict[str, ObjectFile],
     lifecycle: list[LifecycleFile],
     changed: dict[str, str],
+    *,
+    object_order: dict[str, int] | None = None,
 ) -> tuple[str, list[str]]:
     warnings: list[str] = []
     lifecycle_by_key = {(item.directory, item.name.upper(), item.action): item for item in lifecycle}
@@ -430,10 +440,10 @@ def _render_update(
             body_parts.append(_include_path(options.release_upgrade_output, canonical.path))
         body_parts.append("")
     body_parts.extend(
-        _render_object_sections(options.release_upgrade_output, new_tables, include_metadata=False)
+        _render_object_sections(options.release_upgrade_output, new_tables, include_metadata=False, object_order=object_order)
     )
     body_parts.extend(
-        _render_object_sections(options.release_upgrade_output, replaceable, include_metadata=True)
+        _render_object_sections(options.release_upgrade_output, replaceable, include_metadata=True, object_order=object_order)
     )
     if commented:
         body_parts.extend(["PROMPT Review Unresolved Object Changes", *sorted(commented), ""])
@@ -530,6 +540,7 @@ def _render_object_sections(
     objects: Iterable[ObjectFile],
     *,
     include_metadata: bool,
+    object_order: dict[str, int] | None = None,
 ) -> list[str]:
     grouped: dict[str, list[ObjectFile]] = {}
     for item in objects:
@@ -542,10 +553,11 @@ def _render_object_sections(
         if not items:
             continue
         lines.append(f"PROMPT Deploying {GROUP_LABELS[group]}")
-        lines.extend(
-            _include_path(output_path, item.path)
-            for item in sorted(items, key=lambda value: value.path.lower())
-        )
+        if object_order:
+            sorted_items = sorted(items, key=lambda v: (object_order.get(v.path, len(object_order)), v.path.lower()))
+        else:
+            sorted_items = sorted(items, key=lambda v: v.path.lower())
+        lines.extend(_include_path(output_path, item.path) for item in sorted_items)
         lines.append("")
     return lines
 
@@ -727,6 +739,63 @@ def _include_path(output_path: str, source_path: str) -> str:
     parent = PurePosixPath(output_path).parent
     relative = os.path.relpath(source_path, parent.as_posix()).replace(os.sep, "/")
     return f"@@{relative}"
+
+
+def _extract_table_refs(ddl_text: str) -> set[str]:
+    return {m.upper() for m in re.findall(r'\bREFERENCES\s+(?:\w+\.)?(\w+)\b', ddl_text, re.IGNORECASE)}
+
+
+def _topological_sort(names: list[str], deps: dict[str, set[str]]) -> list[str]:
+    name_set = set(names)
+    filtered = {n: {d for d in deps.get(n, set()) if d in name_set} for n in names}
+    in_degree = {n: len(filtered[n]) for n in names}
+    dependents: dict[str, list[str]] = {n: [] for n in names}
+    for n, n_deps in filtered.items():
+        for d in n_deps:
+            dependents[d].append(n)
+    ready = sorted(n for n in names if in_degree[n] == 0)
+    result: list[str] = []
+    while ready:
+        n = ready.pop(0)
+        result.append(n)
+        newly_ready = []
+        for dep in dependents[n]:
+            in_degree[dep] -= 1
+            if in_degree[dep] == 0:
+                newly_ready.append(dep)
+        ready = sorted(ready + newly_ready)
+    if len(result) < len(names):
+        cycle = sorted(n for n in names if n not in set(result))
+        raise DbpmError(f"Circular table FK dependency detected: {', '.join(cycle)}")
+    return result
+
+
+def _compute_object_order(
+    objects: dict[str, ObjectFile],
+    git_root: Path,
+    subpath: Path,
+    ref: str,
+) -> dict[str, int]:
+    table_objects = [obj for obj in objects.values() if obj.directory == "Tables"]
+    metadata_objects = [obj for obj in objects.values() if obj.directory == "Metadata"]
+    if not table_objects:
+        return {}
+    subpath_prefix = "" if subpath == Path(".") else subpath.as_posix() + "/"
+    deps: dict[str, set[str]] = {}
+    for obj in table_objects:
+        content = _git_optional(git_root, "show", f"{ref}:{subpath_prefix}{obj.path}")
+        if content:
+            deps[obj.name.upper()] = _extract_table_refs(content)
+    table_names = [obj.name.upper() for obj in table_objects]
+    sorted_names = _topological_sort(table_names, deps)
+    name_to_pos = {name: i for i, name in enumerate(sorted_names)}
+    result: dict[str, int] = {}
+    for obj in table_objects:
+        result[obj.path] = name_to_pos[obj.name.upper()]
+    for obj in metadata_objects:
+        prefix = obj.name.split(".")[0].upper() if "." in obj.name else obj.name.upper()
+        result[obj.path] = name_to_pos.get(prefix, len(sorted_names))
+    return result
 
 
 def _object_sort_key(item: ObjectFile) -> tuple[int, str]:

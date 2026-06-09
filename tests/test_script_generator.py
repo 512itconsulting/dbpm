@@ -378,3 +378,112 @@ def test_generate_scripts_from_workspace_subdirectory(tmp_path: Path):
     )
     install_sql = install_path.read_text()
     assert "NEW_PROC" in install_sql
+
+
+_PARENT_DDL = """\
+CREATE TABLE PARENT (
+    ID NUMBER NOT NULL,
+    CONSTRAINT PARENT_PK PRIMARY KEY (ID)
+);
+"""
+
+_CHILD_DDL = """\
+CREATE TABLE CHILD (
+    ID NUMBER NOT NULL,
+    PARENT_ID NUMBER NOT NULL,
+    CONSTRAINT CHILD_PK PRIMARY KEY (ID),
+    CONSTRAINT CHILD_FK1 FOREIGN KEY (PARENT_ID)
+        REFERENCES PARENT (ID)
+);
+"""
+
+_GRANDCHILD_DDL = """\
+CREATE TABLE GRANDCHILD (
+    ID NUMBER NOT NULL,
+    CHILD_ID NUMBER NOT NULL,
+    CONSTRAINT GRANDCHILD_PK PRIMARY KEY (ID),
+    CONSTRAINT GRANDCHILD_FK1
+        FOREIGN KEY (CHILD_ID)
+        REFERENCES CHILD (ID)
+);
+"""
+
+
+def _table_positions(sql: str) -> dict[str, int]:
+    """Return {table_name: line_index} for @@...Tables/TABLE_NAME.sql lines."""
+    positions = {}
+    for i, line in enumerate(sql.splitlines()):
+        for name in ("PARENT", "CHILD", "GRANDCHILD"):
+            if f"Tables/{name}.sql" in line:
+                positions[name] = i
+    return positions
+
+
+def test_tables_deployed_in_fk_dependency_order(tmp_path: Path):
+    repo, _ = _repo(tmp_path, manifest=False)
+    # Write tables out-of-alphabetical-order so alphabetical != dependency order
+    _write(repo, "Tables/GRANDCHILD.sql", _GRANDCHILD_DDL)
+    _write(repo, "Tables/CHILD.sql", _CHILD_DDL)
+    _write(repo, "Tables/PARENT.sql", _PARENT_DDL)
+    baseline = _commit(repo, "add tables")
+
+    options = resolve_generation_options(repo, version="1.0.0")
+    generate_scripts(options)
+
+    install_sql = (repo / "Deployment_Manifests/deploy.sql").read_text()
+    pos = _table_positions(install_sql)
+    assert pos["PARENT"] < pos["CHILD"] < pos["GRANDCHILD"]
+
+
+def test_tables_with_no_fk_retain_alphabetical_order(tmp_path: Path):
+    repo, _ = _repo(tmp_path, manifest=False)
+    _write(repo, "Tables/ZEBRA.sql", "CREATE TABLE ZEBRA (ID NUMBER);\n")
+    _write(repo, "Tables/APPLE.sql", "CREATE TABLE APPLE (ID NUMBER);\n")
+    _write(repo, "Tables/MANGO.sql", "CREATE TABLE MANGO (ID NUMBER);\n")
+    _commit(repo, "add tables")
+
+    options = resolve_generation_options(repo, version="1.0.0")
+    generate_scripts(options)
+
+    install_sql = (repo / "Deployment_Manifests/deploy.sql").read_text()
+    lines = [l for l in install_sql.splitlines() if "Tables/" in l]
+    names = [l.split("Tables/")[1].split(".sql")[0] for l in lines if l.split("Tables/")[1].split(".sql")[0] in {"APPLE", "MANGO", "ZEBRA"}]
+    assert names == ["APPLE", "MANGO", "ZEBRA"]
+
+
+def test_fk_referencing_external_table_is_ignored(tmp_path: Path):
+    repo, _ = _repo(tmp_path, manifest=False)
+    _write(repo, "Tables/LOCAL.sql", "CREATE TABLE LOCAL (ID NUMBER,\nFOREIGN KEY (ID) REFERENCES EXTERNAL_PKG.SOMETABLE (ID));\n")
+    _commit(repo, "add table")
+
+    # Should not raise even though EXTERNAL_PKG.SOMETABLE is not in the package
+    options = resolve_generation_options(repo, version="1.0.0")
+    generate_scripts(options)
+
+
+def test_circular_fk_dependency_raises_error(tmp_path: Path):
+    repo, _ = _repo(tmp_path, manifest=False)
+    _write(repo, "Tables/A.sql", "CREATE TABLE A (ID NUMBER, CONSTRAINT FK1 FOREIGN KEY (ID) REFERENCES B (ID));\n")
+    _write(repo, "Tables/B.sql", "CREATE TABLE B (ID NUMBER, CONSTRAINT FK2 FOREIGN KEY (ID) REFERENCES A (ID));\n")
+    _commit(repo, "circular fk")
+
+    options = resolve_generation_options(repo, version="1.0.0")
+    with pytest.raises(DbpmError, match="Circular table FK dependency"):
+        generate_scripts(options)
+
+
+def test_metadata_inherits_table_dependency_order(tmp_path: Path):
+    repo, _ = _repo(tmp_path, manifest=False)
+    _write(repo, "Tables/PARENT.sql", _PARENT_DDL)
+    _write(repo, "Tables/CHILD.sql", _CHILD_DDL)
+    _write(repo, "Metadata/CHILD.seed_data.sql", "INSERT INTO CHILD VALUES (1, 1);\n")
+    _write(repo, "Metadata/PARENT.seed_data.sql", "INSERT INTO PARENT VALUES (1);\n")
+    _commit(repo, "tables and metadata")
+
+    options = resolve_generation_options(repo, version="1.0.0")
+    generate_scripts(options)
+
+    install_sql = (repo / "Deployment_Manifests/deploy.sql").read_text()
+    lines = [l for l in install_sql.splitlines() if "Metadata/" in l]
+    names = [l.split("Metadata/")[1].split(".")[0] for l in lines]
+    assert names.index("PARENT") < names.index("CHILD")
