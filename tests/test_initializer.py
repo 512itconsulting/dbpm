@@ -182,6 +182,14 @@ def test_init_workspace_creates_manifest(tmp_path: Path):
     assert "database/orders" in text
 
 
+def test_init_workspace_manifest_contains_comments(tmp_path: Path):
+    init_workspace(tmp_path, package_names=["my_package"], force=False)
+    text = (tmp_path / "dbpm-workspace.yaml").read_text(encoding="utf-8")
+    assert "dbpm workspace list" in text
+    assert "dbpm.yaml" in text
+    assert "--package" in text
+
+
 def test_init_workspace_root_gitignore(tmp_path: Path):
     init_workspace(tmp_path, package_names=["my_package"], force=False)
     assert (tmp_path / ".gitignore").is_file()

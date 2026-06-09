@@ -76,12 +76,7 @@ def init_workspace(
     root.mkdir(parents=True, exist_ok=True)
     created: list[Path] = []
 
-    workspace_manifest_lines = ["workspace:", "  packages:"]
-    for name in package_names:
-        workspace_manifest_lines.append(f"    - database/{name}")
-    workspace_manifest = "\n".join(workspace_manifest_lines) + "\n"
-
-    _collect(_write_if_missing(root / "dbpm-workspace.yaml", workspace_manifest), created)
+    _collect(_write_if_missing(root / "dbpm-workspace.yaml", _workspace_manifest(package_names)), created)
     _collect(_write_if_missing(root / "README.md", _readme(root.name, "")), created)
     _collect(_write_if_missing(root / "LICENSE", _license()), created)
     _collect(_write_if_missing(root / ".gitignore", _ROOT_GITIGNORE), created)
@@ -158,6 +153,27 @@ scripts:
 # publish:
 #   group: com.yourorg.database
 #   artifact_id: {name}     # Defaults to package name if omitted
+"""
+
+
+def _workspace_manifest(package_names: list[str]) -> str:
+    package_lines = "\n".join(f"    - database/{name}" for name in package_names)
+    return f"""\
+# dbpm workspace manifest.
+# Lists the dbpm package directories that belong to this repository.
+# Run "dbpm workspace list" to verify that all listed packages are found.
+workspace:
+  packages:
+    # Each path is relative to this file and must contain its own dbpm.yaml.
+    # Paths must not be absolute or contain . or .. components.
+    # Convention: database packages live under database/, non-database code under os/.
+{package_lines}
+
+# Use --package <name> with most dbpm commands to select a specific package:
+#   dbpm install . --package my_package
+#   dbpm publish . --package my_package --target gh-maven:owner/repo
+#
+# Or use "dbpm workspace list" to see all packages and their current versions.
 """
 
 
