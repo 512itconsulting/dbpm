@@ -7,6 +7,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -14,9 +15,15 @@ from .errors import SourceError
 from .manifest import PackageManifest
 
 
+try:
+    _DBPM_VERSION = version("dbpm")
+except PackageNotFoundError:
+    _DBPM_VERSION = "dev"
+
 DEFAULT_REGISTRY_URL = "https://dbpm.io"
 _SHA256_RE = re.compile(r"^(?:sha256:)?([0-9a-fA-F]{64})$")
 PUBLISH_RECEIPT_SCHEMA_VERSION = "dbpm.publish-receipt.v1"
+REGISTRY_USER_AGENT = f"dbpm/{_DBPM_VERSION}"
 
 
 @dataclass(frozen=True)
@@ -182,7 +189,7 @@ def index_registry_version(
     token: str,
 ) -> dict[str, Any]:
     url = f"{registry_base_url(registry_url)}/packages/{urllib.parse.quote(package_name)}/versions/index"
-    request = urllib.request.Request(
+    request = _registry_request(
         url,
         data=json.dumps(payload).encode("utf-8"),
         method="POST",
@@ -221,7 +228,7 @@ def normalize_sha256(value: object) -> str:
 
 def _get_json(url: str) -> dict[str, Any]:
     try:
-        with urllib.request.urlopen(urllib.request.Request(url)) as response:
+        with urllib.request.urlopen(_registry_request(url)) as response:
             data = response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         raise _registry_http_error(exc) from exc
@@ -235,6 +242,24 @@ def _get_json(url: str) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise SourceError(f"Registry resolve response must be a JSON object: {url}")
     return payload
+
+
+def _registry_request(
+    url: str,
+    *,
+    data: bytes | None = None,
+    method: str | None = None,
+    headers: dict[str, str] | None = None,
+) -> urllib.request.Request:
+    request_headers = {"User-Agent": REGISTRY_USER_AGENT}
+    if headers:
+        request_headers.update(headers)
+    return urllib.request.Request(
+        url,
+        data=data,
+        method=method,
+        headers=request_headers,
+    )
 
 
 def _registry_http_error(exc: urllib.error.HTTPError) -> SourceError:

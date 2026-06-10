@@ -9,6 +9,7 @@ import pytest
 
 from dbpm.errors import SourceError
 from dbpm.registry import (
+    REGISTRY_USER_AGENT,
     RegistryResolution,
     RegistrySource,
     create_registry_index_payload,
@@ -214,7 +215,29 @@ def test_index_registry_version_posts_bearer_request(monkeypatch):
     request = captured["request"]
     assert request.full_url == "https://registry.example/packages/demo/versions/index"
     assert request.get_header("Authorization") == "Bearer top-secret"
+    assert request.get_header("User-agent") == REGISTRY_USER_AGENT
     assert result["version"] == "1.2.3"
+
+
+def test_resolve_registry_source_sends_user_agent(monkeypatch):
+    captured = {}
+
+    def fake_urlopen(request):
+        captured["request"] = request
+        return _Response(
+            {
+                "package": "utl_interval",
+                "version": "1.2.3",
+                "artifact_url": "https://repo.example/utl_interval.zip",
+                "artifact_checksum": "sha256:" + "a" * 64,
+            }
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    resolve_registry_source("registry:utl_interval@^1.0.0", registry_url="https://registry.example")
+
+    assert captured["request"].get_header("User-agent") == REGISTRY_USER_AGENT
 
 
 @pytest.mark.parametrize("status", [404, 409, 422, 500])
