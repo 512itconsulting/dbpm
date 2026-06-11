@@ -21,7 +21,7 @@ dbpm plan source [--mode MODE] [--env ENV] [--approve]
 | `--approve` | false | Approve policy-gated actions. |
 | `--package` | none | Package name or application name to select when `source` is a workspace root. |
 | `--dependency-source` | none | Additional source that may satisfy a dependency declared in the manifest. Repeatable. |
-| `--registry-url` | `DBPM_REGISTRY_URL` or `https://dbpm.io` | Registry base URL for `registry:` sources. |
+| `--registry-url` | `DBPM_REGISTRY_URL` or `https://registry.dbpm.io` | Registry base URL for `registry:` sources. |
 | `--connect` | `DBPM_CONNECT` | Connect string. When provided, the plan includes the currently installed state from Core. |
 | `--runner` | `DBPM_SQL_RUNNER` or `sqlplus` | SQL runner executable. |
 
@@ -54,7 +54,7 @@ dbpm plan gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simpl
 
 Plan from the dbpm registry:
 ```sh
-dbpm plan registry:simple_scheduler@^1.1.0 --registry-url https://dbpm.io
+dbpm plan registry:simple_scheduler@^1.1.0 --registry-url https://registry.dbpm.io
 ```
 
 Plan a package from a workspace root:

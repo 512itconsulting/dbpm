@@ -25,7 +25,7 @@ dbpm publish source --target TARGET
 | `--artifact-id` | `publish.artifact_id` or package name | Maven artifact ID. Overrides the `publish:` section of `dbpm.yaml`. |
 | `--signing-key` | `DBPM_SIGNING_KEY` | GPG key ID, fingerprint, or email used to sign the artifact. Required. |
 | `--receipt-output` | package root/`dbpm-publish-receipt.json` | Path for the durable, secret-free publish receipt. ZIP sources default to the current directory. |
-| `--index-registry [URL]` | none | Index the verified artifact after publishing. With no URL, uses `DBPM_REGISTRY_URL` or `https://dbpm.io`. |
+| `--index-registry [URL]` | none | Index the verified artifact after publishing. With no URL, uses `DBPM_REGISTRY_URL` or `https://registry.dbpm.io`. |
 | `--dry-run` | false | Print what would be published without uploading. |
 
 ## Target formats

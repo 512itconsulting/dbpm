@@ -84,7 +84,9 @@ maven:https://repo.example.com/releases::com.example:my_package:2.0.0
 registry:package@constraint
 ```
 
-Resolves a package and semantic version constraint through the dbpm registry, then downloads the immutable ZIP artifact URL returned by the registry. The registry base URL is selected from `--registry-url`, then `DBPM_REGISTRY_URL`, then `https://dbpm.io`.
+Resolves a package and semantic version constraint through the dbpm registry, then downloads the immutable ZIP artifact URL returned by the registry. The registry base URL is selected from `--registry-url`, then `DBPM_REGISTRY_URL`, then `https://registry.dbpm.io`.
+
+`https://dbpm.io` may continue to serve registry API requests during the transition, but new clients and documentation should prefer `https://registry.dbpm.io`.
 
 Registry sources verify the returned SHA-256 checksum immediately. When the registry returns an `artifact_signature_url`, dbpm downloads the detached signature and verifies it with local GPG. Locked installs record the resolved artifact URL, checksum, signature URL, and publisher key fingerprint, then bypass the registry and download directly from the locked artifact URL.
 

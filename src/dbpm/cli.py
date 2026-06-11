@@ -493,7 +493,7 @@ def _build_parser() -> argparse.ArgumentParser:
         const="",
         default=None,
         metavar="URL",
-        help="Index the published artifact; optional URL defaults to DBPM_REGISTRY_URL or https://dbpm.io",
+        help="Index the published artifact; optional URL defaults to DBPM_REGISTRY_URL or https://registry.dbpm.io",
     )
     publish.add_argument("--dry-run", action="store_true", help="Print what would be published without uploading")
 
@@ -503,7 +503,7 @@ def _build_parser() -> argparse.ArgumentParser:
     registry_index.add_argument("package_root", nargs="?", default=".", help="Package or workspace root")
     registry_index.add_argument("--package", help="Package name or application name for a workspace root")
     registry_index.add_argument("--receipt", help=f"Publish receipt path, default: package root/{PUBLISH_RECEIPT_NAME}")
-    registry_index.add_argument("--registry-url", default=None, help="Registry URL, default: DBPM_REGISTRY_URL or https://dbpm.io")
+    registry_index.add_argument("--registry-url", default=None, help="Registry URL, default: DBPM_REGISTRY_URL or https://registry.dbpm.io")
     registry_index.add_argument("--token-env", default="DBPM_REGISTRY_TOKEN", help="Environment variable containing the bearer token")
     registry_index.add_argument("--publisher", help="Publisher override")
     registry_index.add_argument("--description", help="Description override")
@@ -531,7 +531,7 @@ def _add_common_args(parser: argparse.ArgumentParser, *, source_required: bool =
     parser.add_argument(
         "--registry-url",
         default=None,
-        help="Registry base URL for registry: sources, default: DBPM_REGISTRY_URL or https://dbpm.io",
+        help="Registry base URL for registry: sources, default: DBPM_REGISTRY_URL or https://registry.dbpm.io",
     )
 
 

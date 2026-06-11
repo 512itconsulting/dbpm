@@ -321,7 +321,7 @@ The receipt contains immutable artifact metadata but no credentials. To index it
 in a dbpm registry:
 
 ```sh
-export DBPM_REGISTRY_URL="https://dbpm.io"
+export DBPM_REGISTRY_URL="https://registry.dbpm.io"
 export DBPM_REGISTRY_TOKEN="your-publisher-token"
 
 dbpm registry index ~/repos/core --dry-run

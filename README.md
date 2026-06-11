@@ -98,7 +98,7 @@ Common variables:
 - `DBPM_SIGNING_KEY`: optional default GPG key ID, fingerprint, or email for `dbpm publish`
 - `DBPM_MAVEN_TOKEN`: token for generic Maven publishing targets
 - `DBPM_MAVEN_USER`: optional username for generic Maven publishing targets
-- `DBPM_REGISTRY_URL`: optional default registry URL, default: `https://dbpm.io`
+- `DBPM_REGISTRY_URL`: optional default registry URL, default: `https://registry.dbpm.io`
 - `DBPM_REGISTRY_TOKEN`: bearer token for registry indexing
 - `DBPM_REGISTRY_PUBLISHER`: optional registry publisher override
 - `DBPM_REGISTRY_DESCRIPTION`: optional registry description override

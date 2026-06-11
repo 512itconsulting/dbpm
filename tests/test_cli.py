@@ -156,6 +156,18 @@ generation:
     assert not (repo / "sql" / "releases" / "0.1.0" / "update.sql").exists()
 
 
+def test_registry_help_prefers_machine_hostname(capsys):
+    parser = cli._build_parser()
+
+    with pytest.raises(SystemExit) as exc:
+        parser.parse_args(["plan", "--help"])
+
+    assert exc.value.code == 0
+    help_text = capsys.readouterr().out
+    assert "https://registry.dbpm.io" in help_text
+    assert "https://dbpm.io" not in help_text
+
+
 @pytest.fixture(autouse=True)
 def _no_reverse_dependencies(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("DBPM_CACHE_DIR", str(tmp_path / "cache"))

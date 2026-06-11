@@ -15,7 +15,7 @@ $env:DBPM_MAVEN_TOKEN = "maven_repository_token"
 $env:DBPM_MAVEN_USER = "maven_repository_username"
 
 # Required when publishing metadata to a dbpm registry.
-$env:DBPM_REGISTRY_URL = "https://dbpm.io"
+$env:DBPM_REGISTRY_URL = "https://registry.dbpm.io"
 $env:DBPM_REGISTRY_TOKEN = "registry_publish_token"
 # Optional overrides when package.vendor or package.description is absent.
 # $env:DBPM_REGISTRY_PUBLISHER = "publisher_name"

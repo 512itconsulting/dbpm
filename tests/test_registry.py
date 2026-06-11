@@ -9,6 +9,7 @@ import pytest
 
 from dbpm.errors import SourceError
 from dbpm.registry import (
+    DEFAULT_REGISTRY_URL,
     REGISTRY_USER_AGENT,
     RegistryResolution,
     RegistrySource,
@@ -17,6 +18,7 @@ from dbpm.registry import (
     load_publish_receipt,
     normalize_sha256,
     parse_registry_source,
+    registry_base_url,
     resolve_registry_source,
 )
 from dbpm.manifest import parse_manifest
@@ -69,6 +71,13 @@ def test_parse_registry_source_accepts_package_and_constraint():
 
     assert parsed.package == "utl_interval"
     assert parsed.constraint == "^1.0.0"
+
+
+def test_registry_base_url_defaults_to_machine_hostname(monkeypatch):
+    monkeypatch.delenv("DBPM_REGISTRY_URL", raising=False)
+
+    assert DEFAULT_REGISTRY_URL == "https://registry.dbpm.io"
+    assert registry_base_url() == "https://registry.dbpm.io"
 
 
 @pytest.mark.parametrize(

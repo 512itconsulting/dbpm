@@ -22,7 +22,7 @@ dbpm lock source [--env ENV] [--approve]
 | `--approve` | false | Approve policy-gated actions. |
 | `--package` | none | Package name or application name to select when `source` is a workspace root. |
 | `--dependency-source` | none | Additional source that may satisfy a dependency declared in the manifest. Repeatable. |
-| `--registry-url` | `DBPM_REGISTRY_URL` or `https://dbpm.io` | Registry base URL for `registry:` sources. |
+| `--registry-url` | `DBPM_REGISTRY_URL` or `https://registry.dbpm.io` | Registry base URL for `registry:` sources. |
 | `--output` | `dbpm-lock.json` | Path to write the lockfile. |
 | `--check` | false | Verify the existing lockfile matches the current source resolution instead of writing a new one. |
 | `--check-db` | false | With `--check`: also verify that installed database versions and Core provenance rows match the lockfile. Requires `--connect`. |
@@ -66,7 +66,7 @@ dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simpl
 
 Write a lockfile from the dbpm registry:
 ```sh
-dbpm lock registry:simple_scheduler@^1.1.0 --registry-url https://dbpm.io
+dbpm lock registry:simple_scheduler@^1.1.0 --registry-url https://registry.dbpm.io
 ```
 
 Write a lockfile for a package selected from a workspace:

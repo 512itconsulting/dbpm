@@ -214,7 +214,7 @@ upload and post-publish verification. Producers can index that receipt later or
 request indexing immediately:
 
 ```sh
-dbpm registry index <package-root> --registry-url https://dbpm.io --token-env DBPM_REGISTRY_TOKEN
+dbpm registry index <package-root> --registry-url https://registry.dbpm.io --token-env DBPM_REGISTRY_TOKEN
 dbpm publish <package-root> --target gh-maven:owner/repo --index-registry
 ```
 

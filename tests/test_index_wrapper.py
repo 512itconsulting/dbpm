@@ -56,5 +56,5 @@ def test_index_wrapper_defaults_registry_and_forwards_arguments(tmp_path: Path):
 
     assert result.returncode == 0
     assert f"ARGS=registry index {package} --dry-run" in result.stdout
-    assert "URL=https://dbpm.io" in result.stdout
+    assert "URL=https://registry.dbpm.io" in result.stdout
     assert "top-secret" not in result.stdout + result.stderr

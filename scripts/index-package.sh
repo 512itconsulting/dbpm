@@ -30,6 +30,6 @@ fi
 
 # The public registry is the default. Override this in the environment for a
 # private or local registry.
-export DBPM_REGISTRY_URL="${DBPM_REGISTRY_URL:-https://dbpm.io}"
+export DBPM_REGISTRY_URL="${DBPM_REGISTRY_URL:-https://registry.dbpm.io}"
 
 exec dbpm registry index "$PACKAGE_ROOT" "$@"

@@ -20,7 +20,7 @@ try:
 except PackageNotFoundError:
     _DBPM_VERSION = "dev"
 
-DEFAULT_REGISTRY_URL = "https://dbpm.io"
+DEFAULT_REGISTRY_URL = "https://registry.dbpm.io"
 _SHA256_RE = re.compile(r"^(?:sha256:)?([0-9a-fA-F]{64})$")
 PUBLISH_RECEIPT_SCHEMA_VERSION = "dbpm.publish-receipt.v1"
 REGISTRY_USER_AGENT = f"dbpm/{_DBPM_VERSION}"
