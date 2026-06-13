@@ -120,6 +120,7 @@ dbpm accepts several source formats:
 - A local ZIP package.
 - A GitHub Packages Maven coordinate.
 - A generic Maven coordinate.
+- A dbpm registry source such as `registry:package@constraint`.
 - A direct HTTPS ZIP URL for lockfile-driven installs.
 
 Common GitHub Packages source form:

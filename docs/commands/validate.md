@@ -6,6 +6,7 @@ Run the validation or smoke-test script declared in the package manifest (`scrip
 
 ```
 dbpm validate source [--env ENV] [--approve] [--dry-run]
+                    [--package NAME] [--registry-url URL]
                     [--dependency-source SOURCE]...
                     [--connect STRING] [--runner EXEC]
 ```
@@ -18,6 +19,8 @@ dbpm validate source [--env ENV] [--approve] [--dry-run]
 | `--env` | `development` | Target environment name. |
 | `--approve` | false | Approve policy-gated actions. |
 | `--dry-run` | false | Print the validation plan as JSON without executing. |
+| `--package` | none | Package name or application name to select when `source` is a workspace root. |
+| `--registry-url` | `DBPM_REGISTRY_URL` or `https://registry.dbpm.io` | Registry base URL for `registry:` sources. |
 | `--dependency-source` | none | Additional source for a dependency whose validation script should also run. Repeatable. |
 | `--connect` | `DBPM_CONNECT` | Connect string. |
 | `--runner` | `DBPM_SQL_RUNNER` or `sqlplus` | SQL runner executable. |

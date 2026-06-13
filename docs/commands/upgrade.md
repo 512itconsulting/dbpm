@@ -6,6 +6,7 @@ Move an installed package to a higher semantic version. The package must already
 
 ```
 dbpm upgrade source [--env ENV] [--approve] [--dry-run]
+                   [--package NAME] [--registry-url URL]
                    [--dependency-source SOURCE]...
                    [--allow-dependent-break]
                    [--connect STRING] [--runner EXEC]
@@ -19,6 +20,8 @@ dbpm upgrade source [--env ENV] [--approve] [--dry-run]
 | `--env` | `development` | Target environment name. |
 | `--approve` | false | Approve policy-gated actions. |
 | `--dry-run` | false | Print the deployment plan as JSON without executing. When `--connect` is also provided, the plan reflects the actual installed version and shows a chain plan if one is required. |
+| `--package` | none | Package name or application name to select when `source` is a workspace root. |
+| `--registry-url` | `DBPM_REGISTRY_URL` or `https://registry.dbpm.io` | Registry base URL for `registry:` sources. |
 | `--dependency-source` | none | Additional source that may satisfy a dependency. Used for coordinated major-version upgrades where a dependent package also needs upgrading. Repeatable. |
 | `--allow-dependent-break` | false | Allow a major version upgrade even when installed dependents may have incompatible constraints. |
 | `--connect` | `DBPM_CONNECT` | Connect string. |

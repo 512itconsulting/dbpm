@@ -8,6 +8,7 @@ For Core itself, reinstall is a full system teardown: dbpm calls `pkg_applicatio
 
 ```
 dbpm reinstall source [--env ENV] [--approve] [--dry-run]
+                     [--package NAME] [--registry-url URL]
                      [--allow-destructive]
                      [--confirm-delete-system CORE]
                      [--connect STRING] [--runner EXEC]
@@ -21,6 +22,8 @@ dbpm reinstall source [--env ENV] [--approve] [--dry-run]
 | `--env` | `development` | Target environment name. |
 | `--approve` | false | Approve policy-gated actions (required in some environments). |
 | `--dry-run` | false | Print the deployment plan as JSON without executing. |
+| `--package` | none | Package name or application name to select when `source` is a workspace root. |
+| `--registry-url` | `DBPM_REGISTRY_URL` or `https://registry.dbpm.io` | Registry base URL for `registry:` sources. |
 | `--allow-destructive` | false | Required to allow the destructive pre-action (application deletion). Without this flag, dbpm fails before touching the database. |
 | `--confirm-delete-system` | none | Required for Core reinstall. Must be exactly `CORE`. |
 | `--connect` | `DBPM_CONNECT` | Connect string. |

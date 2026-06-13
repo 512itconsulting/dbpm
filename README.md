@@ -66,6 +66,7 @@ For a guided setup, see [Getting Started](docs/getting-started.md).
 - Install, upgrade, reinstall, resume, and validate workflows
 - ZIP artifact publishing to GitHub Packages and generic Maven repositories
 - GPG artifact signing and lockfile-driven signature verification
+- dbpm registry source resolution and artifact metadata indexing
 
 ## Known Limitations
 - Multi-package dependency execution does not support `reinstall`.
@@ -74,7 +75,7 @@ For a guided setup, see [Getting Started](docs/getting-started.md).
 
 ## Roadmap
 - APEX integration
-- [Rich artifact registry](docs/rich-artifact-registry.md)
+- Registry search/info commands and compatibility-aware registry resolution
 
 ## Status
 Live-tested against GitHub Packages artifacts for:

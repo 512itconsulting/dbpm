@@ -5,7 +5,9 @@ Install or initialize Core, the dbpm in-database deployment substrate, into an e
 ## Syntax
 
 ```
-dbpm bootstrap-core source [--env ENV] [--approve] [--dry-run] [--connect STRING] [--runner EXEC]
+dbpm bootstrap-core source [--env ENV] [--approve] [--package NAME]
+                           [--registry-url URL] [--dry-run]
+                           [--connect STRING] [--runner EXEC]
 ```
 
 ## Arguments
@@ -15,6 +17,8 @@ dbpm bootstrap-core source [--env ENV] [--approve] [--dry-run] [--connect STRING
 | `source` | required | Package source for the Core artifact. See [source types](source-types.md). |
 | `--env` | `development` | Target environment name. Controls environment policy evaluation. |
 | `--approve` | false | Approve policy-gated actions that would otherwise be blocked. |
+| `--package` | none | Package name or application name to select when `source` is a workspace root. |
+| `--registry-url` | `DBPM_REGISTRY_URL` or `https://registry.dbpm.io` | Registry base URL for `registry:` sources. |
 | `--dry-run` | false | Print the deployment plan as JSON without executing. |
 | `--connect` | `DBPM_CONNECT` | SQLPlus/SQLcl connect string. |
 | `--runner` | `DBPM_SQL_RUNNER` or `sqlplus` | SQL runner executable. |

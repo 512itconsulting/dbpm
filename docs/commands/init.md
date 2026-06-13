@@ -3,6 +3,13 @@
 Scaffold a new package or workspace directory with the standard folder layout,
 a template manifest, and git-friendly placeholder files.
 
+Package names must start with a lowercase letter and contain only lowercase
+letters, digits, underscores (`_`), or hyphens (`-`). Names map to Oracle
+application registry names by converting to uppercase and replacing hyphens
+with underscores.
+
+Valid examples: `core`, `my_package`, `utl-bs-numeric`
+
 ## Syntax
 
 ```
@@ -48,6 +55,12 @@ types/
 All leaf directories contain `.gitkeep` so the empty tree is tracked by git.
 `deployment_manifests/` uses `.gitignore` instead to silently exclude log
 files produced by SQL*Plus and SQLcl.
+
+The generated `dbpm.yaml` includes all active fields needed for a minimal
+deployment plus commented-out stanzas for optional fields: vendor, license,
+Core version requirement, dependencies, extra script entry points, and
+publishing config. The generated manifest is intended to be self-documenting
+without cluttering a working package.
 
 ### workspace
 
@@ -124,3 +137,6 @@ Initialize in a partially populated directory:
 ```sh
 dbpm init package my_package --force
 ```
+
+With `--force`, only missing files and directories are created; nothing already
+present is modified or overwritten.
