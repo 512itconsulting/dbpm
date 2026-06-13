@@ -2,7 +2,7 @@
 
 These notes preserve earlier registry design ideas that are not part of the
 current dbpm CLI behavior. The current implemented behavior is documented in
-[Rich Artifact Registry](../rich-artifact-registry.md).
+[Registry](../registry.md).
 
 ## Multi-Registry Trust Configuration
 

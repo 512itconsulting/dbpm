@@ -1,4 +1,4 @@
-# Rich Artifact Registry
+# Registry
 
 dbpm can resolve packages through a dbpm registry so consumers can install by
 package name and version constraint instead of Maven repository coordinates.
