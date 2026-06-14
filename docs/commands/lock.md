@@ -6,11 +6,42 @@ Write a dependency lockfile for a resolved install plan, or verify that an exist
 
 ```
 dbpm lock source [--env ENV] [--approve]
+               [--package NAME]
                [--dependency-source SOURCE]...
                [--registry-url URL]
                [--output PATH]
                [--check] [--check-db]
                [--connect STRING] [--runner EXEC]
+```
+
+## EBNF diagram
+
+```mermaid
+flowchart LR
+    command["command"] --> dbpm["dbpm"]
+    dbpm --> lock["lock"]
+    lock --> source["source"]
+    source --> options["{ option }"]
+    options --> end_node(("end"))
+
+    options -. expands to .-> option["option"]
+    option --> env["--env ENV"]
+    option --> approve["--approve"]
+    option --> package["--package NAME"]
+    option --> dependency_source["--dependency-source SOURCE"]
+    option --> registry_url["--registry-url URL"]
+    option --> output["--output PATH"]
+    option --> check["--check"]
+    option --> check_db["--check-db"]
+    option --> connect["--connect STRING"]
+    option --> runner["--runner EXEC"]
+
+    package -. only when source is a workspace root .-> package_note["selects workspace package"]
+    dependency_source -. repeatable .-> dep_note["included in resolved lock graph"]
+    registry_url -. only for registry sources .-> registry_note["sets registry base URL"]
+    check -. changes mode .-> check_note["verifies existing lockfile"]
+    check_db -. requires .-> check
+    check_db -. requires .-> connect
 ```
 
 ## Arguments

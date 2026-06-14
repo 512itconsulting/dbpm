@@ -11,6 +11,32 @@ dbpm validate source [--env ENV] [--approve] [--dry-run]
                     [--connect STRING] [--runner EXEC]
 ```
 
+## EBNF diagram
+
+```mermaid
+flowchart LR
+    command["command"] --> dbpm["dbpm"]
+    dbpm --> validate["validate"]
+    validate --> source["source"]
+    source --> options["{ option }"]
+    options --> end_node(("end"))
+
+    options -. expands to .-> option["option"]
+    option --> env["--env ENV"]
+    option --> approve["--approve"]
+    option --> dry_run["--dry-run"]
+    option --> package["--package NAME"]
+    option --> registry_url["--registry-url URL"]
+    option --> dependency_source["--dependency-source SOURCE"]
+    option --> connect["--connect STRING"]
+    option --> runner["--runner EXEC"]
+
+    package -. only when source is a workspace root .-> package_note["selects workspace package"]
+    registry_url -. only for registry sources .-> registry_note["sets registry base URL"]
+    dependency_source -. repeatable .-> dep_note["validated before consumer"]
+    dry_run -. changes execution .-> dry_run_note["prints plan without executing"]
+```
+
 ## Arguments
 
 | Argument | Default | Description |

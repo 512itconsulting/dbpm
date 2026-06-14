@@ -14,6 +14,34 @@ dbpm reinstall source [--env ENV] [--approve] [--dry-run]
                      [--connect STRING] [--runner EXEC]
 ```
 
+## EBNF diagram
+
+```mermaid
+flowchart LR
+    command["command"] --> dbpm["dbpm"]
+    dbpm --> reinstall["reinstall"]
+    reinstall --> source["source"]
+    source --> options["{ option }"]
+    options --> end_node(("end"))
+
+    options -. expands to .-> option["option"]
+    option --> env["--env ENV"]
+    option --> approve["--approve"]
+    option --> dry_run["--dry-run"]
+    option --> package["--package NAME"]
+    option --> registry_url["--registry-url URL"]
+    option --> allow_destructive["--allow-destructive"]
+    option --> confirm_system["--confirm-delete-system CORE"]
+    option --> connect["--connect STRING"]
+    option --> runner["--runner EXEC"]
+
+    allow_destructive -. required for execution .-> destructive_note["permits delete pre-action"]
+    confirm_system -. required when source is Core .-> core_note["confirms Core system teardown"]
+    package -. only when source is a workspace root .-> package_note["selects workspace package"]
+    registry_url -. only for registry sources .-> registry_note["sets registry base URL"]
+    dry_run -. changes execution .-> dry_run_note["prints plan without executing"]
+```
+
 ## Arguments
 
 | Argument | Default | Description |

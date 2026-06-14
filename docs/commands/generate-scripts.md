@@ -20,6 +20,35 @@ dbpm generate-scripts [source] [--from REF] [--to REF]
                       [--check]
 ```
 
+## EBNF diagram
+
+```mermaid
+flowchart LR
+    command["command"] --> dbpm["dbpm"]
+    dbpm --> generate["generate-scripts"]
+    generate --> source["[ source ]"]
+    source --> options["{ option }"]
+    options --> end_node(("end"))
+
+    options -. expands to .-> option["option"]
+    option --> from_ref["--from REF"]
+    option --> to_ref["--to REF"]
+    option --> version["--version VERSION"]
+    option --> app_name["--application-name NAME"]
+    option --> deployment_type["--deployment-type TYPE"]
+    option --> install_output["--install-output PATH"]
+    option --> release_output["--release-upgrade-output PATH"]
+    option --> pointer_output["--upgrade-pointer-output PATH"]
+    option --> check["--check"]
+
+    from_ref -. enables .-> upgrade_outputs["release upgrade and pointer outputs"]
+    release_output -. requires .-> from_ref
+    pointer_output -. requires .-> from_ref
+    deployment_type -. requires .-> from_ref
+    deployment_type -. choices .-> deployment_note["major, minor, patch"]
+    check -. changes execution .-> check_note["verifies generated files are current"]
+```
+
 ## Arguments
 
 | Argument | Default | Description |

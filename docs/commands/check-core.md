@@ -8,6 +8,23 @@ Verify that Core is installed in the target database and optionally meets a mini
 dbpm check-core [--minimum-version VERSION] [--connect STRING] [--runner EXEC]
 ```
 
+## EBNF diagram
+
+```mermaid
+flowchart LR
+    command["command"] --> dbpm["dbpm"]
+    dbpm --> check_core["check-core"]
+    check_core --> options["{ option }"]
+    options --> end_node(("end"))
+
+    options -. expands to .-> option["option"]
+    option --> minimum_version["--minimum-version VERSION"]
+    option --> connect["--connect STRING"]
+    option --> runner["--runner EXEC"]
+
+    minimum_version -. constrains success .-> version_note["Core must be at least VERSION"]
+```
+
 ## Arguments
 
 | Argument | Default | Description |

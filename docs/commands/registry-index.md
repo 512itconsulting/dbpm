@@ -45,7 +45,8 @@ flowchart LR
     description -. overrides .-> metadata_note
     artifact_url -. overrides .-> metadata_note
     artifact_checksum -. overrides .-> metadata_note
-    artifact_signature <-. must be supplied together .-> publisher_key
+    artifact_signature -. must be supplied together .-> publisher_key
+    publisher_key -. must be supplied together .-> artifact_signature
     dry_run -. changes execution .-> dry_run_note["prints request without sending"]
 ```
 

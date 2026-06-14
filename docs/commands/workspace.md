@@ -8,6 +8,19 @@ Inspect a dbpm workspace manifest.
 dbpm workspace list [WORKSPACE]
 ```
 
+## EBNF diagram
+
+```mermaid
+flowchart LR
+    command["command"] --> dbpm["dbpm"]
+    dbpm --> workspace["workspace"]
+    workspace --> list["list"]
+    list --> workspace_arg["[ WORKSPACE ]"]
+    workspace_arg --> end_node(("end"))
+
+    workspace_arg -. defaults to .-> default_note["current directory"]
+```
+
 ## Arguments
 
 | Argument | Default | Description |

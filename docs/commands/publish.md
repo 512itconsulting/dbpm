@@ -14,6 +14,34 @@ dbpm publish source --target TARGET
              [--dry-run]
 ```
 
+## EBNF diagram
+
+```mermaid
+flowchart LR
+    command["command"] --> dbpm["dbpm"]
+    dbpm --> publish["publish"]
+    publish --> source["source"]
+    source --> target["--target TARGET"]
+    target --> options["{ option }"]
+    options --> end_node(("end"))
+
+    options -. expands to .-> option["option"]
+    option --> package["--package NAME"]
+    option --> group["--group GROUP"]
+    option --> artifact_id["--artifact-id ID"]
+    option --> signing_key["--signing-key KEY"]
+    option --> receipt_output["--receipt-output PATH"]
+    option --> index_registry["--index-registry [ URL ]"]
+    option --> dry_run["--dry-run"]
+
+    package -. only when source is a workspace root .-> package_note["selects workspace package"]
+    group -. overrides .-> publish_metadata["manifest publish metadata"]
+    artifact_id -. overrides .-> publish_metadata
+    signing_key -. required unless env supplies default .-> signing_note["DBPM_SIGNING_KEY fallback"]
+    index_registry -. after publish .-> index_note["index verified artifact metadata"]
+    dry_run -. changes execution .-> dry_run_note["prints publish plan without uploading"]
+```
+
 ## Arguments
 
 | Argument | Default | Description |

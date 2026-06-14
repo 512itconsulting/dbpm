@@ -6,12 +6,51 @@ Install a package that is not yet registered in Core. Fails if the package is al
 
 ```
 dbpm install source [--env ENV] [--approve] [--dry-run]
+                   [--package NAME]
                    [--dependency-source SOURCE]...
                    [--registry-url URL]
                    [--connect STRING] [--runner EXEC]
 
 dbpm install --lockfile [PATH] [--env ENV] [--approve] [--dry-run]
                         [--connect STRING] [--runner EXEC]
+```
+
+## EBNF diagram
+
+```mermaid
+flowchart LR
+    command["command"] --> dbpm["dbpm"]
+    dbpm --> install["install"]
+    install --> form{"install form"}
+
+    form --> source_form["source"]
+    source_form --> source_common["{ source option }"]
+    source_common --> common_options["{ common option }"]
+    common_options --> end_source(("end"))
+
+    form --> lockfile_form["--lockfile [ PATH ]"]
+    lockfile_form --> common_options_lock["{ common option }"]
+    common_options_lock --> end_lock(("end"))
+
+    source_option["source option"] --> package["--package NAME"]
+    source_option --> dependency_source["--dependency-source SOURCE"]
+    source_option --> registry_url["--registry-url URL"]
+    source_common -. expands to .-> source_option
+
+    common_option["common option"] --> env["--env ENV"]
+    common_option --> approve["--approve"]
+    common_option --> dry_run["--dry-run"]
+    common_option --> connect["--connect STRING"]
+    common_option --> runner["--runner EXEC"]
+    common_options -. expands to .-> common_option
+    common_options_lock -. expands to .-> common_option
+
+    lockfile_form -. cannot combine with .-> source_form
+    lockfile_form -. cannot combine with .-> dependency_source
+    package -. only when source is a workspace root .-> package_note["selects workspace package"]
+    registry_url -. only for registry sources .-> registry_note["sets registry base URL"]
+    dependency_source -. repeatable .-> dep_note["resolved before consumer"]
+    dry_run -. changes execution .-> dry_run_note["prints plan without executing"]
 ```
 
 ## Arguments

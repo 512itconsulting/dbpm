@@ -6,9 +6,37 @@ Generate and print a deployment plan as JSON without executing anything. Useful 
 
 ```
 dbpm plan source [--mode MODE] [--env ENV] [--approve]
+               [--package NAME]
                [--dependency-source SOURCE]...
                [--registry-url URL]
                [--connect STRING] [--runner EXEC]
+```
+
+## EBNF diagram
+
+```mermaid
+flowchart LR
+    command["command"] --> dbpm["dbpm"]
+    dbpm --> plan["plan"]
+    plan --> source["source"]
+    source --> options["{ option }"]
+    options --> end_node(("end"))
+
+    options -. expands to .-> option["option"]
+    option --> mode["--mode MODE"]
+    option --> env["--env ENV"]
+    option --> approve["--approve"]
+    option --> package["--package NAME"]
+    option --> dependency_source["--dependency-source SOURCE"]
+    option --> registry_url["--registry-url URL"]
+    option --> connect["--connect STRING"]
+    option --> runner["--runner EXEC"]
+
+    mode -. choices .-> mode_note["bootstrap-core, install, upgrade, reinstall, resume, validate"]
+    package -. only when source is a workspace root .-> package_note["selects workspace package"]
+    dependency_source -. repeatable .-> dep_note["may satisfy manifest dependencies"]
+    registry_url -. only for registry sources .-> registry_note["sets registry base URL"]
+    connect -. enriches output .-> state_note["includes installed state from Core"]
 ```
 
 ## Arguments

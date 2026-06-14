@@ -17,6 +17,39 @@ dbpm init package [DIRECTORY] [--name NAME] [--version VERSION] [--description T
 dbpm init workspace [DIRECTORY] [--package NAME ...] [--force]
 ```
 
+## EBNF diagram
+
+```mermaid
+flowchart LR
+    command["command"] --> dbpm["dbpm"]
+    dbpm --> init["init"]
+    init --> subcommand{"subcommand"}
+
+    subcommand --> package_form["package"]
+    package_form --> package_directory["[ DIRECTORY ]"]
+    package_directory --> package_options["{ package option }"]
+    package_options --> package_end(("end"))
+
+    subcommand --> workspace_form["workspace"]
+    workspace_form --> workspace_directory["[ DIRECTORY ]"]
+    workspace_directory --> workspace_options["{ workspace option }"]
+    workspace_options --> workspace_end(("end"))
+
+    package_options -. expands to .-> package_option["package option"]
+    package_option --> name["--name NAME"]
+    package_option --> version["--version VERSION"]
+    package_option --> description["--description TEXT"]
+    package_option --> package_force["--force"]
+
+    workspace_options -. expands to .-> workspace_option["workspace option"]
+    workspace_option --> package["--package NAME"]
+    workspace_option --> workspace_force["--force"]
+
+    package -. repeatable .-> package_note["scaffold package under database/"]
+    package_force -. changes safety check .-> package_force_note["allow non-empty target"]
+    workspace_force -. changes safety check .-> workspace_force_note["allow non-empty target"]
+```
+
 ## Subcommands
 
 ### package
