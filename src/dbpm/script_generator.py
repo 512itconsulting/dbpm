@@ -27,6 +27,18 @@ OBJECT_DIRECTORIES = (
     "Metadata",
 )
 
+OBJECT_DIRECTORY_ALIASES = {
+    directory.lower(): directory for directory in OBJECT_DIRECTORIES
+}
+
+OBJECT_DIRECTORY_SEARCH_PATHS = tuple(
+    dict.fromkeys(
+        path
+        for directory in OBJECT_DIRECTORIES
+        for path in (directory, directory.lower())
+    )
+)
+
 GROUP_LABELS = {
     "Sequences": "Sequences",
     "Tables": "Tables",
@@ -608,11 +620,14 @@ def _register(registrations: dict[tuple[str, str], ObjectFile], item: ObjectFile
 
 def _object_file(path: str) -> ObjectFile | None:
     parts = PurePosixPath(path).parts
-    if len(parts) != 2 or parts[0] not in OBJECT_DIRECTORIES:
+    if len(parts) != 2:
+        return None
+    directory = _object_directory(parts[0])
+    if directory is None:
         return None
     if _lifecycle_file(path):
         return None
-    directory, filename = parts
+    filename = parts[1]
     lower = filename.lower()
     if directory == "Packages":
         if lower.endswith(".pks"):
@@ -642,11 +657,14 @@ def _object_file(path: str) -> ObjectFile | None:
 
 def _lifecycle_file(path: str) -> LifecycleFile | None:
     match = LIFECYCLE_RE.match(path)
-    if not match or match.group("directory") not in OBJECT_DIRECTORIES:
+    if not match:
+        return None
+    directory = _object_directory(match.group("directory"))
+    if directory is None:
         return None
     return LifecycleFile(
         path=path,
-        directory=match.group("directory"),
+        directory=directory,
         name=match.group("object"),
         action=match.group("action").lower(),
         version=match.group("version"),
@@ -655,11 +673,11 @@ def _lifecycle_file(path: str) -> LifecycleFile | None:
 
 def _tree_paths(git_root: Path, subpath: Path, ref: str) -> list[str]:
     if subpath == Path("."):
-        dirs = list(OBJECT_DIRECTORIES)
+        dirs = list(OBJECT_DIRECTORY_SEARCH_PATHS)
         prefix = ""
     else:
         posix_sub = subpath.as_posix()
-        dirs = [f"{posix_sub}/{d}" for d in OBJECT_DIRECTORIES]
+        dirs = [f"{posix_sub}/{d}" for d in OBJECT_DIRECTORY_SEARCH_PATHS]
         prefix = posix_sub + "/"
     output = _git(git_root, "ls-tree", "-r", "--name-only", ref, "--", *dirs)
     return [line[len(prefix):] for line in output.splitlines() if line]
@@ -667,11 +685,11 @@ def _tree_paths(git_root: Path, subpath: Path, ref: str) -> list[str]:
 
 def _diff_paths(git_root: Path, subpath: Path, from_ref: str, to_ref: str) -> dict[str, str]:
     if subpath == Path("."):
-        dirs = list(OBJECT_DIRECTORIES)
+        dirs = list(OBJECT_DIRECTORY_SEARCH_PATHS)
         prefix = ""
     else:
         posix_sub = subpath.as_posix()
-        dirs = [f"{posix_sub}/{d}" for d in OBJECT_DIRECTORIES]
+        dirs = [f"{posix_sub}/{d}" for d in OBJECT_DIRECTORY_SEARCH_PATHS]
         prefix = posix_sub + "/"
     output = _git(
         git_root,
@@ -693,6 +711,10 @@ def _diff_paths(git_root: Path, subpath: Path, from_ref: str, to_ref: str) -> di
         else:
             changed[fields[1][len(prefix):]] = status
     return changed
+
+
+def _object_directory(value: str) -> str | None:
+    return OBJECT_DIRECTORY_ALIASES.get(value.lower())
 
 
 def _manifest_at_ref(git_root: Path, subpath: Path, ref: str):

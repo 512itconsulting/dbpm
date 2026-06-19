@@ -125,6 +125,41 @@ def test_initial_generation_without_from_writes_only_install(tmp_path: Path):
     assert not (repo / "sql/update.sql").exists()
 
 
+def test_initial_generation_includes_lowercase_scaffold_directories(tmp_path: Path):
+    repo = tmp_path / "demo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "Test User")
+    _write(
+        repo,
+        "dbpm.yaml",
+        """
+package:
+  name: demo
+  version: "0.1.0"
+scripts:
+  install: deployment_manifests/deploy.sql
+""".lstrip(),
+    )
+    _write(repo, "tables/REPLACEMENT_VARS.sql")
+    _write(repo, "packages/PKG_REPLACEMENT_VAR.pks")
+    _write(repo, "packages/PKG_REPLACEMENT_VAR.pkb")
+    _write(repo, "metadata/REPLACEMENT_VARS.core.sql")
+    _commit(repo, "lowercase scaffold")
+
+    options = resolve_generation_options(repo)
+    generate_scripts(options)
+    install = (repo / "deployment_manifests/deploy.sql").read_text(encoding="utf-8")
+
+    assert "@@../tables/REPLACEMENT_VARS.sql" in install
+    assert "@@../packages/PKG_REPLACEMENT_VAR.pks" in install
+    assert "@@../packages/PKG_REPLACEMENT_VAR.pkb" in install
+    assert "@@../metadata/REPLACEMENT_VARS.core.sql" in install
+    assert "ip_object_name => 'REPLACEMENT_VARS'" in install
+    assert "ip_object_name => 'PKG_REPLACEMENT_VAR'" in install
+
+
 def test_type_specs_generic_sql_and_bodies_are_ordered_in_install(tmp_path: Path):
     repo, _ = _repo(tmp_path)
     _write(repo, "Types/ADDRESS.tps")
