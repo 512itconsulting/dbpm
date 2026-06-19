@@ -500,6 +500,8 @@ def _render_deployment(
         "SET SERVEROUTPUT ON",
         "SET SQLBLANKLINES ON",
         "",
+        "ALTER SESSION DISABLE PARALLEL DML;",
+        "",
         "WHENEVER SQLERROR EXIT FAILURE",
         "WHENEVER OSERROR EXIT FAILURE",
         "",

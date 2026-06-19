@@ -106,6 +106,8 @@ generation:
     assert "ip_object_name => 'NEW_ORDERS'" in update
     assert "ip_object_name => 'PKG_DEMO'" in update
     assert "ip_object_name => 'OLD_ORDERS'" not in update
+    assert "ALTER SESSION DISABLE PARALLEL DML;" in install
+    assert "ALTER SESSION DISABLE PARALLEL DML;" in update
     assert "@@releases/1.5.0/update.sql &&1" in pointer
 
 
