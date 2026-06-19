@@ -37,7 +37,12 @@ If you use SQL*Plus instead of SQLcl, confirm `sqlplus` is on your `PATH` or set
 Install dbpm as a user-level CLI tool:
 
 ```sh
+# Stable released CLI version.
+uv tool install git+https://github.com/512itconsulting/dbpm.git@v1.0.1
+
+# Latest development version from the default branch.
 uv tool install git+https://github.com/512itconsulting/dbpm.git
+
 dbpm --help
 ```
 
