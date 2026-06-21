@@ -41,6 +41,15 @@ def test_init_package_creates_all_dirs(tmp_path: Path):
         assert (tmp_path / dir_name).is_dir(), f"missing directory: {dir_name}"
 
 
+def test_init_package_creates_legacy_oracle_object_dirs(tmp_path: Path):
+    init_package(tmp_path, name="demo", version="0.1.0", description="", force=False)
+    expected_dirs = {"database_links", "grants", "synonyms", "views"}
+    assert expected_dirs.issubset(PACKAGE_DIRS)
+    for dir_name in expected_dirs:
+        assert (tmp_path / dir_name).is_dir(), f"missing legacy Oracle object directory: {dir_name}"
+        assert (tmp_path / dir_name / ".gitkeep").is_file(), f"missing .gitkeep in {dir_name}"
+
+
 def test_init_package_gitkeep_in_non_manifest_dirs(tmp_path: Path):
     init_package(tmp_path, name="demo", version="0.1.0", description="", force=False)
     for dir_name in PACKAGE_DIRS:

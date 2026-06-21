@@ -73,16 +73,20 @@ LICENSE
 .gitignore
 deployment_manifests/
   .gitignore
+database_links/
 docs/
 examples/
 functions/
+grants/
 helper_scripts/
 metadata/
 packages/
 procedures/
+synonyms/
 tables/
 tests/
 types/
+views/
 ```
 
 All leaf directories contain `.gitkeep` so the empty tree is tracked by git.
@@ -116,15 +120,19 @@ database/
   <pkg_name>/        (one per --package; full package scaffold inside)
     dbpm.yaml
     deployment_manifests/
+    database_links/
     docs/
     functions/
+    grants/
     helper_scripts/
     metadata/
     packages/
     procedures/
+    synonyms/
     tables/
     tests/
     types/
+    views/
 helper_scripts/
 os/
 ```

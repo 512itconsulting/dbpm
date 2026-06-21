@@ -9,16 +9,20 @@ from .errors import DbpmError
 
 PACKAGE_DIRS = [
     "deployment_manifests",
+    "database_links",
     "docs",
     "examples",
     "helper_scripts",
     "metadata",
     "packages",
     "functions",
+    "grants",
     "procedures",
+    "synonyms",
     "tables",
     "tests",
     "types",
+    "views",
 ]
 
 WORKSPACE_ROOT_DIRS = ["helper_scripts", "os"]

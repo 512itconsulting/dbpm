@@ -2,7 +2,14 @@
   "permissions": {
     "allow": [
       "Bash(./scripts/test-unit.sh tests/test_publisher.py tests/test_manifest.py tests/test_cli.py -x -q)",
-      "Bash(./scripts/test-unit.sh -q)"
+      "Bash(./scripts/test-unit.sh -q)",
+      "Bash(uv run *)",
+      "Bash(git -C /home/rsant/repos/dbpm status)",
+      "Bash(git -C /home/rsant/repos/dbpm diff --stat)",
+      "Bash(git -C /home/rsant/repos/dbpm log --oneline -5)",
+      "Bash(git -C /home/rsant/repos/dbpm diff src/dbpm/cli.py)",
+      "Bash(python -c \"from src.dbpm.initializer import _package_manifest; print\\(_package_manifest\\('my_package', '0.1.0', 'A sample package'\\)\\)\")",
+      "Bash(python3 -m pytest tests/test_script_generator.py -q)"
     ]
   }
 }
