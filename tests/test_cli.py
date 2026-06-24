@@ -171,6 +171,9 @@ def test_registry_help_prefers_machine_hostname(capsys):
 @pytest.fixture(autouse=True)
 def _no_reverse_dependencies(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("DBPM_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.delenv("DBPM_CONNECT", raising=False)
+    monkeypatch.delenv("DBPM_CONNECT_NAME", raising=False)
+    monkeypatch.delenv("DBPM_SQL_RUNNER", raising=False)
     monkeypatch.setattr(cli, "get_reverse_dependencies", lambda **kwargs: [])
 
 
@@ -904,7 +907,10 @@ def test_install_without_connect_fails(tmp_path: Path, capsys):
 
     assert cli.main(["install", str(package)]) == 2
 
-    assert "Database access requires --connect or DBPM_CONNECT" in capsys.readouterr().err
+    assert (
+        "Database access requires --connect/DBPM_CONNECT or --connect-name/DBPM_CONNECT_NAME"
+        in capsys.readouterr().err
+    )
 
 
 def test_install_blocks_when_package_already_installed(tmp_path: Path, monkeypatch, capsys):
@@ -1633,6 +1639,64 @@ def test_check_core_uses_environment_connect_and_runner(monkeypatch, capsys):
         "minimum_version": "3.0.0",
     }
     assert "CORE_VERSION=3.0.0" in capsys.readouterr().out
+
+
+def test_check_core_uses_environment_connect_name(monkeypatch, capsys):
+    calls = {}
+
+    def fake_check_core(*, connect, runner: str, minimum_version: str | None):
+        calls["connect"] = connect
+        calls["runner"] = runner
+        calls["minimum_version"] = minimum_version
+        return SqlResult(returncode=0, stdout="CORE_VERSION=3.0.0\n", stderr="")
+
+    monkeypatch.delenv("DBPM_CONNECT", raising=False)
+    monkeypatch.setenv("DBPM_CONNECT_NAME", "Development Database (APP_USER)")
+    monkeypatch.setenv("DBPM_SQL_RUNNER", "sql")
+    monkeypatch.setattr(cli, "check_core", fake_check_core)
+
+    assert cli.main(["check-core"]) == 0
+
+    assert calls["connect"].kind == "sqlcl-name"
+    assert calls["connect"].value == "Development Database (APP_USER)"
+    assert calls["runner"] == "sql"
+
+
+def test_connect_name_and_connect_are_mutually_exclusive(monkeypatch, capsys):
+    monkeypatch.setenv("DBPM_CONNECT", "user/password@db")
+    monkeypatch.setenv("DBPM_CONNECT_NAME", "Development Database (APP_USER)")
+    monkeypatch.setenv("DBPM_SQL_RUNNER", "sql")
+
+    assert cli.main(["check-core"]) == 2
+
+    assert "--connect and --connect-name are mutually exclusive" in capsys.readouterr().err
+
+
+def test_cli_connect_name_overrides_environment_connect_name(monkeypatch, capsys):
+    calls = {}
+
+    def fake_check_core(*, connect, runner: str, minimum_version: str | None):
+        calls["connect"] = connect
+        return SqlResult(returncode=0, stdout="CORE_VERSION=3.0.0\n", stderr="")
+
+    monkeypatch.delenv("DBPM_CONNECT", raising=False)
+    monkeypatch.setenv("DBPM_CONNECT_NAME", "Development Database (OLD)")
+    monkeypatch.setenv("DBPM_SQL_RUNNER", "sql")
+    monkeypatch.setattr(cli, "check_core", fake_check_core)
+
+    assert cli.main(["check-core", "--connect-name", "Development Database (APP_USER)"]) == 0
+
+    assert calls["connect"].value == "Development Database (APP_USER)"
+
+
+def test_connect_name_with_default_sqlplus_fails(monkeypatch, capsys):
+    monkeypatch.delenv("DBPM_CONNECT", raising=False)
+    monkeypatch.delenv("DBPM_SQL_RUNNER", raising=False)
+    monkeypatch.setenv("DBPM_CONNECT_NAME", "Development Database (APP_USER)")
+
+    assert cli.main(["check-core"]) == 2
+
+    assert "SQLcl named connections require a SQLcl runner" in capsys.readouterr().err
 
 
 # ── upgrade chain ────────────────────────────────────────────────────────────

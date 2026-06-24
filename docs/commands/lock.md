@@ -11,7 +11,7 @@ dbpm lock source [--env ENV] [--approve]
                [--registry-url URL]
                [--output PATH]
                [--check] [--check-db]
-               [--connect STRING] [--runner EXEC]
+               [--connect STRING | --connect-name NAME] [--runner EXEC]
 ```
 
 ## EBNF diagram
@@ -33,7 +33,7 @@ flowchart LR
     option --> output["--output PATH"]
     option --> check["--check"]
     option --> check_db["--check-db"]
-    option --> connect["--connect STRING"]
+    option --> connect["--connect STRING or --connect-name NAME"]
     option --> runner["--runner EXEC"]
 
     package -. only when source is a workspace root .-> package_note["selects workspace package"]
@@ -56,8 +56,9 @@ flowchart LR
 | `--registry-url` | `DBPM_REGISTRY_URL` or `https://registry.dbpm.io` | Registry base URL for `registry:` sources. |
 | `--output` | `dbpm-lock.json` | Path to write the lockfile. |
 | `--check` | false | Verify the existing lockfile matches the current source resolution instead of writing a new one. |
-| `--check-db` | false | With `--check`: also verify that installed database versions and Core provenance rows match the lockfile. Requires `--connect`. |
-| `--connect` | `DBPM_CONNECT` | Connect string. Required when using `--check-db`. |
+| `--check-db` | false | With `--check`: also verify that installed database versions and Core provenance rows match the lockfile. Requires `--connect` or `--connect-name`. |
+| `--connect` | `DBPM_CONNECT` | SQL*Plus/SQLcl connect string. Required when using `--check-db` unless `--connect-name` is used. |
+| `--connect-name` | `DBPM_CONNECT_NAME` | SQLcl named connection. Requires SQLcl via `--runner` or `DBPM_SQL_RUNNER`. |
 | `--runner` | `DBPM_SQL_RUNNER` or `sqlplus` | SQL runner executable. |
 
 ## Output

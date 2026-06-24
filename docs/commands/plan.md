@@ -9,7 +9,7 @@ dbpm plan source [--mode MODE] [--env ENV] [--approve]
                [--package NAME]
                [--dependency-source SOURCE]...
                [--registry-url URL]
-               [--connect STRING] [--runner EXEC]
+               [--connect STRING | --connect-name NAME] [--runner EXEC]
 ```
 
 ## EBNF diagram
@@ -29,7 +29,7 @@ flowchart LR
     option --> package["--package NAME"]
     option --> dependency_source["--dependency-source SOURCE"]
     option --> registry_url["--registry-url URL"]
-    option --> connect["--connect STRING"]
+    option --> connect["--connect STRING or --connect-name NAME"]
     option --> runner["--runner EXEC"]
 
     mode -. choices .-> mode_note["bootstrap-core, install, upgrade, reinstall, resume, validate"]
@@ -50,16 +50,17 @@ flowchart LR
 | `--package` | none | Package name or application name to select when `source` is a workspace root. |
 | `--dependency-source` | none | Additional source that may satisfy a dependency declared in the manifest. Repeatable. |
 | `--registry-url` | `DBPM_REGISTRY_URL` or `https://registry.dbpm.io` | Registry base URL for `registry:` sources. |
-| `--connect` | `DBPM_CONNECT` | Connect string. When provided, the plan includes the currently installed state from Core. |
+| `--connect` | `DBPM_CONNECT` | SQL*Plus/SQLcl connect string. Mutually exclusive with `--connect-name`. When provided, the plan includes the currently installed state from Core. |
+| `--connect-name` | `DBPM_CONNECT_NAME` | SQLcl named connection. Requires SQLcl via `--runner` or `DBPM_SQL_RUNNER`. Also enables installed-state lookup. |
 | `--runner` | `DBPM_SQL_RUNNER` or `sqlplus` | SQL runner executable. |
 
 ## Output
 
 Prints a `dbpm.plan.v0` or `dbpm.multi-plan.v0` JSON object to stdout.
 
-When `--connect` is provided, the plan includes `installed_state` for each package, enabling accurate preflight evaluation. Without `--connect`, installed state is omitted and the plan reflects resolution only.
+When `--connect` or `--connect-name` is provided, the plan includes `installed_state` for each package, enabling accurate preflight evaluation. Without database access, installed state is omitted and the plan reflects resolution only.
 
-For upgrade with `--connect`, if a stepwise chain is required, the output is a `dbpm.upgrade-chain.v0` plan with a `steps` array.
+For upgrade with database access, if a stepwise chain is required, the output is a `dbpm.upgrade-chain.v0` plan with a `steps` array.
 
 ## Examples
 

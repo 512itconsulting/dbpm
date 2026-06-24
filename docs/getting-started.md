@@ -71,6 +71,9 @@ Edit `dbpm-env.sh`:
 export TNS_ADMIN="$HOME/.oracle/tns_admin"
 export DBPM_SQL_RUNNER="$HOME/opt/sqlcl/bin/sql"
 export DBPM_CONNECT="user/password@service_name"
+# Or use a SQLcl named connection local to this OS user:
+# export DBPM_CONNECT_NAME="Development Database (APP_USER)"
+# unset DBPM_CONNECT
 
 # Required for private GitHub Packages.
 export DBPM_GITHUB_TOKEN="github_token_with_package_read_access"
@@ -87,12 +90,16 @@ Load it before running dbpm:
 source ./dbpm-env.sh
 ```
 
-Check that dbpm can find the SQL runner and connect string:
+Check that dbpm can find the SQL runner and database connection setting:
 
 ```sh
 printf '%s\n' "$DBPM_SQL_RUNNER"
-printf '%s\n' "$DBPM_CONNECT"
+printf '%s\n' "${DBPM_CONNECT:-$DBPM_CONNECT_NAME}"
 ```
+
+`DBPM_CONNECT_NAME` uses SQLcl's local named-connection store. It requires
+SQLcl (`DBPM_SQL_RUNNER=sql` or a SQLcl executable path) and cannot be set at
+the same time as `DBPM_CONNECT`.
 
 ## Start a New Package
 

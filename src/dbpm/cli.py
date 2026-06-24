@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from .chain import ChainError, resolve_upgrade_chain
+from .connect import ConnectSpec, connect_string, sqlcl_name, validate_connect_spec
 from .resolver import parse_version
 from .publisher import (
     PUBLISH_RECEIPT_NAME,
@@ -75,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
             _run_generate_scripts(args)
             return 0
         if args.command == "plan":
-            plan = _build_plan(args.mode, args, include_installed_state=bool(args.connect))
+            plan = _build_plan(args.mode, args, include_installed_state=_has_database_access(args))
             _print_json(plan)
             return 0
         if args.command == "lock":
@@ -87,8 +88,11 @@ def main(argv: list[str] | None = None) -> int:
                 lockfile = load_lockfile(lockfile_path)
                 assert_lockfile_matches_plan(lockfile, plan)
                 if args.check_db:
-                    if not args.connect:
-                        raise DbpmError("Database lockfile check requires --connect or DBPM_CONNECT")
+                    if not _has_database_access(args):
+                        raise DbpmError(
+                            "Database lockfile check requires --connect/DBPM_CONNECT "
+                            "or --connect-name/DBPM_CONNECT_NAME"
+                        )
                     states = {
                         app_name: _get_installed_state(args, app_name)
                         for app_name, _ in deployment_provenance_requests(lockfile)
@@ -96,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
                     assert_database_states_match_lockfile(lockfile, states)
                     provenances = {
                         app_name: get_deployment_provenance(
-                            connect=_connect_string(args),
+                            connect=_connect_spec(args),
                             runner=args.runner,
                             application_name=app_name,
                             version=version,
@@ -112,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "check-core":
             result = check_core(
-                connect=_connect_string(args),
+                connect=_connect_spec(args),
                 runner=args.runner,
                 minimum_version=args.minimum_version,
             )
@@ -125,7 +129,7 @@ def main(argv: list[str] | None = None) -> int:
                 if args.command == "install" and args.source is None and not getattr(args, "package", None):
                     raise DbpmError("install requires a source or --lockfile")
                 include_installed = not args.dry_run or (
-                    args.command == "upgrade" and bool(args.connect)
+                    args.command == "upgrade" and _has_database_access(args)
                 )
                 plan = _build_plan(args.command, args, include_installed_state=include_installed)
             if args.dry_run:
@@ -556,6 +560,11 @@ def _add_database_args(parser: argparse.ArgumentParser) -> None:
         help="SQLPlus/SQLcl connect string, default: DBPM_CONNECT",
     )
     parser.add_argument(
+        "--connect-name",
+        default=os.environ.get("DBPM_CONNECT_NAME"),
+        help="SQLcl named connection, default: DBPM_CONNECT_NAME",
+    )
+    parser.add_argument(
         "--runner",
         default=os.environ.get("DBPM_SQL_RUNNER", "sqlplus"),
         help="SQL runner executable, default: DBPM_SQL_RUNNER or sqlplus",
@@ -776,14 +785,14 @@ def _execute_or_explain(plan: dict[str, object], args: argparse.Namespace) -> No
             _enforce_installed_state(child_plan)
             _enforce_core_minimum_version(child_plan, args)
             _enforce_major_upgrade_dependencies(child_plan, allow_dependent_break)
-        execute_plan(plan, connect=_connect_string(args), runner=args.runner)
+        execute_plan(plan, connect=_connect_spec(args), runner=args.runner)
         return
 
     _execute_or_explain_policy(plan)
     _enforce_installed_state(plan)
     _enforce_core_minimum_version(plan, args)
     _enforce_major_upgrade_dependencies(plan, getattr(args, "allow_dependent_break", False))
-    execute_plan(plan, connect=_connect_string(args), runner=args.runner)
+    execute_plan(plan, connect=_connect_spec(args), runner=args.runner)
 
 
 def _execute_upgrade_chain(plan: dict[str, object], args: argparse.Namespace) -> None:
@@ -805,7 +814,7 @@ def _execute_upgrade_chain(plan: dict[str, object], args: argparse.Namespace) ->
         _enforce_installed_state(step_plan)
         _enforce_core_minimum_version(step_plan, args)
         _enforce_major_upgrade_dependencies(step_plan, allow_dependent_break)
-        execute_plan(step_plan, connect=_connect_string(args), runner=args.runner)
+        execute_plan(step_plan, connect=_connect_spec(args), runner=args.runner)
 
 
 def _enforce_major_upgrade_dependencies(
@@ -890,7 +899,7 @@ def _execute_or_explain_policy(plan: dict[str, object]) -> None:
 
 def _get_installed_state(args: argparse.Namespace, application_name: str) -> dict[str, str] | None:
     state = get_application_state(
-        connect=_connect_string(args),
+        connect=_connect_spec(args),
         runner=args.runner,
         application_name=application_name,
     )
@@ -905,7 +914,7 @@ def _should_read_installed_state(mode: str, is_core: bool) -> bool:
 
 def _get_reverse_dependencies(args: argparse.Namespace, application_name: str) -> list[str]:
     return get_reverse_dependencies(
-        connect=_connect_string(args),
+        connect=_connect_spec(args),
         runner=args.runner,
         application_name=application_name,
     )
@@ -980,10 +989,23 @@ def _enforce_installed_state(plan: dict[str, object]) -> None:
         raise DbpmError(f"{app_name} deployment status is {status}; expected C")
 
 
-def _connect_string(args: argparse.Namespace) -> str:
-    if not args.connect:
-        raise DbpmError("Database access requires --connect or DBPM_CONNECT")
-    return args.connect
+def _has_database_access(args: argparse.Namespace) -> bool:
+    return bool(getattr(args, "connect", None) or getattr(args, "connect_name", None))
+
+
+def _connect_spec(args: argparse.Namespace) -> str | ConnectSpec:
+    connect = getattr(args, "connect", None)
+    connect_name = getattr(args, "connect_name", None)
+    if connect and connect_name:
+        raise DbpmError("--connect and --connect-name are mutually exclusive")
+    if connect_name:
+        spec = sqlcl_name(connect_name)
+    elif connect:
+        spec = connect_string(connect)
+    else:
+        raise DbpmError("Database access requires --connect/DBPM_CONNECT or --connect-name/DBPM_CONNECT_NAME")
+    validate_connect_spec(connect=spec, runner=args.runner)
+    return spec if spec.kind == "sqlcl-name" else spec.value
 
 
 def _application_name(name: str) -> str:

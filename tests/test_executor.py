@@ -5,6 +5,7 @@ import pytest
 
 from dbpm.errors import ExecutionError
 from dbpm.executor import execute_plan
+from dbpm.connect import sqlcl_name
 
 
 class _FakeProcess:
@@ -136,6 +137,35 @@ def test_execute_plan_runs_multi_package_children_in_order(tmp_path, monkeypatch
     assert len(logs) == 2
     assert logs[0].endswith("-001-BASE-validate.log")
     assert logs[1].endswith("-002-CONSUMER-validate.log")
+
+
+def test_execute_plan_uses_sqlcl_named_connection_as_single_argument(tmp_path, monkeypatch):
+    monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
+    plan = {
+        "mode": "install",
+        "package": {
+            "application_name": "DEMO",
+        },
+        "pre_actions": [],
+        "execution": {
+            "script_ref": "deploy.sql",
+            "arguments": ["abc"],
+        },
+    }
+
+    with patch("dbpm.executor.subprocess.Popen") as popen:
+        popen.return_value = _FakeProcess(stdout="deployed\n")
+        execute_plan(plan, connect=sqlcl_name("Development Database (APP_USER)"), runner="sql")
+
+    assert popen.call_args.args[0] == [
+        "sql",
+        "-S",
+        "-L",
+        "-name",
+        "Development Database (APP_USER)",
+        "@deploy.sql",
+        "abc",
+    ]
 
 
 def test_execute_plan_runs_core_teardown_before_reinstall_script(tmp_path, monkeypatch):

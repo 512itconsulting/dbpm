@@ -4,6 +4,9 @@
 
 export DBPM_SQL_RUNNER="sql"
 export DBPM_CONNECT="user/password@tns_alias_or_service"
+# Or, for SQLcl named connections local to this OS user:
+# export DBPM_CONNECT_NAME="Development Database (APP_USER)"
+# unset DBPM_CONNECT
 
 # Required for private GitHub Packages.
 export DBPM_GITHUB_TOKEN="github_token_with_package_read_access"

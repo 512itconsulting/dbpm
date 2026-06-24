@@ -6,6 +6,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from .connect import ConnectSpec, build_sql_command
 from .errors import ExecutionError
 
 
@@ -35,14 +36,14 @@ class ApplicationState:
 def run_sql_script(
     *,
     sql: str,
-    connect: str,
+    connect: str | ConnectSpec,
     runner: str,
     label: str = "dbpm",
 ) -> SqlResult:
     script_path = _write_temp_script(sql, label)
     try:
         result = subprocess.run(
-            [runner, "-L", "-S", connect, f"@{script_path}"],
+            build_sql_command(runner=runner, connect=connect, script_ref=script_path, silent=True),
             check=False,
             capture_output=True,
             text=True,
@@ -62,7 +63,7 @@ def run_sql_script(
     )
 
 
-def check_core(*, connect: str, runner: str, minimum_version: str | None = None) -> SqlResult:
+def check_core(*, connect: str | ConnectSpec, runner: str, minimum_version: str | None = None) -> SqlResult:
     sql = _core_check_sql(minimum_version)
     result = run_sql_script(sql=sql, connect=connect, runner=runner, label="dbpm-check-core")
     if result.returncode != 0:
@@ -72,7 +73,7 @@ def check_core(*, connect: str, runner: str, minimum_version: str | None = None)
 
 def delete_application(
     *,
-    connect: str,
+    connect: str | ConnectSpec,
     runner: str,
     application_name: str,
     fail_on_not_found: str = "N",
@@ -86,7 +87,7 @@ def delete_application(
 
 def delete_system(
     *,
-    connect: str,
+    connect: str | ConnectSpec,
     runner: str,
 ) -> SqlResult:
     result = run_sql_script(sql=_delete_system_sql(), connect=connect, runner=runner, label="dbpm-delete-system")
@@ -97,7 +98,7 @@ def delete_system(
 
 def stage_deployment_provenance(
     *,
-    connect: str,
+    connect: str | ConnectSpec,
     runner: str,
     payload: dict[str, object],
 ) -> SqlResult:
@@ -116,7 +117,7 @@ def stage_deployment_provenance(
 
 def record_deployment_provenance(
     *,
-    connect: str,
+    connect: str | ConnectSpec,
     runner: str,
     payload: dict[str, object],
 ) -> SqlResult:
@@ -135,7 +136,7 @@ def record_deployment_provenance(
 
 def get_application_state(
     *,
-    connect: str,
+    connect: str | ConnectSpec,
     runner: str,
     application_name: str,
 ) -> ApplicationState | None:
@@ -154,7 +155,7 @@ def get_application_state(
 
 def get_reverse_dependencies(
     *,
-    connect: str,
+    connect: str | ConnectSpec,
     runner: str,
     application_name: str,
 ) -> list[str]:
@@ -173,7 +174,7 @@ def get_reverse_dependencies(
 
 def get_deployment_provenance(
     *,
-    connect: str,
+    connect: str | ConnectSpec,
     runner: str,
     application_name: str,
     version: str,

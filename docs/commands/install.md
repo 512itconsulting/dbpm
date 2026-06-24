@@ -9,10 +9,10 @@ dbpm install source [--env ENV] [--approve] [--dry-run]
                    [--package NAME]
                    [--dependency-source SOURCE]...
                    [--registry-url URL]
-                   [--connect STRING] [--runner EXEC]
+                   [--connect STRING | --connect-name NAME] [--runner EXEC]
 
 dbpm install --lockfile [PATH] [--env ENV] [--approve] [--dry-run]
-                        [--connect STRING] [--runner EXEC]
+                        [--connect STRING | --connect-name NAME] [--runner EXEC]
 ```
 
 ## EBNF diagram
@@ -40,7 +40,7 @@ flowchart LR
     common_option["common option"] --> env["--env ENV"]
     common_option --> approve["--approve"]
     common_option --> dry_run["--dry-run"]
-    common_option --> connect["--connect STRING"]
+    common_option --> connect["--connect STRING or --connect-name NAME"]
     common_option --> runner["--runner EXEC"]
     common_options -. expands to .-> common_option
     common_options_lock -. expands to .-> common_option
@@ -65,7 +65,8 @@ flowchart LR
 | `--dependency-source` | none | Additional source that may satisfy a dependency declared in the manifest. Repeatable. Cannot be combined with `--lockfile`. |
 | `--registry-url` | `DBPM_REGISTRY_URL` or `https://registry.dbpm.io` | Registry base URL for `registry:` sources. |
 | `--lockfile` | `dbpm-lock.json` | Install from a resolved lockfile. If the flag is given without a value, defaults to `dbpm-lock.json`. Cannot be combined with `source` or `--dependency-source`. |
-| `--connect` | `DBPM_CONNECT` | Connect string. |
+| `--connect` | `DBPM_CONNECT` | SQL*Plus/SQLcl connect string. Mutually exclusive with `--connect-name`. |
+| `--connect-name` | `DBPM_CONNECT_NAME` | SQLcl named connection. Requires SQLcl via `--runner` or `DBPM_SQL_RUNNER`. |
 | `--runner` | `DBPM_SQL_RUNNER` or `sqlplus` | SQL runner executable. |
 
 ## Preflight checks

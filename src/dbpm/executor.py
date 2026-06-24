@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
 
+from .connect import ConnectSpec, build_sql_command
 from .db import delete_application, delete_system, record_deployment_provenance, stage_deployment_provenance
 from .errors import ExecutionError
 
@@ -22,7 +23,7 @@ class _ExecutionContext:
 def execute_plan(
     plan: dict[str, object],
     *,
-    connect: str,
+    connect: str | ConnectSpec,
     runner: str,
     context: _ExecutionContext | None = None,
 ) -> int:
@@ -50,7 +51,7 @@ def execute_plan(
 
     _execute_pre_actions(plan, connect=connect, runner=runner, context=context)
 
-    command = [runner, "-L", connect, f"@{script_ref}", *[str(arg) for arg in arguments]]
+    command = build_sql_command(runner=runner, connect=connect, script_ref=script_ref, arguments=arguments)
     log_file = _next_log_file(context, plan)
     try:
         returncode = _run_command(command, cwd=_cwd_for_script(script_ref), log_file=log_file)
@@ -110,7 +111,7 @@ def _tee_output(source: TextIO, log: TextIO) -> None:
 def _execute_pre_actions(
     plan: dict[str, object],
     *,
-    connect: str,
+    connect: str | ConnectSpec,
     runner: str,
     context: _ExecutionContext,
 ) -> None:
@@ -141,7 +142,7 @@ def _execute_pre_actions(
                 raise ExecutionError("execute_script pre-action requires script_ref")
             if not isinstance(arguments, list):
                 raise ExecutionError("execute_script pre-action arguments must be a list")
-            command = [runner, "-L", connect, f"@{script_ref}", *[str(arg) for arg in arguments]]
+            command = build_sql_command(runner=runner, connect=connect, script_ref=script_ref, arguments=arguments)
             log_file = _next_log_file(context, plan)
             try:
                 returncode = _run_command(command, cwd=_cwd_for_script(script_ref), log_file=log_file)
@@ -158,7 +159,7 @@ def _execute_pre_actions(
             raise ExecutionError(f"Unsupported pre-action: {action_type}")
 
 
-def _execute_post_actions(plan: dict[str, object], *, connect: str, runner: str) -> None:
+def _execute_post_actions(plan: dict[str, object], *, connect: str | ConnectSpec, runner: str) -> None:
     post_actions = plan.get("post_actions", [])
     if not isinstance(post_actions, list):
         raise ExecutionError("Plan post_actions must be a list")

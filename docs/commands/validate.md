@@ -8,7 +8,7 @@ Run the validation or smoke-test script declared in the package manifest (`scrip
 dbpm validate source [--env ENV] [--approve] [--dry-run]
                     [--package NAME] [--registry-url URL]
                     [--dependency-source SOURCE]...
-                    [--connect STRING] [--runner EXEC]
+                    [--connect STRING | --connect-name NAME] [--runner EXEC]
 ```
 
 ## EBNF diagram
@@ -28,7 +28,7 @@ flowchart LR
     option --> package["--package NAME"]
     option --> registry_url["--registry-url URL"]
     option --> dependency_source["--dependency-source SOURCE"]
-    option --> connect["--connect STRING"]
+    option --> connect["--connect STRING or --connect-name NAME"]
     option --> runner["--runner EXEC"]
 
     package -. only when source is a workspace root .-> package_note["selects workspace package"]
@@ -48,7 +48,8 @@ flowchart LR
 | `--package` | none | Package name or application name to select when `source` is a workspace root. |
 | `--registry-url` | `DBPM_REGISTRY_URL` or `https://registry.dbpm.io` | Registry base URL for `registry:` sources. |
 | `--dependency-source` | none | Additional source for a dependency whose validation script should also run. Repeatable. |
-| `--connect` | `DBPM_CONNECT` | Connect string. |
+| `--connect` | `DBPM_CONNECT` | SQL*Plus/SQLcl connect string. Mutually exclusive with `--connect-name`. |
+| `--connect-name` | `DBPM_CONNECT_NAME` | SQLcl named connection. Requires SQLcl via `--runner` or `DBPM_SQL_RUNNER`. |
 | `--runner` | `DBPM_SQL_RUNNER` or `sqlplus` | SQL runner executable. |
 
 ## Preflight checks

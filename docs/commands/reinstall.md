@@ -11,7 +11,7 @@ dbpm reinstall source [--env ENV] [--approve] [--dry-run]
                      [--package NAME] [--registry-url URL]
                      [--allow-destructive]
                      [--confirm-delete-system CORE]
-                     [--connect STRING] [--runner EXEC]
+                     [--connect STRING | --connect-name NAME] [--runner EXEC]
 ```
 
 ## EBNF diagram
@@ -32,7 +32,7 @@ flowchart LR
     option --> registry_url["--registry-url URL"]
     option --> allow_destructive["--allow-destructive"]
     option --> confirm_system["--confirm-delete-system CORE"]
-    option --> connect["--connect STRING"]
+    option --> connect["--connect STRING or --connect-name NAME"]
     option --> runner["--runner EXEC"]
 
     allow_destructive -. required for execution .-> destructive_note["permits delete pre-action"]
@@ -54,7 +54,8 @@ flowchart LR
 | `--registry-url` | `DBPM_REGISTRY_URL` or `https://registry.dbpm.io` | Registry base URL for `registry:` sources. |
 | `--allow-destructive` | false | Required to allow the destructive pre-action (application deletion). Without this flag, dbpm fails before touching the database. |
 | `--confirm-delete-system` | none | Required for Core reinstall. Must be exactly `CORE`. |
-| `--connect` | `DBPM_CONNECT` | Connect string. |
+| `--connect` | `DBPM_CONNECT` | SQL*Plus/SQLcl connect string. Mutually exclusive with `--connect-name`. |
+| `--connect-name` | `DBPM_CONNECT_NAME` | SQLcl named connection. Requires SQLcl via `--runner` or `DBPM_SQL_RUNNER`. |
 | `--runner` | `DBPM_SQL_RUNNER` or `sqlplus` | SQL runner executable. |
 
 ## Preflight checks

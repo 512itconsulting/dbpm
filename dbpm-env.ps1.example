@@ -3,6 +3,9 @@
 
 $env:DBPM_SQL_RUNNER = "sql"
 $env:DBPM_CONNECT = "user/password@tns_alias_or_service"
+# Or, for SQLcl named connections local to this OS user:
+# $env:DBPM_CONNECT_NAME = "Development Database (APP_USER)"
+# Remove-Item Env:\DBPM_CONNECT
 
 # Required for private GitHub Packages.
 $env:DBPM_GITHUB_TOKEN = "github_token_with_package_read_access"

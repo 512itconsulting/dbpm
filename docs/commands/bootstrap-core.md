@@ -7,7 +7,7 @@ Install or initialize Core, the dbpm in-database deployment substrate, into an e
 ```
 dbpm bootstrap-core source [--env ENV] [--approve] [--package NAME]
                            [--registry-url URL] [--dry-run]
-                           [--connect STRING] [--runner EXEC]
+                           [--connect STRING | --connect-name NAME] [--runner EXEC]
 ```
 
 ## EBNF diagram
@@ -26,7 +26,7 @@ flowchart LR
     option --> package["--package NAME"]
     option --> registry_url["--registry-url URL"]
     option --> dry_run["--dry-run"]
-    option --> connect["--connect STRING"]
+    option --> connect["--connect STRING or --connect-name NAME"]
     option --> runner["--runner EXEC"]
 
     package -. only when source is a workspace root .-> package_note["selects workspace package"]
@@ -44,7 +44,8 @@ flowchart LR
 | `--package` | none | Package name or application name to select when `source` is a workspace root. |
 | `--registry-url` | `DBPM_REGISTRY_URL` or `https://registry.dbpm.io` | Registry base URL for `registry:` sources. |
 | `--dry-run` | false | Print the deployment plan as JSON without executing. |
-| `--connect` | `DBPM_CONNECT` | SQLPlus/SQLcl connect string. |
+| `--connect` | `DBPM_CONNECT` | SQL*Plus/SQLcl connect string. Mutually exclusive with `--connect-name`. |
+| `--connect-name` | `DBPM_CONNECT_NAME` | SQLcl named connection. Requires SQLcl via `--runner` or `DBPM_SQL_RUNNER`. |
 | `--runner` | `DBPM_SQL_RUNNER` or `sqlplus` | SQL runner executable. |
 
 ## Examples

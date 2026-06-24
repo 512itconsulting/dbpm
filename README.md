@@ -94,6 +94,7 @@ Common variables:
 
 - `DBPM_SQL_RUNNER`: SQLcl or SQLPlus executable, such as `sql.exe`
 - `DBPM_CONNECT`: Oracle connect string
+- `DBPM_CONNECT_NAME`: SQLcl named connection local to the invoking OS user. Mutually exclusive with `DBPM_CONNECT`; requires SQLcl as the runner.
 - `DBPM_GITHUB_TOKEN`: GitHub token with package read access
 - `DBPM_GITHUB_USER`: optional GitHub username for package authentication
 - `DBPM_SIGNING_KEY`: optional default GPG key ID, fingerprint, or email for `dbpm publish`
