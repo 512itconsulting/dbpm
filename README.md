@@ -93,8 +93,8 @@ Database and GitHub Packages access is configured through local, uncommitted env
 Common variables:
 
 - `DBPM_SQL_RUNNER`: SQLcl or SQLPlus executable, such as `sql.exe`
-- `DBPM_CONNECT`: Oracle connect string
-- `DBPM_CONNECT_NAME`: SQLcl named connection local to the invoking OS user. Mutually exclusive with `DBPM_CONNECT`; requires SQLcl as the runner.
+- `DBPM_CONNECT`: raw Oracle connect string, such as `user/password@service`
+- `DBPM_CONNECT_NAME`: SQLcl saved connection name local to the invoking OS user. Mutually exclusive with `DBPM_CONNECT`; requires SQLcl as the runner.
 - `DBPM_GITHUB_TOKEN`: GitHub token with package read access
 - `DBPM_GITHUB_USER`: optional GitHub username for package authentication
 - `DBPM_SIGNING_KEY`: optional default GPG key ID, fingerprint, or email for `dbpm publish`
@@ -107,6 +107,15 @@ Common variables:
 - `DBPM_CACHE_DIR`: optional local artifact cache directory, default: `~/.dbpm/cache`
 - `DBPM_LOG_DIR`: optional execution log directory, default: `.dbpm-logs` in the current working directory
 - `DBPM_RUN_DB_TESTS`: optional `1` to enable live database pytest tests
+
+For SQLcl saved connections, do not put the saved connection name in
+`DBPM_CONNECT`. Unset `DBPM_CONNECT` and set `DBPM_CONNECT_NAME` instead:
+
+```sh
+unset DBPM_CONNECT
+export DBPM_CONNECT_NAME="Development Database (APP_USER)"
+export DBPM_SQL_RUNNER=sql
+```
 
 ## Commands
 

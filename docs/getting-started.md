@@ -70,10 +70,14 @@ Edit `dbpm-env.sh`:
 ```sh
 export TNS_ADMIN="$HOME/.oracle/tns_admin"
 export DBPM_SQL_RUNNER="$HOME/opt/sqlcl/bin/sql"
+
+# Option A: raw Oracle connect string.
 export DBPM_CONNECT="user/password@service_name"
-# Or use a SQLcl named connection local to this OS user:
-# export DBPM_CONNECT_NAME="Development Database (APP_USER)"
+
+# Option B: SQLcl saved connection name local to this OS user.
+# Do not put a saved connection name in DBPM_CONNECT.
 # unset DBPM_CONNECT
+# export DBPM_CONNECT_NAME="Development Database (APP_USER)"
 
 # Required for private GitHub Packages.
 export DBPM_GITHUB_TOKEN="github_token_with_package_read_access"
@@ -97,9 +101,12 @@ printf '%s\n' "$DBPM_SQL_RUNNER"
 printf '%s\n' "${DBPM_CONNECT:-$DBPM_CONNECT_NAME}"
 ```
 
-`DBPM_CONNECT_NAME` uses SQLcl's local named-connection store. It requires
-SQLcl (`DBPM_SQL_RUNNER=sql` or a SQLcl executable path) and cannot be set at
-the same time as `DBPM_CONNECT`.
+`DBPM_CONNECT` is for raw Oracle connect strings, such as
+`user/password@service_name`. `DBPM_CONNECT_NAME` is for SQLcl saved
+connections from SQLcl's local connection store. It requires SQLcl
+(`DBPM_SQL_RUNNER=sql` or a SQLcl executable path) and cannot be set at the
+same time as `DBPM_CONNECT`. If your database is saved in SQLcl as
+`dev_database`, use `DBPM_CONNECT_NAME=dev_database` and unset `DBPM_CONNECT`.
 
 ## Start a New Package
 
@@ -354,6 +361,13 @@ If dbpm cannot connect to the database, confirm:
 ```sh
 source ./dbpm-env.sh
 "$DBPM_SQL_RUNNER" -L "$DBPM_CONNECT"
+```
+
+For SQLcl saved connections, confirm with `-name` instead:
+
+```sh
+source ./dbpm-env.sh
+"$DBPM_SQL_RUNNER" -S -L -name "$DBPM_CONNECT_NAME"
 ```
 
 If artifact downloads fail from GitHub Packages, confirm `DBPM_GITHUB_TOKEN` has package read access and `DBPM_GITHUB_USER` is set.

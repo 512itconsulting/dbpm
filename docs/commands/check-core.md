@@ -30,8 +30,8 @@ flowchart LR
 | Argument | Default | Description |
 |---|---|---|
 | `--minimum-version` | none | Minimum acceptable Core version, such as `3.2.0`. If omitted, any installed Core version passes. |
-| `--connect` | `DBPM_CONNECT` | SQL*Plus/SQLcl connect string. Mutually exclusive with `--connect-name`. |
-| `--connect-name` | `DBPM_CONNECT_NAME` | SQLcl named connection. Requires SQLcl via `--runner` or `DBPM_SQL_RUNNER`. |
+| `--connect` | `DBPM_CONNECT` | Raw SQL*Plus/SQLcl connect string, such as `user/pass@service`. Mutually exclusive with `--connect-name`. |
+| `--connect-name` | `DBPM_CONNECT_NAME` | SQLcl saved connection name. Requires SQLcl via `--runner` or `DBPM_SQL_RUNNER`. |
 | `--runner` | `DBPM_SQL_RUNNER` or `sqlplus` | SQL runner executable. |
 
 ## Output
@@ -58,10 +58,19 @@ dbpm check-core --minimum-version 3.2.0 --connect user/pass@db
 Using environment variables:
 ```sh
 export DBPM_CONNECT=user/pass@db
+unset DBPM_CONNECT_NAME
 dbpm check-core --minimum-version 3.0.0
 ```
 
-Using a SQLcl named connection:
+Using a SQLcl saved connection:
+```sh
+unset DBPM_CONNECT
+export DBPM_CONNECT_NAME="Development Database (APP_USER)"
+export DBPM_SQL_RUNNER=sql
+dbpm check-core
+```
+
+Or pass the saved connection name directly:
 ```sh
 dbpm check-core \
   --connect-name "Development Database (APP_USER)" \
@@ -72,4 +81,5 @@ dbpm check-core \
 
 - Run `check-core` before any non-Core deployment to verify the substrate is ready.
 - Core must be bootstrapped with `dbpm bootstrap-core` before ordinary package installs can run.
-- SQLcl named connections are local to the OS user running dbpm.
+- SQLcl saved connections are local to the OS user running dbpm.
+- Do not put a SQLcl saved connection name in `DBPM_CONNECT`; use `DBPM_CONNECT_NAME` or `--connect-name`.

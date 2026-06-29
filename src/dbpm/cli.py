@@ -55,6 +55,14 @@ from .workspace import (
 from .initializer import init_package, init_workspace, validate_package_name
 
 
+CONNECT_OPTIONS_CONFLICT_MESSAGE = (
+    "--connect/DBPM_CONNECT and --connect-name/DBPM_CONNECT_NAME are mutually exclusive. "
+    "Use --connect or DBPM_CONNECT for raw Oracle connect strings such as user/pass@service. "
+    "Use --connect-name or DBPM_CONNECT_NAME for SQLcl saved connections, and unset DBPM_CONNECT "
+    "when using DBPM_CONNECT_NAME."
+)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -557,12 +565,12 @@ def _add_database_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--connect",
         default=os.environ.get("DBPM_CONNECT"),
-        help="SQLPlus/SQLcl connect string, default: DBPM_CONNECT",
+        help="Raw SQL*Plus/SQLcl connect string, default: DBPM_CONNECT",
     )
     parser.add_argument(
         "--connect-name",
         default=os.environ.get("DBPM_CONNECT_NAME"),
-        help="SQLcl named connection, default: DBPM_CONNECT_NAME",
+        help="SQLcl saved connection name, default: DBPM_CONNECT_NAME",
     )
     parser.add_argument(
         "--runner",
@@ -997,7 +1005,7 @@ def _connect_spec(args: argparse.Namespace) -> str | ConnectSpec:
     connect = getattr(args, "connect", None)
     connect_name = getattr(args, "connect_name", None)
     if connect and connect_name:
-        raise DbpmError("--connect and --connect-name are mutually exclusive")
+        raise DbpmError(CONNECT_OPTIONS_CONFLICT_MESSAGE)
     if connect_name:
         spec = sqlcl_name(connect_name)
     elif connect:

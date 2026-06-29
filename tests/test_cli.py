@@ -1669,7 +1669,11 @@ def test_connect_name_and_connect_are_mutually_exclusive(monkeypatch, capsys):
 
     assert cli.main(["check-core"]) == 2
 
-    assert "--connect and --connect-name are mutually exclusive" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "--connect/DBPM_CONNECT and --connect-name/DBPM_CONNECT_NAME are mutually exclusive" in err
+    assert "raw Oracle connect strings" in err
+    assert "SQLcl saved connections" in err
+    assert "unset DBPM_CONNECT" in err
 
 
 def test_cli_connect_name_overrides_environment_connect_name(monkeypatch, capsys):
@@ -1696,7 +1700,7 @@ def test_connect_name_with_default_sqlplus_fails(monkeypatch, capsys):
 
     assert cli.main(["check-core"]) == 2
 
-    assert "SQLcl named connections require a SQLcl runner" in capsys.readouterr().err
+    assert "SQLcl saved connections require a SQLcl runner" in capsys.readouterr().err
 
 
 # ── upgrade chain ────────────────────────────────────────────────────────────

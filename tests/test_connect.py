@@ -40,5 +40,5 @@ def test_build_sql_command_uses_single_argument_for_sqlcl_name():
 
 
 def test_sqlcl_name_rejects_default_sqlplus_runner():
-    with pytest.raises(DbpmError, match="SQLcl named connections require a SQLcl runner"):
+    with pytest.raises(DbpmError, match="SQLcl saved connections require a SQLcl runner"):
         validate_connect_spec(connect=sqlcl_name("Development Database (APP_USER)"), runner="sqlplus")

@@ -2,10 +2,15 @@
 # Do not commit dbpm-env.ps1; it may contain credentials.
 
 $env:DBPM_SQL_RUNNER = "sql"
+
+# Option A: raw Oracle connect string.
 $env:DBPM_CONNECT = "user/password@tns_alias_or_service"
-# Or, for SQLcl named connections local to this OS user:
-# $env:DBPM_CONNECT_NAME = "Development Database (APP_USER)"
+
+# Option B: SQLcl saved connection name local to this OS user.
+# Use this for names created with SQLcl's connection manager. Keep DBPM_CONNECT
+# unset so dbpm does not treat the saved connection name as a raw connect string.
 # Remove-Item Env:\DBPM_CONNECT
+# $env:DBPM_CONNECT_NAME = "Development Database (APP_USER)"
 
 # Required for private GitHub Packages.
 $env:DBPM_GITHUB_TOKEN = "github_token_with_package_read_access"

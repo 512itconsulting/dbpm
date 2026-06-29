@@ -57,8 +57,8 @@ flowchart LR
 | `--output` | `dbpm-lock.json` | Path to write the lockfile. |
 | `--check` | false | Verify the existing lockfile matches the current source resolution instead of writing a new one. |
 | `--check-db` | false | With `--check`: also verify that installed database versions and Core provenance rows match the lockfile. Requires `--connect` or `--connect-name`. |
-| `--connect` | `DBPM_CONNECT` | SQL*Plus/SQLcl connect string. Required when using `--check-db` unless `--connect-name` is used. |
-| `--connect-name` | `DBPM_CONNECT_NAME` | SQLcl named connection. Requires SQLcl via `--runner` or `DBPM_SQL_RUNNER`. |
+| `--connect` | `DBPM_CONNECT` | Raw SQL*Plus/SQLcl connect string. Required when using `--check-db` unless `--connect-name` is used. |
+| `--connect-name` | `DBPM_CONNECT_NAME` | SQLcl saved connection name. Requires SQLcl via `--runner` or `DBPM_SQL_RUNNER`. |
 | `--runner` | `DBPM_SQL_RUNNER` or `sqlplus` | SQL runner executable. |
 
 ## Output

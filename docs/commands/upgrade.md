@@ -52,8 +52,8 @@ flowchart LR
 | `--registry-url` | `DBPM_REGISTRY_URL` or `https://registry.dbpm.io` | Registry base URL for `registry:` sources. |
 | `--dependency-source` | none | Additional source that may satisfy a dependency. Used for coordinated major-version upgrades where a dependent package also needs upgrading. Repeatable. |
 | `--allow-dependent-break` | false | Allow a major version upgrade even when installed dependents may have incompatible constraints. |
-| `--connect` | `DBPM_CONNECT` | SQL*Plus/SQLcl connect string. Mutually exclusive with `--connect-name`. |
-| `--connect-name` | `DBPM_CONNECT_NAME` | SQLcl named connection. Requires SQLcl via `--runner` or `DBPM_SQL_RUNNER`. |
+| `--connect` | `DBPM_CONNECT` | Raw SQL*Plus/SQLcl connect string. Mutually exclusive with `--connect-name`. |
+| `--connect-name` | `DBPM_CONNECT_NAME` | SQLcl saved connection name. Requires SQLcl via `--runner` or `DBPM_SQL_RUNNER`. |
 | `--runner` | `DBPM_SQL_RUNNER` or `sqlplus` | SQL runner executable. |
 
 ## Preflight checks

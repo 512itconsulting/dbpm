@@ -53,7 +53,7 @@ def validate_connect_spec(*, connect: ConnectSpec, runner: str) -> None:
     if not connect.value:
         raise DbpmError("Database access requires --connect/DBPM_CONNECT or --connect-name/DBPM_CONNECT_NAME")
     if connect.kind == "sqlcl-name" and _is_clearly_sqlplus(runner):
-        raise DbpmError("SQLcl named connections require a SQLcl runner; use --runner sql or DBPM_SQL_RUNNER=sql")
+        raise DbpmError("SQLcl saved connections require a SQLcl runner; use --runner sql or DBPM_SQL_RUNNER=sql")
 
 
 def _is_clearly_sqlplus(runner: str) -> bool:
