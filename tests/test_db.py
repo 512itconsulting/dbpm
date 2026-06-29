@@ -1,3 +1,4 @@
+from dbpm.connect import sqlcl_name
 from dbpm.db import (
     ApplicationState,
     SqlResult,
@@ -15,6 +16,7 @@ from dbpm.db import (
     _stage_deployment_provenance_sql,
     get_application_state,
     get_reverse_dependencies,
+    run_sql_script,
 )
 
 
@@ -31,6 +33,39 @@ def test_core_check_sql_includes_version_check():
 
 def test_parse_semver():
     assert _parse_semver("1.2.3") == (1, 2, 3)
+
+
+def test_run_sql_script_uses_sqlcl_named_connection_as_single_argument(monkeypatch):
+    calls = {}
+
+    def fake_run(command, *, check, capture_output, text):
+        calls["command"] = command
+        calls["check"] = check
+        calls["capture_output"] = capture_output
+        calls["text"] = text
+        return SqlResult(returncode=0, stdout="ok\n", stderr="")
+
+    monkeypatch.setattr("dbpm.db.subprocess.run", fake_run)
+
+    result = run_sql_script(
+        sql="SELECT 1 FROM dual;\n",
+        connect=sqlcl_name("Development Database (APP_USER)"),
+        runner="sql",
+        label="dbpm-test",
+    )
+
+    assert result.returncode == 0
+    assert calls["command"][:5] == [
+        "sql",
+        "-S",
+        "-L",
+        "-name",
+        "Development Database (APP_USER)",
+    ]
+    assert calls["command"][5].startswith("@")
+    assert calls["check"] is False
+    assert calls["capture_output"] is True
+    assert calls["text"] is True
 
 
 def test_delete_application_sql_uses_core_api():

@@ -89,6 +89,12 @@ The exact object directories are package-specific. A package does not need every
 
 Committed `deploy_wrapper.sql` files may be kept as human convenience entry points, but dbpm should execute the manifest-declared scripts directly so it can inject provenance and enforce deployment policy.
 
+Deployment scripts should be connection-agnostic. They should not invoke
+`sqlplus`, `sql`, or `CONNECT` internally as part of normal dbpm execution;
+dbpm owns the SQL runner invocation and supplies either a conventional connect
+string or a SQLcl named connection as appropriate. This keeps package artifacts
+portable across operators, CI runners, and SQLcl named-connection stores.
+
 ## Workspace Support
 
 Some repositories contain multiple related dbpm packages plus non-database code. dbpm supports an explicit workspace file at the repository root:
