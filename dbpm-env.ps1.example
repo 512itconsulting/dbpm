@@ -33,8 +33,5 @@ $env:DBPM_REGISTRY_TOKEN = "registry_publish_token"
 $env:DBPM_CACHE_DIR = ".\.dbpm-cache"
 $env:DBPM_LOG_DIR = ".\.dbpm-logs"
 
-# Optional: keep uv cache inside this repo if your home cache is unavailable.
-$env:UV_CACHE_DIR = ".\.uv-cache"
-
 # Optional: enable opt-in live database pytest tests.
 # $env:DBPM_RUN_DB_TESTS = "1"

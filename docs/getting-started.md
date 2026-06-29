@@ -10,23 +10,15 @@ You need:
 
 - Linux or another Unix-like shell environment.
 - Python 3.11 or newer.
-- `uv` for installing or running the Python CLI.
 - Oracle SQLcl or SQL*Plus on the machine where dbpm runs.
 - A target Oracle schema and connect string.
 - A GitHub token if you consume private GitHub Packages artifacts.
 - GPG if you publish packages with `dbpm publish`.
 
-Install `uv` if needed:
-
-```sh
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
 Confirm the basic tools:
 
 ```sh
 python3 --version
-uv --version
 sql -version
 ```
 
@@ -38,24 +30,33 @@ Install dbpm as a user-level CLI tool:
 
 ```sh
 # Stable released CLI version.
-uv tool install git+https://github.com/512itconsulting/dbpm.git@v1.0.2
+python3 -m pip install --user git+https://github.com/512itconsulting/dbpm.git@v1.1.1
 
 # Latest development version from the default branch.
-uv tool install git+https://github.com/512itconsulting/dbpm.git
+python3 -m pip install --user git+https://github.com/512itconsulting/dbpm.git
 
 dbpm --help
 ```
 
-For development from a local checkout:
+If you use `pipx`, the equivalent install is:
+
+```sh
+pipx install git+https://github.com/512itconsulting/dbpm.git@v1.1.1
+```
+
+For development from a local checkout, use a virtual environment:
 
 ```sh
 git clone https://github.com/512itconsulting/dbpm.git
 cd dbpm
-uv sync
-uv run dbpm --help
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -e '.[dev]'
+dbpm --help
 ```
 
-The examples below use `dbpm` directly. If you are working from a local checkout without installing the tool, replace `dbpm` with `uv run dbpm`.
+The examples below use `dbpm` directly. Contributors who prefer `uv` may use
+`uv sync` and `uv run dbpm ...`, but uv is not required to run dbpm.
 
 ## Configure Environment
 

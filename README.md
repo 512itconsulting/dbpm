@@ -35,10 +35,10 @@ Maven-compatible repositories may be useful for publishing immutable package art
 
 Example
 ```powershell
-uv run dbpm check-core --minimum-version 3.2.0
-uv run dbpm plan gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --mode install --dependency-source gh-maven:512itconsulting/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
-uv run dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --dependency-source gh-maven:512itconsulting/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
-uv run dbpm install --lockfile dbpm-lock.json --env development
+dbpm check-core --minimum-version 3.2.0
+dbpm plan gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --mode install --dependency-source gh-maven:512itconsulting/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
+dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --dependency-source gh-maven:512itconsulting/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
+dbpm install --lockfile dbpm-lock.json --env development
 ```
 
 For a guided setup, see [Getting Started](docs/getting-started.md).
@@ -138,7 +138,9 @@ export DBPM_SQL_RUNNER=sql
 
 Run `dbpm <command> --help` for a quick flag reference. See [docs/commands/source-types.md](docs/commands/source-types.md) for the full source and version constraint syntax.
 
-During development, examples use `uv run dbpm ...` so uv runs the project console script in the project environment. If the project has already been installed into a virtual environment, the generated console script can also be called directly: `.venv/bin/dbpm` on Linux/macOS or `.\.venv\Scripts\dbpm.exe` on Windows.
+dbpm is a standard Python console script. Consumers can install it with normal
+Python tooling such as `pipx` or `pip`; `uv` is only a contributor convenience
+for creating a local development environment quickly.
 
 ## Related Projects
 - [core](https://github.com/512itconsulting/core)

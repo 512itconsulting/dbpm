@@ -35,8 +35,5 @@ export DBPM_REGISTRY_TOKEN="registry_publish_token"
 export DBPM_CACHE_DIR="./.dbpm-cache"
 export DBPM_LOG_DIR="./.dbpm-logs"
 
-# Optional: keep uv cache inside this repo if your home cache is unavailable.
-export UV_CACHE_DIR="./.uv-cache"
-
 # Optional: enable opt-in live database pytest tests.
 # export DBPM_RUN_DB_TESTS="1"
