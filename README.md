@@ -34,7 +34,7 @@ Maven-compatible repositories may be useful for publishing immutable package art
 - Reduce fragile hand-managed deployment scripts
 
 Example
-```powershell
+```sh
 dbpm check-core --minimum-version 3.2.0
 dbpm plan gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --mode install --dependency-source gh-maven:512itconsulting/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
 dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --dependency-source gh-maven:512itconsulting/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
@@ -88,11 +88,18 @@ Live-tested against GitHub Packages artifacts for:
 
 ## Environment
 
-Database and GitHub Packages access is configured through local, uncommitted environment files such as `dbpm-env.ps1` or `dbpm-env.sh`. Start from the committed templates `dbpm-env.ps1.example` or `dbpm-env.sh.example`.
+Database and GitHub Packages access is configured through a local,
+uncommitted shell environment file. Start from the committed
+`dbpm-env.sh.example` template:
+
+```sh
+cp dbpm-env.sh.example dbpm-env.sh
+chmod 600 dbpm-env.sh
+```
 
 Common variables:
 
-- `DBPM_SQL_RUNNER`: SQLcl or SQLPlus executable, such as `sql.exe`
+- `DBPM_SQL_RUNNER`: SQLcl or SQL*Plus executable, such as `sql`
 - `DBPM_CONNECT`: raw Oracle connect string, such as `user/password@service`
 - `DBPM_CONNECT_NAME`: SQLcl saved connection name local to the invoking OS user. Mutually exclusive with `DBPM_CONNECT`; requires SQLcl as the runner.
 - `DBPM_GITHUB_TOKEN`: GitHub token with package read access

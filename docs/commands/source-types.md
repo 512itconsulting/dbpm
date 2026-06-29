@@ -29,7 +29,6 @@ When a selected workspace package has dependencies, sibling workspace packages m
 
 ```
 /path/to/package
-C:\path\to\package
 ```
 
 A directory containing a `dbpm.yaml`, `dbpm.yml`, `dbpm.json`, or `package.dbpm.yaml` manifest at its root. dbpm computes a deterministic `TREE-SHA-256` checksum over the source tree, excluding VCS, cache, build output, virtual environment, and log directories.
@@ -40,7 +39,6 @@ Local directory sources may also include a package-root `.dbpmignore`. Ignore pa
 
 ```
 /path/to/package-1.0.0.zip
-C:\path\to\package-1.0.0.zip
 ```
 
 A ZIP archive containing a manifest at its root or inside a single top-level directory. dbpm computes a `SHA-256` checksum of the ZIP file.
