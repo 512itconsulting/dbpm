@@ -930,7 +930,10 @@ def test_install_blocks_when_package_already_installed(tmp_path: Path, monkeypat
 
     assert cli.main(["install", str(package), "--connect", "user/pass@db"]) == 2
 
-    assert "DEMO is already installed; use reinstall or upgrade" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "DEMO is already installed; use reinstall or upgrade" in err
+    assert f"dbpm upgrade {package}" in err
+    assert f"dbpm reinstall {package} --allow-destructive" in err
 
 
 def test_install_blocks_incomplete_existing_deployment(tmp_path: Path, monkeypatch, capsys):
@@ -950,7 +953,10 @@ def test_install_blocks_incomplete_existing_deployment(tmp_path: Path, monkeypat
 
     assert cli.main(["install", str(package), "--connect", "user/pass@db"]) == 2
 
-    assert "DEMO deployment status is R; use resume or reinstall" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "DEMO deployment status is R; use resume or reinstall" in err
+    assert f"dbpm resume {package}" in err
+    assert f"dbpm reinstall {package} --allow-destructive" in err
 
 
 def test_reinstall_allows_existing_complete_package(tmp_path: Path, monkeypatch):

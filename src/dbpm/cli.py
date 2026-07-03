@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import sys
 from pathlib import Path
 
@@ -950,28 +951,46 @@ def _enforce_installed_state(plan: dict[str, object]) -> None:
         if state is None:
             return
         if status == "C":
-            raise DbpmError(f"{app_name} is already installed; use reinstall or upgrade")
-        raise DbpmError(f"{app_name} deployment status is {status}; use resume or reinstall")
+            raise DbpmError(
+                f"{app_name} is already installed; use reinstall or upgrade"
+                f"{_suggest_commands(plan, ('upgrade', []), ('reinstall', ['--allow-destructive']))}"
+            )
+        raise DbpmError(
+            f"{app_name} deployment status is {status}; use resume or reinstall"
+            f"{_suggest_commands(plan, ('resume', []), ('reinstall', ['--allow-destructive']))}"
+        )
 
     if mode == "resume":
         if state is None:
-            raise DbpmError(f"{app_name} is not installed; use install")
+            raise DbpmError(
+                f"{app_name} is not installed; use install"
+                f"{_suggest_commands(plan, ('install', []))}"
+            )
         if status not in {"R", "F"}:
             raise DbpmError(f"{app_name} deployment status is {status}; resume requires R or F")
         return
 
     if mode == "validate":
         if state is None:
-            raise DbpmError(f"{app_name} is not installed; use install")
+            raise DbpmError(
+                f"{app_name} is not installed; use install"
+                f"{_suggest_commands(plan, ('install', []))}"
+            )
         if status != "C":
             raise DbpmError(f"{app_name} deployment status is {status}; validate requires C")
         return
 
     if mode == "upgrade":
         if state is None:
-            raise DbpmError(f"{app_name} is not installed; use install")
+            raise DbpmError(
+                f"{app_name} is not installed; use install"
+                f"{_suggest_commands(plan, ('install', []))}"
+            )
         if status != "C":
-            raise DbpmError(f"{app_name} deployment status is {status}; upgrade requires C")
+            raise DbpmError(
+                f"{app_name} deployment status is {status}; upgrade requires C"
+                f"{_suggest_commands(plan, ('resume', []), ('reinstall', ['--allow-destructive']))}"
+            )
         installed_version = state.get("version") if isinstance(state, dict) else None
         target_version = package.get("version") if isinstance(package, dict) else None
         if installed_version and target_version:
@@ -995,6 +1014,32 @@ def _enforce_installed_state(plan: dict[str, object]) -> None:
 
     if isinstance(state, dict) and status != "C":
         raise DbpmError(f"{app_name} deployment status is {status}; expected C")
+
+
+def _suggest_commands(plan: dict[str, object], *commands: tuple[str, list[str]]) -> str:
+    source = _suggestion_source_arg(plan)
+    if source is None:
+        return ""
+    lines = [
+        "Try one of:",
+        *(_format_suggested_command(command, source, extra_args) for command, extra_args in commands),
+    ]
+    return "\n" + "\n".join(lines)
+
+
+def _suggestion_source_arg(plan: dict[str, object]) -> str | None:
+    source = plan.get("source")
+    if not isinstance(source, dict):
+        return None
+    path = source.get("path")
+    if not isinstance(path, str) or not path:
+        return None
+    return path
+
+
+def _format_suggested_command(command: str, source: str, extra_args: list[str]) -> str:
+    parts = ["dbpm", command, source, *extra_args]
+    return "  " + " ".join(shlex.quote(part) for part in parts)
 
 
 def _has_database_access(args: argparse.Namespace) -> bool:
