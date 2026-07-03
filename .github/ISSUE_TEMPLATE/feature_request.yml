@@ -1,0 +1,50 @@
+name: Feature request
+description: Suggest an improvement or new workflow.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and where does dbpm fall short today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the behavior, command, manifest field, or workflow you would like.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - dependency resolution
+        - artifact retrieval
+        - lockfiles
+        - Core integration
+        - environment policy
+        - provenance
+        - install or upgrade workflow
+        - script generation
+        - publishing
+        - registry
+        - documentation
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility and safety notes
+      description: Note any effect on manifests, lockfiles, Core behavior, destructive operations, or Oracle-native workflows.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe workarounds or other designs you considered.
+

@@ -1,0 +1,74 @@
+name: Database deployment issue
+description: Report an Oracle, Core, package install, upgrade, or validation problem.
+title: "[Deployment]: "
+labels:
+  - database
+  - deployment
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for issues involving a target Oracle schema, Core state, package execution, deployment provenance, or SQL runner behavior. Redact credentials and sensitive data.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What deployment operation failed or behaved unexpectedly?
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Deployment mode
+      options:
+        - bootstrap-core
+        - install
+        - upgrade
+        - reinstall
+        - resume
+        - validate
+        - check-core
+        - dry-run plan
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: package
+    attributes:
+      label: Package and source
+      description: Include package name, version, source type, dependencies, and whether a lockfile was used.
+      placeholder: |
+        - Package:
+        - Version:
+        - Source:
+        - Lockfile: yes / no
+        - Dependencies:
+    validations:
+      required: true
+  - type: textarea
+    id: core
+    attributes:
+      label: Core and database state
+      description: Include Core version, installed package state if known, Oracle version, and target schema context.
+      placeholder: |
+        - Core version:
+        - Oracle version:
+        - Current installed package version:
+        - Prior deployment status:
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Redacted command output or execution log
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+      description: What should dbpm have planned, executed, or recorded?
+    validations:
+      required: true
+

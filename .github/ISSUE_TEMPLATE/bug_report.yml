@@ -1,0 +1,73 @@
+name: Bug report
+description: Report something that is broken or surprising.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a dbpm issue. Please redact credentials, tokens, private keys, and customer data from logs.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      description: Include the command, package source, manifest excerpt, or lockfile path involved.
+      placeholder: |
+        1. Run `dbpm ...`
+        2. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include versions and runtime details.
+      value: |
+        - dbpm version:
+        - Python version:
+        - Oracle version:
+        - SQL runner: SQLcl / SQL*Plus / other
+        - Operating system:
+    validations:
+      required: true
+  - type: dropdown
+    id: workflow
+    attributes:
+      label: Workflow
+      options:
+        - check-core
+        - bootstrap-core
+        - plan
+        - lock
+        - install
+        - upgrade
+        - reinstall
+        - resume
+        - validate
+        - generate-scripts
+        - publish
+        - registry index
+        - workspace
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or output
+      description: Paste the smallest useful redacted output.
+      render: text
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Anything else that would help diagnose the issue.
+
