@@ -51,14 +51,14 @@ flowchart LR
 Bootstrap Core from GitHub Packages:
 ```sh
 dbpm bootstrap-core \
-  gh-maven:512itconsulting/core:com.512itconsulting.database:core:3.4.0 \
+  gh-maven:512itconsulting/core:com.512itconsulting.database:core:3.5.0 \
   --connect user/pass@db
 ```
 
 Preview the plan without executing:
 ```sh
 dbpm bootstrap-core \
-  gh-maven:512itconsulting/core:com.512itconsulting.database:core:3.4.0 \
+  gh-maven:512itconsulting/core:com.512itconsulting.database:core:3.5.0 \
   --dry-run
 ```
 

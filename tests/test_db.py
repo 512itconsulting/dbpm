@@ -1,6 +1,7 @@
 from dbpm.connect import sqlcl_name
 from dbpm.db import (
     ApplicationState,
+    DELETE_SYSTEM_CONFIRMATION,
     DeploymentMetadata,
     SqlResult,
     _application_state_sql,
@@ -105,6 +106,7 @@ def test_delete_system_sql_uses_core_api():
     sql = _delete_system_sql()
 
     assert "pkg_application.delete_system_p" in sql
+    assert f"ip_confirm => '{DELETE_SYSTEM_CONFIRMATION}'" in sql
     assert "DELETED_SYSTEM=Y" in sql
     assert "WHENEVER SQLERROR EXIT FAILURE" in sql
 

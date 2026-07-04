@@ -38,7 +38,7 @@ flowchart LR
 
 On success:
 ```
-CORE_VERSION=3.4.0
+CORE_VERSION=3.5.0
 ```
 
 On failure, dbpm exits with code 2 and prints an error to stderr.

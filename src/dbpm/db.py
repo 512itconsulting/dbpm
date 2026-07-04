@@ -10,6 +10,9 @@ from .connect import ConnectSpec, build_sql_command
 from .errors import ExecutionError
 
 
+DELETE_SYSTEM_CONFIRMATION = "DELETE ALL NON-CORE APPLICATIONS"
+
+
 @dataclass(frozen=True)
 class SqlResult:
     returncode: int
@@ -288,7 +291,8 @@ EXIT SUCCESS
 
 
 def _delete_system_sql() -> str:
-    return """
+    confirm = _sql_literal(DELETE_SYSTEM_CONFIRMATION)
+    return f"""
 SET HEADING OFF
 SET FEEDBACK OFF
 SET VERIFY OFF
@@ -297,7 +301,9 @@ WHENEVER SQLERROR EXIT FAILURE
 WHENEVER OSERROR EXIT FAILURE
 
 BEGIN
-   pkg_application.delete_system_p;
+   pkg_application.delete_system_p(
+      ip_confirm => {confirm}
+   );
    DBMS_OUTPUT.PUT_LINE('DELETED_SYSTEM=Y');
 END;
 /

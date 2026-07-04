@@ -2,7 +2,7 @@
 
 Destructively reinstall a package by deleting its existing Core application registration and running a fresh install. Intended for active development databases. Blocked when Core `DEPLOY_LOCKED=Y`.
 
-For Core itself, reinstall is a full system teardown: dbpm calls `pkg_application.delete_system_p`, runs Core's `Deployment_Manifests/uninstall.core.sql`, then runs the Core install script.
+For Core itself, reinstall is a full system teardown: dbpm calls `pkg_application.delete_system_p` with Core's required confirmation text, runs Core's `Deployment_Manifests/uninstall.core.sql`, then runs the Core install script.
 
 ## Syntax
 
@@ -81,7 +81,7 @@ dbpm reinstall ~/repos/utl_interval --allow-destructive --dry-run
 
 Reinstall Core in a disposable schema:
 ```sh
-dbpm reinstall gh-maven:512itconsulting/core:com.512itconsulting.database:core:3.4.0 \
+dbpm reinstall gh-maven:512itconsulting/core:com.512itconsulting.database:core:3.5.0 \
   --allow-destructive \
   --confirm-delete-system CORE \
   --connect user/pass@db
@@ -90,7 +90,7 @@ dbpm reinstall gh-maven:512itconsulting/core:com.512itconsulting.database:core:3
 ## Notes
 
 - `reinstall` calls `pkg_application.delete_application_p` before running the install script. This removes the Core application registration and any dependent records.
-- Core reinstall is special because Core blocks `delete_application_p` for itself. It calls `pkg_application.delete_system_p` and then runs `Deployment_Manifests/uninstall.core.sql` before reinstalling Core. Treat this as equivalent to wiping dbpm-managed state from the schema.
+- Core reinstall is special because Core blocks `delete_application_p` for itself. It calls `pkg_application.delete_system_p` with confirmation text and requires Core `DEPLOY_LOCKED=N`, then runs `Deployment_Manifests/uninstall.core.sql` before reinstalling Core. Treat this as equivalent to wiping dbpm-managed state from the schema.
 - Installed applications that depend on the target block reinstall. Reinstall the dependents first, or reinstall them together as separate commands.
 - Multi-package dependency ordering is not yet supported for reinstall. Run reinstall commands individually in the correct order (consumers before dependencies).
 - Use `dbpm resume` when a previous deployment failed but data should be preserved. Use `dbpm reinstall` only when a clean slate is acceptable.

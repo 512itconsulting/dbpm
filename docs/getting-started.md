@@ -152,7 +152,7 @@ gh-maven:owner/repo:group:artifact:version[:extension]
 Example:
 
 ```text
-gh-maven:512itconsulting/core:com.512itconsulting.database:core:3.4.0
+gh-maven:512itconsulting/core:com.512itconsulting.database:core:3.5.0
 ```
 
 See [source types](commands/source-types.md) for the full syntax.
@@ -165,7 +165,7 @@ Preview the bootstrap plan:
 
 ```sh
 dbpm bootstrap-core \
-  gh-maven:512itconsulting/core:com.512itconsulting.database:core:3.4.0 \
+  gh-maven:512itconsulting/core:com.512itconsulting.database:core:3.5.0 \
   --dry-run
 ```
 
@@ -173,13 +173,13 @@ Bootstrap Core into an empty or prepared schema:
 
 ```sh
 dbpm bootstrap-core \
-  gh-maven:512itconsulting/core:com.512itconsulting.database:core:3.4.0
+  gh-maven:512itconsulting/core:com.512itconsulting.database:core:3.5.0
 ```
 
 Verify Core:
 
 ```sh
-dbpm check-core --minimum-version 3.4.0
+dbpm check-core --minimum-version 3.5.0
 ```
 
 Use `bootstrap-core` only for the initial Core installation. If Core already exists, dbpm will block bootstrap and tell you to use `upgrade`, `resume`, or an explicit destructive reinstall path.
@@ -282,7 +282,7 @@ Core reinstall is a schema-level dbpm system teardown. Treat it as equivalent to
 
 ```sh
 dbpm reinstall \
-  gh-maven:512itconsulting/core:com.512itconsulting.database:core:3.4.0 \
+  gh-maven:512itconsulting/core:com.512itconsulting.database:core:3.5.0 \
   --allow-destructive \
   --confirm-delete-system CORE
 ```
