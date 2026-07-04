@@ -5,7 +5,7 @@ Write a dependency lockfile for a resolved install plan, or verify that an exist
 ## Syntax
 
 ```
-dbpm lock source [--env ENV] [--approve]
+dbpm lock source [--policy locked|unlocked] [--approve]
                [--package NAME]
                [--dependency-source SOURCE]...
                [--registry-url URL]
@@ -25,7 +25,7 @@ flowchart LR
     options --> end_node(("end"))
 
     options -. expands to .-> option["option"]
-    option --> env["--env ENV"]
+    option --> policy["--policy locked|unlocked"]
     option --> approve["--approve"]
     option --> package["--package NAME"]
     option --> dependency_source["--dependency-source SOURCE"]
@@ -49,7 +49,7 @@ flowchart LR
 | Argument | Default | Description |
 |---|---|---|
 | `source` | required | Package source. See [source types](source-types.md). |
-| `--env` | `development` | Target environment name. |
+| `--policy` | `unlocked` | Deployment policy for disconnected lockfile planning. Connected plans read Core `DEPLOY_LOCKED` and reject this option. |
 | `--approve` | false | Approve policy-gated actions. |
 | `--package` | none | Package name or application name to select when `source` is a workspace root. |
 | `--dependency-source` | none | Additional source that may satisfy a dependency declared in the manifest. Repeatable. |

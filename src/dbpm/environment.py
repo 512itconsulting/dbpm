@@ -5,70 +5,25 @@ from dataclasses import dataclass
 from .errors import PolicyError
 
 
-ENV_CLASSES = {"development", "test", "staging", "production"}
-
-ALIASES = {
-    "dev": "development",
-    "development": "development",
-    "test": "test",
-    "qa": "test",
-    "stage": "staging",
-    "staging": "staging",
-    "prod": "production",
-    "production": "production",
-}
-
-MODE_POLICY = {
-    "bootstrap-core": {
-        "development": "allow",
-        "test": "allow",
-        "staging": "require-approval",
-        "production": "require-approval",
-    },
-    "install": {
-        "development": "allow",
-        "test": "allow",
-        "staging": "allow",
-        "production": "allow",
-    },
-    "upgrade": {
-        "development": "allow",
-        "test": "allow",
-        "staging": "allow",
-        "production": "allow",
-    },
-    "repair": {
-        "development": "allow",
-        "test": "allow",
-        "staging": "require-approval",
-        "production": "require-approval",
-    },
-    "reinstall": {
-        "development": "allow",
-        "test": "require-approval",
-        "staging": "block",
-        "production": "block",
-    },
-    "resume": {
-        "development": "allow",
-        "test": "allow",
-        "staging": "require-approval",
-        "production": "require-approval",
-    },
-    "validate": {
-        "development": "allow",
-        "test": "allow",
-        "staging": "allow",
-        "production": "allow",
-    },
+LOCKED_VALUES = {
+    "locked": True,
+    "true": True,
+    "y": True,
+    "yes": True,
+    "1": True,
+    "unlocked": False,
+    "false": False,
+    "n": False,
+    "no": False,
+    "0": False,
 }
 
 
 @dataclass(frozen=True)
-class EnvironmentPolicy:
-    name: str
-    env_class: str
-    source: str = "cli"
+class DeploymentPolicy:
+    deployment_locked: bool
+    source: str = "default"
+    deploy_environment: str | None = None
 
     def evaluate(
         self,
@@ -78,29 +33,27 @@ class EnvironmentPolicy:
         allow_destructive: bool = False,
         approve: bool = False,
     ) -> dict[str, object]:
-        mode_result = MODE_POLICY.get(mode, {}).get(self.env_class, "block")
         blocked: list[str] = []
         approvals: list[str] = []
         warnings: list[str] = []
 
-        if mode_result == "block":
-            blocked.append(f"`{mode}` is blocked in {self.env_class}")
-        elif mode_result == "require-approval" and not approve:
-            approvals.append(f"`{mode}` requires approval in {self.env_class}")
+        if self.deployment_locked:
+            if mode == "reinstall":
+                blocked.append("`reinstall` is blocked when DEPLOY_LOCKED=Y")
+            elif mode == "resume" and not approve:
+                approvals.append("`resume` requires approval when DEPLOY_LOCKED=Y")
+
+            if dirty is True:
+                blocked.append("Dirty source/artifact is blocked when DEPLOY_LOCKED=Y")
+        else:
+            if dirty is True:
+                warnings.append("Dirty source/artifact will be deployed")
 
         if mode == "reinstall" and not allow_destructive:
             approvals.append("`reinstall` requires --allow-destructive")
 
-        if dirty is True:
-            if self.env_class in {"staging", "production"}:
-                blocked.append(f"Dirty source/artifact is blocked in {self.env_class}")
-            elif self.env_class == "test" and not approve:
-                approvals.append("Dirty source/artifact requires approval in test")
-            else:
-                warnings.append("Dirty source/artifact will be deployed")
-
         return {
-            "environment": self.as_dict(),
+            "policy_context": self.as_dict(),
             "result": "blocked" if blocked else "requires-approval" if approvals else "allowed",
             "blocked": blocked,
             "required_approvals": approvals,
@@ -112,15 +65,37 @@ class EnvironmentPolicy:
             reasons = [*evaluation["blocked"], *evaluation["required_approvals"]]  # type: ignore[index]
             raise PolicyError("; ".join(str(reason) for reason in reasons))
 
-    def as_dict(self) -> dict[str, str]:
-        return {"name": self.name, "class": self.env_class, "source": self.source}
+    def as_dict(self) -> dict[str, object]:
+        result: dict[str, object] = {
+            "deployment_locked": self.deployment_locked,
+            "source": self.source,
+        }
+        if self.deploy_environment is not None:
+            result["deploy_environment"] = self.deploy_environment
+        return result
 
 
-def resolve_environment(name: str | None) -> EnvironmentPolicy:
-    raw = name or "development"
-    env_class = ALIASES.get(raw.lower())
-    if env_class is None:
-        env_class = raw.lower()
-    if env_class not in ENV_CLASSES:
-        raise PolicyError(f"Unknown environment: {raw}")
-    return EnvironmentPolicy(name=raw, env_class=env_class)
+def resolve_deployment_policy(value: str | None, *, source: str = "default") -> DeploymentPolicy:
+    if value is None:
+        return DeploymentPolicy(deployment_locked=False, source=source)
+    normalized = value.strip().lower()
+    if normalized not in LOCKED_VALUES:
+        raise PolicyError(f"Unknown deployment policy: {value}")
+    return DeploymentPolicy(deployment_locked=LOCKED_VALUES[normalized], source=source)
+
+
+def policy_from_core_values(
+    *,
+    deploy_locked: str | None,
+    deploy_environment: str | None = None,
+) -> DeploymentPolicy:
+    if deploy_locked is None or not deploy_locked.strip():
+        raise PolicyError("CORE/DEPLOY_LOCKED is required")
+    normalized = deploy_locked.strip().upper()
+    if normalized not in {"Y", "N"}:
+        raise PolicyError("CORE/DEPLOY_LOCKED must be Y or N")
+    return DeploymentPolicy(
+        deployment_locked=normalized == "Y",
+        source="core-dictionary",
+        deploy_environment=deploy_environment,
+    )

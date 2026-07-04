@@ -62,13 +62,13 @@ CORE_VERSION=3.2.0
 Generate a plan without connecting to the database:
 
 ```sh
-dbpm plan ~/repos/utl_interval --mode install --env development
+dbpm plan ~/repos/utl_interval --mode install
 ```
 
 Generate a connected plan that includes Core installed state and reverse dependencies:
 
 ```sh
-dbpm plan ~/repos/utl_interval --mode install --env development
+dbpm plan ~/repos/utl_interval --mode install
 ```
 
 ## Plan Local Dependencies
@@ -144,7 +144,7 @@ dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simpl
 Install a package that is not already registered in Core:
 
 ```sh
-dbpm install ~/repos/utl_interval --env development
+dbpm install ~/repos/utl_interval
 ```
 
 Before running the package deployment script, dbpm stages resolved provenance
@@ -162,7 +162,7 @@ dbpm: UTL_INTERVAL is already installed; use reinstall or upgrade
 Install can use the same local dependency sources:
 
 ```sh
-dbpm install ~/repos/consumer --env development --dependency-source ~/repos/dependency
+dbpm install ~/repos/consumer --dependency-source ~/repos/dependency
 ```
 
 dbpm executes each package in dependency order and stops on the first failed package.
@@ -171,13 +171,13 @@ Install can also use a previously written lockfile without restating the root
 package or dependency sources:
 
 ```sh
-dbpm install --lockfile dbpm-lock.json --env development
+dbpm install --lockfile dbpm-lock.json
 ```
 
 When no lockfile path is provided, `--lockfile` defaults to `dbpm-lock.json`:
 
 ```sh
-dbpm install --lockfile --env development
+dbpm install --lockfile
 ```
 
 dbpm reloads the locked artifact URLs or local paths, verifies each artifact's
@@ -195,7 +195,7 @@ Core initial deployment is a bootstrap exception, but Core upgrades can use the
 normal dbpm upgrade flow once Core is installed:
 
 ```sh
-dbpm upgrade ~/repos/core --env development
+dbpm upgrade ~/repos/core
 ```
 
 For installed Core `3.2.0` or newer, dbpm stages resolved provenance before
@@ -208,7 +208,7 @@ are upgraded before the consuming package only when the dependency is already
 installed, complete, and lower than the supplied source version:
 
 ```sh
-dbpm upgrade ~/repos/consumer --env development --dependency-source ~/repos/dependency
+dbpm upgrade ~/repos/consumer --dependency-source ~/repos/dependency
 ```
 
 If a supplied dependency source is not installed, dbpm refuses the upgrade and
@@ -220,7 +220,7 @@ install.
 Destructive reinstall requires explicit intent:
 
 ```sh
-dbpm reinstall ~/repos/utl_interval --env development --allow-destructive
+dbpm reinstall ~/repos/utl_interval --allow-destructive
 ```
 
 If installed applications depend on the target, dbpm blocks before calling Core cleanup:
@@ -234,7 +234,7 @@ dbpm: Cannot reinstall UTL_INTERVAL; installed applications depend on it: SIMPLE
 If a prior deployment left Core status as `R` or `F`, fix the deployment issue and resume:
 
 ```sh
-dbpm resume ~/repos/utl_interval --env development
+dbpm resume ~/repos/utl_interval
 ```
 
 If the package is already complete, resume is refused:
@@ -248,7 +248,7 @@ dbpm: UTL_INTERVAL deployment status is C; resume requires R or F
 Run the package validation script declared in `dbpm.yaml`:
 
 ```sh
-dbpm validate ~/repos/utl_interval --env development
+dbpm validate ~/repos/utl_interval
 ```
 
 For `utl_interval`, this runs:
@@ -261,7 +261,7 @@ Validation can use dependency sources too. dbpm validates supplied dependency
 sources before the consuming package:
 
 ```sh
-dbpm validate ~/repos/consumer --env development --dependency-source ~/repos/dependency
+dbpm validate ~/repos/consumer --dependency-source ~/repos/dependency
 ```
 
 ## Run Tests

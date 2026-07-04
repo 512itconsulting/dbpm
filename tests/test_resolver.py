@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from dbpm.environment import resolve_environment
+from dbpm.environment import resolve_deployment_policy
 from dbpm.errors import DependencyError
 from dbpm.resolver import create_multi_package_plan, version_satisfies
 from dbpm.source import load_package_source
@@ -82,7 +82,7 @@ def test_multi_package_plan_orders_dependencies_first(tmp_path: Path):
         mode="install",
         source=load_package_source(str(consumer)),
         dependency_sources=[load_package_source(str(base))],
-        environment=resolve_environment("development"),
+        environment=resolve_deployment_policy(None),
     )
 
     assert plan["schema_version"] == "dbpm.multi-plan.v0"
@@ -100,7 +100,7 @@ def test_multi_package_plan_skips_satisfied_installed_dependency(tmp_path: Path)
         mode="install",
         source=load_package_source(str(consumer)),
         dependency_sources=[load_package_source(str(base))],
-        environment=resolve_environment("development"),
+        environment=resolve_deployment_policy(None),
         installed_states={
             "FIXTURE_BASE": {
                 "application_name": "FIXTURE_BASE",
@@ -124,7 +124,7 @@ def test_multi_package_plan_fails_for_missing_dependency_source(tmp_path: Path):
             mode="install",
             source=load_package_source(str(consumer)),
             dependency_sources=[],
-            environment=resolve_environment("development"),
+            environment=resolve_deployment_policy(None),
         )
 
 
@@ -139,7 +139,7 @@ def test_multi_package_plan_fails_for_version_mismatch(tmp_path: Path):
             mode="install",
             source=load_package_source(str(consumer)),
             dependency_sources=[load_package_source(str(base))],
-            environment=resolve_environment("development"),
+            environment=resolve_deployment_policy(None),
         )
 
 
@@ -153,7 +153,7 @@ def test_multi_package_plan_supports_caret_dependency_constraint(tmp_path: Path)
         mode="install",
         source=load_package_source(str(consumer)),
         dependency_sources=[load_package_source(str(base))],
-        environment=resolve_environment("development"),
+        environment=resolve_deployment_policy(None),
     )
 
     assert plan["execution_order"] == ["FIXTURE_BASE", "FIXTURE_CONSUMER"]
@@ -169,7 +169,7 @@ def test_multi_package_validate_runs_dependency_sources_as_validate(tmp_path: Pa
         mode="validate",
         source=load_package_source(str(consumer)),
         dependency_sources=[load_package_source(str(base))],
-        environment=resolve_environment("development"),
+        environment=resolve_deployment_policy(None),
         installed_states={
             "FIXTURE_BASE": {
                 "application_name": "FIXTURE_BASE",
@@ -203,7 +203,7 @@ def test_multi_package_upgrade_runs_newer_installed_dependency_sources_as_upgrad
         mode="upgrade",
         source=load_package_source(str(consumer)),
         dependency_sources=[load_package_source(str(base))],
-        environment=resolve_environment("development"),
+        environment=resolve_deployment_policy(None),
         installed_states={
             "FIXTURE_BASE": {
                 "application_name": "FIXTURE_BASE",
@@ -236,7 +236,7 @@ def test_multi_package_upgrade_skips_dependency_source_when_installed_version_ma
         mode="upgrade",
         source=load_package_source(str(consumer)),
         dependency_sources=[load_package_source(str(base))],
-        environment=resolve_environment("development"),
+        environment=resolve_deployment_policy(None),
         installed_states={
             "FIXTURE_BASE": {
                 "application_name": "FIXTURE_BASE",
@@ -270,7 +270,7 @@ def test_multi_package_upgrade_fails_when_dependency_source_is_not_installed(
             mode="upgrade",
             source=load_package_source(str(consumer)),
             dependency_sources=[load_package_source(str(base))],
-            environment=resolve_environment("development"),
+            environment=resolve_deployment_policy(None),
             installed_states={
                 "FIXTURE_CONSUMER": {
                     "application_name": "FIXTURE_CONSUMER",
@@ -293,5 +293,5 @@ def test_multi_package_plan_detects_cycles(tmp_path: Path):
             mode="install",
             source=load_package_source(str(consumer)),
             dependency_sources=[load_package_source(str(base))],
-            environment=resolve_environment("development"),
+            environment=resolve_deployment_policy(None),
         )

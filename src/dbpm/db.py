@@ -33,6 +33,12 @@ class ApplicationState:
         }
 
 
+@dataclass(frozen=True)
+class DeploymentMetadata:
+    deploy_locked: str | None
+    deploy_environment: str | None = None
+
+
 def run_sql_script(
     *,
     sql: str,
@@ -188,6 +194,22 @@ def get_deployment_provenance(
     if result.returncode != 0:
         raise ExecutionError(_format_sql_failure(f"Deployment provenance query failed for {application_name}", result))
     return _parse_deployment_provenance(result.stdout)
+
+
+def get_core_deployment_metadata(
+    *,
+    connect: str | ConnectSpec,
+    runner: str,
+) -> DeploymentMetadata:
+    result = run_sql_script(
+        sql=_core_deployment_metadata_sql(),
+        connect=connect,
+        runner=runner,
+        label="dbpm-core-deployment-metadata",
+    )
+    if result.returncode != 0:
+        raise ExecutionError(_format_sql_failure("Core deployment metadata query failed", result))
+    return _parse_core_deployment_metadata(result.stdout)
 
 
 def _write_temp_script(sql: str, label: str) -> Path:
@@ -426,6 +448,27 @@ EXIT SUCCESS
 """
 
 
+def _core_deployment_metadata_sql() -> str:
+    return """
+SET HEADING OFF
+SET FEEDBACK OFF
+SET PAGESIZE 0
+SET VERIFY OFF
+SET SERVEROUTPUT ON
+WHENEVER SQLERROR EXIT FAILURE
+WHENEVER OSERROR EXIT FAILURE
+
+SELECT 'DBPM_CORE_METADATA|' || key || '|' || pkg_app_dict.get_val_f('CORE', key)
+  FROM (
+        SELECT 'DEPLOY_LOCKED' AS key FROM dual
+        UNION ALL
+        SELECT 'DEPLOY_ENVIRONMENT' AS key FROM dual
+       )
+ ORDER BY key;
+EXIT SUCCESS
+"""
+
+
 def _parse_application_state(output: str) -> ApplicationState | None:
     for raw_line in output.splitlines():
         line = raw_line.strip()
@@ -441,6 +484,22 @@ def _parse_application_state(output: str) -> ApplicationState | None:
             deploy_commit_hash=parts[4],
         )
     return None
+
+
+def _parse_core_deployment_metadata(output: str) -> DeploymentMetadata:
+    values: dict[str, str] = {}
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line.startswith("DBPM_CORE_METADATA|"):
+            continue
+        parts = line.split("|", 2)
+        if len(parts) != 3:
+            raise ExecutionError(f"Unexpected Core deployment metadata output: {line}")
+        values[parts[1]] = parts[2]
+    return DeploymentMetadata(
+        deploy_locked=values.get("DEPLOY_LOCKED"),
+        deploy_environment=values.get("DEPLOY_ENVIRONMENT"),
+    )
 
 
 def _parse_reverse_dependencies(output: str) -> list[str]:

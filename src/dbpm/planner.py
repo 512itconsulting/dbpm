@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from .environment import EnvironmentPolicy
+from .environment import DeploymentPolicy
 from .errors import ManifestError
 from .manifest import PackageManifest
 from .provenance import Provenance
@@ -16,7 +16,7 @@ def create_plan(
     mode: str,
     source: PackageSource,
     provenance: Provenance,
-    environment: EnvironmentPolicy,
+    environment: DeploymentPolicy,
     installed_state: dict[str, str] | None = None,
     reverse_dependencies: list[str] | None = None,
     allow_destructive: bool = False,

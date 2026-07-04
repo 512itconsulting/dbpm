@@ -80,7 +80,7 @@ rather than forcing developers into unnatural abstractions.
 
 Consumer workflows should not require Maven or a JDK merely to retrieve a package. Maven-compatible repositories may be supported as a storage and publishing convention, but dbpm should resolve and download artifacts through plain HTTP(S) where possible.
 
-SQLcl `project` is a natural producer-side and execution integration point because it can export database objects, stage changes, create releases, generate artifacts, and deploy through SQLcl. dbpm should be able to coexist with that workflow by treating SQLcl project output as a possible package artifact or execution backend, while dbpm continues to own dependency resolution, Core verification, provenance injection, environment policy, and deployment orchestration.
+SQLcl `project` is a natural producer-side and execution integration point because it can export database objects, stage changes, create releases, generate artifacts, and deploy through SQLcl. dbpm should be able to coexist with that workflow by treating SQLcl project output as a possible package artifact or execution backend, while dbpm continues to own dependency resolution, Core verification, provenance injection, deployment lock policy, and deployment orchestration.
 
 ### Declarative Over Manual
 

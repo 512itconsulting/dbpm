@@ -7,7 +7,7 @@ from zipfile import ZipFile
 import pytest
 
 from dbpm import cli
-from dbpm.db import ApplicationState, SqlResult
+from dbpm.db import ApplicationState, DeploymentMetadata, SqlResult
 from dbpm.registry import RegistryResolution, RegistrySource
 
 
@@ -175,17 +175,79 @@ def _no_reverse_dependencies(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("DBPM_CONNECT_NAME", raising=False)
     monkeypatch.delenv("DBPM_SQL_RUNNER", raising=False)
     monkeypatch.setattr(cli, "get_reverse_dependencies", lambda **kwargs: [])
+    monkeypatch.setattr(
+        cli,
+        "get_core_deployment_metadata",
+        lambda **kwargs: DeploymentMetadata(deploy_locked="N", deploy_environment="DEV"),
+    )
 
 
 def test_plan_prints_json(tmp_path: Path, capsys):
     package = tmp_path / "package"
     _write_package(package)
 
-    assert cli.main(["plan", str(package), "--env", "development"]) == 0
+    assert cli.main(["plan", str(package)]) == 0
 
     output = json.loads(capsys.readouterr().out)
     assert output["schema_version"] == "dbpm.plan.v0"
     assert output["package"]["application_name"] == "DEMO"
+    assert output["policy"]["policy_context"] == {
+        "deployment_locked": False,
+        "source": "default",
+    }
+
+
+def test_plan_accepts_disconnected_locked_policy(tmp_path: Path, capsys):
+    package = tmp_path / "package"
+    _write_package(package)
+
+    assert cli.main(["plan", str(package), "--policy", "locked"]) == 0
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["policy"]["policy_context"] == {
+        "deployment_locked": True,
+        "source": "cli-policy",
+    }
+
+
+def test_connected_plan_reads_core_deploy_locked(tmp_path: Path, monkeypatch, capsys):
+    package = tmp_path / "package"
+    _write_package(package)
+    monkeypatch.setattr(
+        cli,
+        "get_core_deployment_metadata",
+        lambda **kwargs: DeploymentMetadata(deploy_locked="Y", deploy_environment="PLAB"),
+    )
+    monkeypatch.setattr(cli, "get_application_state", lambda **kwargs: None)
+
+    assert cli.main(["plan", str(package), "--connect", "user/pass@db"]) == 0
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["policy"]["policy_context"] == {
+        "deployment_locked": True,
+        "source": "core-dictionary",
+        "deploy_environment": "PLAB",
+    }
+
+
+def test_connected_plan_rejects_cli_policy_override(tmp_path: Path, capsys):
+    package = tmp_path / "package"
+    _write_package(package)
+
+    assert cli.main(["plan", str(package), "--connect", "user/pass@db", "--policy", "locked"]) == 2
+
+    assert "--policy is only supported without database access" in capsys.readouterr().err
+
+
+def test_env_flag_is_rejected(tmp_path: Path, capsys):
+    package = tmp_path / "package"
+    _write_package(package)
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["plan", str(package), "--env", "development"])
+
+    assert exc.value.code == 2
+    assert "unrecognized arguments: --env development" in capsys.readouterr().err
 
 
 def test_plan_with_dependency_source_prints_multi_package_plan(tmp_path: Path, capsys):
@@ -988,6 +1050,42 @@ def test_reinstall_allows_existing_complete_package(tmp_path: Path, monkeypatch)
         )
         == 0
     )
+
+
+def test_reinstall_blocked_when_core_deploy_locked(tmp_path: Path, monkeypatch, capsys):
+    package = tmp_path / "package"
+    _write_package(package)
+
+    monkeypatch.setattr(
+        cli,
+        "get_core_deployment_metadata",
+        lambda **kwargs: DeploymentMetadata(deploy_locked="Y", deploy_environment="PROD"),
+    )
+    monkeypatch.setattr(
+        cli,
+        "get_application_state",
+        lambda **kwargs: ApplicationState(
+            application_name="DEMO",
+            version="0.1.0",
+            deploy_status="C",
+            deploy_commit_hash="abc",
+        ),
+    )
+
+    assert (
+        cli.main(
+            [
+                "reinstall",
+                str(package),
+                "--connect",
+                "user/pass@db",
+                "--allow-destructive",
+            ]
+        )
+        == 2
+    )
+
+    assert "`reinstall` is blocked when DEPLOY_LOCKED=Y" in capsys.readouterr().err
 
 
 def test_reinstall_allows_incomplete_existing_package(tmp_path: Path, monkeypatch):

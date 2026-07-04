@@ -44,7 +44,7 @@ Define the smallest useful dbpm implementation.
 - read provenance from artifact metadata or local git
 - generate a deployment plan
 - generate an ordered multi-package plan from local dependency sources
-- enforce environment policy
+- enforce Core deployment-lock policy
 - execute SQLPlus/SQLcl manifest scripts
 - execute ordered local dependency-source install, conservative upgrade, and validate plans
 - execute ordered Maven dependency-source install plans

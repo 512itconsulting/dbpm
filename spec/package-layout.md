@@ -81,7 +81,7 @@ dbpm may support SQLcl project artifacts as a compatible package artifact type w
 - dbpm should inject provenance and environment-specific values at execution time
 - dbpm should decide deployment mode before invoking SQLcl or any generated installer
 
-When dbpm executes a SQLcl project artifact, it may run a manifest-declared SQLcl entry point such as `dist/install.sql` or a future SQLcl project deploy adapter. That execution should happen after artifact verification, dependency planning, Core checks, and environment policy evaluation.
+When dbpm executes a SQLcl project artifact, it may run a manifest-declared SQLcl entry point such as `dist/install.sql` or a future SQLcl project deploy adapter. That execution should happen after artifact verification, dependency planning, Core checks, and deployment lock policy evaluation.
 
 ## Compatibility
 

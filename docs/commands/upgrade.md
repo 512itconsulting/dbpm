@@ -5,7 +5,7 @@ Move an installed package to a higher semantic version. The package must already
 ## Syntax
 
 ```
-dbpm upgrade source [--env ENV] [--approve] [--dry-run]
+dbpm upgrade source [--approve] [--dry-run]
                    [--package NAME] [--registry-url URL]
                    [--dependency-source SOURCE]...
                    [--allow-dependent-break]
@@ -23,7 +23,6 @@ flowchart LR
     options --> end_node(("end"))
 
     options -. expands to .-> option["option"]
-    option --> env["--env ENV"]
     option --> approve["--approve"]
     option --> dry_run["--dry-run"]
     option --> package["--package NAME"]
@@ -45,7 +44,6 @@ flowchart LR
 | Argument | Default | Description |
 |---|---|---|
 | `source` | required | Package source at the target version. See [source types](source-types.md). |
-| `--env` | `development` | Target environment name. |
 | `--approve` | false | Approve policy-gated actions. |
 | `--dry-run` | false | Print the deployment plan as JSON without executing. When `--connect` is also provided, the plan reflects the actual installed version and shows a chain plan if one is required. |
 | `--package` | none | Package name or application name to select when `source` is a workspace root. |

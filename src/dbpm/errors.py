@@ -11,7 +11,7 @@ class SourceError(DbpmError):
 
 
 class PolicyError(DbpmError):
-    """Raised when environment policy blocks a requested action."""
+    """Raised when deployment policy blocks a requested action."""
 
 
 class DependencyError(DbpmError):

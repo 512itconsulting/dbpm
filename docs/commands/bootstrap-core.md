@@ -5,7 +5,7 @@ Install or initialize Core, the dbpm in-database deployment substrate, into an e
 ## Syntax
 
 ```
-dbpm bootstrap-core source [--env ENV] [--approve] [--package NAME]
+dbpm bootstrap-core source [--approve] [--package NAME]
                            [--registry-url URL] [--dry-run]
                            [--connect STRING | --connect-name NAME] [--runner EXEC]
 ```
@@ -21,7 +21,6 @@ flowchart LR
     options --> end_node(("end"))
 
     options -. expands to .-> option["option"]
-    option --> env["--env ENV"]
     option --> approve["--approve"]
     option --> package["--package NAME"]
     option --> registry_url["--registry-url URL"]
@@ -39,7 +38,6 @@ flowchart LR
 | Argument | Default | Description |
 |---|---|---|
 | `source` | required | Package source for the Core artifact. See [source types](source-types.md). |
-| `--env` | `development` | Target environment name. Controls environment policy evaluation. |
 | `--approve` | false | Approve policy-gated actions that would otherwise be blocked. |
 | `--package` | none | Package name or application name to select when `source` is a workspace root. |
 | `--registry-url` | `DBPM_REGISTRY_URL` or `https://registry.dbpm.io` | Registry base URL for `registry:` sources. |
@@ -67,5 +65,6 @@ dbpm bootstrap-core \
 ## Notes
 
 - Core uses its own bootstrap manifest because `pkg_application` does not exist until Core's own objects are created. The bootstrap path is distinct from the ordinary install path.
+- Core 3.5.0 and newer require `DEPLOY_LOCKED` during bootstrap. dbpm does not read Core deployment-lock policy before Core exists.
 - Run `dbpm check-core` after bootstrap to verify the installation.
 - Core upgrades after initial bootstrap use `dbpm upgrade`, not `dbpm bootstrap-core`.

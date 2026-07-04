@@ -4,7 +4,7 @@ import re
 import pytest
 
 from dbpm.connect import ConnectSpec, sqlcl_name
-from dbpm.db import check_core
+from dbpm.db import check_core, get_core_deployment_metadata
 
 
 CONNECT_OPTIONS_CONFLICT_MESSAGE = (
@@ -30,6 +30,24 @@ def test_check_core_against_development_database():
     match = re.search(r"CORE_VERSION=(\d+\.\d+\.\d+)", result.stdout)
     assert match is not None
     assert _version_tuple(match.group(1)) >= (3, 0, 0)
+
+
+@pytest.mark.skipif(
+    os.environ.get("DBPM_RUN_DB_TESTS") != "1",
+    reason="set DBPM_RUN_DB_TESTS=1 to run database integration tests",
+)
+def test_core_deployment_metadata_against_development_database():
+    connect = _integration_connect_spec()
+    runner = os.environ.get("DBPM_SQL_RUNNER", "sql")
+    if not connect:
+        pytest.skip("DBPM_CONNECT or DBPM_CONNECT_NAME is not set")
+
+    core = check_core(connect=connect, runner=runner, minimum_version="3.5.0")
+    assert "CORE_VERSION=" in core.stdout
+
+    metadata = get_core_deployment_metadata(connect=connect, runner=runner)
+
+    assert metadata.deploy_locked == "N"
 
 
 def test_integration_connect_spec_uses_raw_connect_string(monkeypatch):

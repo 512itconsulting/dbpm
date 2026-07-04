@@ -92,7 +92,7 @@ Applications should commit lockfiles for release-oriented deployments. A lockfil
 
 Full reinstall workflows are useful during active development, but they can destroy application-owned objects and usage data.
 
-dbpm should make destructive reinstall a distinct, explicit mode. Normal install and upgrade flows should avoid calling Core cleanup APIs such as `pkg_application.delete_application_p` unless the operator deliberately chose a destructive workflow and the environment policy permits it.
+dbpm should make destructive reinstall a distinct, explicit mode. Normal install and upgrade flows should avoid calling Core cleanup APIs such as `pkg_application.delete_application_p` unless the operator deliberately chose a destructive workflow and Core deployment-lock policy permits it.
 
 ---
 

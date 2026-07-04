@@ -4,7 +4,7 @@ from zipfile import ZipFile
 import pytest
 
 from dbpm.errors import ManifestError
-from dbpm.environment import resolve_environment
+from dbpm.environment import resolve_deployment_policy
 from dbpm.planner import create_plan
 from dbpm.provenance import resolve_provenance
 from dbpm.source import load_package_source
@@ -52,7 +52,7 @@ scripts:
         mode="install",
         source=source,
         provenance=provenance,
-        environment=resolve_environment("development"),
+        environment=resolve_deployment_policy(None),
         installed_state={
             "application_name": "UTL_INTERVAL",
             "version": "1.0.0",
@@ -102,7 +102,7 @@ scripts:
         mode="resume",
         source=source,
         provenance=resolve_provenance(source),
-        environment=resolve_environment("development"),
+        environment=resolve_deployment_policy(None),
     )
 
     assert plan["execution"]["script"] == "deploy.sql"
@@ -131,7 +131,7 @@ scripts:
         mode="install",
         source=source,
         provenance=resolve_provenance(source),
-        environment=resolve_environment("development"),
+        environment=resolve_deployment_policy(None),
     )
 
     payload = plan["pre_actions"][0]["payload"]
@@ -162,7 +162,7 @@ scripts:
         mode="validate",
         source=source,
         provenance=resolve_provenance(source),
-        environment=resolve_environment("development"),
+        environment=resolve_deployment_policy(None),
     )
 
     assert plan["execution"]["script"] == "smoke.sql"
@@ -189,7 +189,7 @@ scripts:
         mode="upgrade",
         source=source,
         provenance=resolve_provenance(source),
-        environment=resolve_environment("development"),
+        environment=resolve_deployment_policy(None),
         installed_state={
             "application_name": "DEMO",
             "version": "1.9.9",
@@ -221,7 +221,7 @@ scripts:
         mode="upgrade",
         source=source,
         provenance=resolve_provenance(source),
-        environment=resolve_environment("development"),
+        environment=resolve_deployment_policy(None),
         installed_state={
             "application_name": "DEMO",
             "version": "1.1.9",
@@ -253,7 +253,7 @@ scripts:
         mode="upgrade",
         source=source,
         provenance=resolve_provenance(source),
-        environment=resolve_environment("development"),
+        environment=resolve_deployment_policy(None),
         installed_state={
             "application_name": "DEMO",
             "version": "1.2.2",
@@ -286,7 +286,7 @@ scripts:
         mode="reinstall",
         source=source,
         provenance=provenance,
-        environment=resolve_environment("development"),
+        environment=resolve_deployment_policy(None),
     )
 
     assert plan["policy"]["result"] == "requires-approval"
@@ -329,7 +329,7 @@ scripts:
         mode="reinstall",
         source=source,
         provenance=resolve_provenance(source),
-        environment=resolve_environment("development"),
+        environment=resolve_deployment_policy(None),
         allow_destructive=True,
         confirm_delete_system=True,
         installed_state={
@@ -378,7 +378,7 @@ scripts:
         mode="reinstall",
         source=source,
         provenance=resolve_provenance(source),
-        environment=resolve_environment("development"),
+        environment=resolve_deployment_policy(None),
         allow_destructive=True,
     )
 
@@ -406,7 +406,7 @@ scripts:
         mode="bootstrap-core",
         source=source,
         provenance=resolve_provenance(source),
-        environment=resolve_environment("development"),
+        environment=resolve_deployment_policy(None),
     )
 
     assert plan["core"]["required"] is False
@@ -435,7 +435,7 @@ scripts:
         mode="bootstrap-core",
         source=source,
         provenance=resolve_provenance(source),
-        environment=resolve_environment("development"),
+        environment=resolve_deployment_policy(None),
     )
 
     assert plan["core"]["required"] is False
@@ -467,7 +467,7 @@ scripts:
         mode="upgrade",
         source=source,
         provenance=resolve_provenance(source),
-        environment=resolve_environment("development"),
+        environment=resolve_deployment_policy(None),
         installed_state={
             "application_name": "CORE",
             "version": "3.2.0",
@@ -504,7 +504,7 @@ scripts:
         mode="upgrade",
         source=source,
         provenance=resolve_provenance(source),
-        environment=resolve_environment("development"),
+        environment=resolve_deployment_policy(None),
         installed_state={
             "application_name": "CORE",
             "version": "3.1.0",
@@ -534,5 +534,5 @@ package:
             mode="install",
             source=source,
             provenance=resolve_provenance(source),
-            environment=resolve_environment("development"),
+            environment=resolve_deployment_policy(None),
         )

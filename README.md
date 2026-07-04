@@ -38,7 +38,7 @@ Example
 dbpm check-core --minimum-version 3.2.0
 dbpm plan gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --mode install --dependency-source gh-maven:512itconsulting/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
 dbpm lock gh-maven:rsantmyer/simple_scheduler:com.512itconsulting.database:simple_scheduler:1.1.0 --dependency-source gh-maven:512itconsulting/utl_interval:com.512itconsulting.database:utl_interval:1.0.0
-dbpm install --lockfile dbpm-lock.json --env development
+dbpm install --lockfile dbpm-lock.json
 ```
 
 For a guided setup, see [Getting Started](docs/getting-started.md).
@@ -62,7 +62,7 @@ For a guided setup, see [Getting Started](docs/getting-started.md).
 - Core-backed installed-state lookup
 - Core-backed reverse-dependency lookup
 - Core provenance staging through `pkg_application.stage_deployment_provenance_p`
-- Environment-aware deployment plans
+- Core `DEPLOY_LOCKED`-aware deployment policy
 - Install, upgrade, reinstall, resume, and validate workflows
 - ZIP artifact publishing to GitHub Packages and generic Maven repositories
 - GPG artifact signing and lockfile-driven signature verification

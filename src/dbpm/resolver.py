@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .environment import EnvironmentPolicy
+from .environment import DeploymentPolicy
 from .errors import DependencyError
 from .planner import create_plan
 from .provenance import resolve_provenance
@@ -12,7 +12,7 @@ def create_multi_package_plan(
     mode: str,
     source: PackageSource,
     dependency_sources: list[PackageSource],
-    environment: EnvironmentPolicy,
+    environment: DeploymentPolicy,
     installed_states: dict[str, dict[str, str] | None] | None = None,
     reverse_dependencies: dict[str, list[str]] | None = None,
     allow_destructive: bool = False,

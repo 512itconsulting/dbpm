@@ -5,7 +5,7 @@ Re-run the deployment script for a package whose Core deployment status is `R` (
 ## Syntax
 
 ```
-dbpm resume source [--env ENV] [--approve] [--dry-run]
+dbpm resume source [--approve] [--dry-run]
                   [--package NAME] [--registry-url URL]
                   [--connect STRING | --connect-name NAME] [--runner EXEC]
 ```
@@ -21,7 +21,6 @@ flowchart LR
     options --> end_node(("end"))
 
     options -. expands to .-> option["option"]
-    option --> env["--env ENV"]
     option --> approve["--approve"]
     option --> dry_run["--dry-run"]
     option --> package["--package NAME"]
@@ -39,7 +38,6 @@ flowchart LR
 | Argument | Default | Description |
 |---|---|---|
 | `source` | required | Package source. See [source types](source-types.md). |
-| `--env` | `development` | Target environment name. |
 | `--approve` | false | Approve policy-gated actions. |
 | `--dry-run` | false | Print the deployment plan as JSON without executing. |
 | `--package` | none | Package name or application name to select when `source` is a workspace root. |
@@ -55,6 +53,7 @@ dbpm fails before running any script if:
 - The package is not installed → use `dbpm install`.
 - The package has a complete (`C`) deployment status → no resume needed.
 - The package has a status other than `R` or `F`.
+- Core `DEPLOY_LOCKED=Y` and `--approve` is not provided.
 
 ## When to use resume
 

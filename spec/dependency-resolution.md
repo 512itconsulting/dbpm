@@ -62,7 +62,7 @@ The resolver rejects unsupported constraint syntax — comparison operators (`>=
 
 When a lockfile is present and the selected workflow requires locked deployments, dbpm should install or upgrade using the exact artifact identities recorded in the lockfile.
 
-The resolver may still validate that the locked graph satisfies the manifest constraints, Core requirement, and environment policy, but it must not silently choose different package versions or rebuilt artifacts.
+The resolver may still validate that the locked graph satisfies the manifest constraints, Core requirement, and deployment lock policy, but it must not silently choose different package versions or rebuilt artifacts.
 
 When a lockfile is absent in a development workflow, dbpm may resolve dependency constraints from configured sources and then write or update a lockfile. CI and production-oriented workflows should require a lockfile for applications with dependencies.
 

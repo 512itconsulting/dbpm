@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from dbpm.environment import resolve_environment
+from dbpm.environment import resolve_deployment_policy
 from dbpm.errors import PublishError
 from dbpm.manifest import Dependency, PackageManifest, PublishConfig, ScriptSet
 import urllib.error
@@ -330,7 +330,7 @@ def test_dbpm_built_zip_populates_plan_artifact_provenance(tmp_path: Path):
         mode="install",
         source=source,
         provenance=provenance,
-        environment=resolve_environment("development"),
+        environment=resolve_deployment_policy(None),
     )
 
     payload = plan["pre_actions"][0]["payload"]
@@ -379,7 +379,7 @@ def test_dbpm_built_github_maven_zip_populates_plan_artifact_provenance(
         mode="install",
         source=source,
         provenance=provenance,
-        environment=resolve_environment("development"),
+        environment=resolve_deployment_policy(None),
     )
 
     payload = plan["pre_actions"][0]["payload"]

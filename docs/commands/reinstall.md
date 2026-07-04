@@ -1,13 +1,13 @@
 # dbpm reinstall
 
-Destructively reinstall a package by deleting its existing Core application registration and running a fresh install. Intended for active development and pre-production environments. Blocked by default in production-like environments.
+Destructively reinstall a package by deleting its existing Core application registration and running a fresh install. Intended for active development databases. Blocked when Core `DEPLOY_LOCKED=Y`.
 
 For Core itself, reinstall is a full system teardown: dbpm calls `pkg_application.delete_system_p`, runs Core's `Deployment_Manifests/uninstall.core.sql`, then runs the Core install script.
 
 ## Syntax
 
 ```
-dbpm reinstall source [--env ENV] [--approve] [--dry-run]
+dbpm reinstall source [--approve] [--dry-run]
                      [--package NAME] [--registry-url URL]
                      [--allow-destructive]
                      [--confirm-delete-system CORE]
@@ -25,7 +25,6 @@ flowchart LR
     options --> end_node(("end"))
 
     options -. expands to .-> option["option"]
-    option --> env["--env ENV"]
     option --> approve["--approve"]
     option --> dry_run["--dry-run"]
     option --> package["--package NAME"]
@@ -47,8 +46,7 @@ flowchart LR
 | Argument | Default | Description |
 |---|---|---|
 | `source` | required | Package source. See [source types](source-types.md). |
-| `--env` | `development` | Target environment name. |
-| `--approve` | false | Approve policy-gated actions (required in some environments). |
+| `--approve` | false | Approve policy-gated actions. |
 | `--dry-run` | false | Print the deployment plan as JSON without executing. |
 | `--package` | none | Package name or application name to select when `source` is a workspace root. |
 | `--registry-url` | `DBPM_REGISTRY_URL` or `https://registry.dbpm.io` | Registry base URL for `registry:` sources. |
@@ -63,6 +61,7 @@ flowchart LR
 dbpm fails before running any script if:
 
 - `--allow-destructive` is not provided.
+- Core `DEPLOY_LOCKED=Y`.
 - The package is Core and `--confirm-delete-system CORE` is not provided.
 - The package has installed dependents. The names of the blocking dependents are reported. Dependents must be reinstalled or removed first.
 

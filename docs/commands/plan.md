@@ -5,7 +5,7 @@ Generate and print a deployment plan as JSON without executing anything. Useful 
 ## Syntax
 
 ```
-dbpm plan source [--mode MODE] [--env ENV] [--approve]
+dbpm plan source [--mode MODE] [--policy locked|unlocked] [--approve]
                [--package NAME]
                [--dependency-source SOURCE]...
                [--registry-url URL]
@@ -24,7 +24,7 @@ flowchart LR
 
     options -. expands to .-> option["option"]
     option --> mode["--mode MODE"]
-    option --> env["--env ENV"]
+    option --> policy["--policy locked|unlocked"]
     option --> approve["--approve"]
     option --> package["--package NAME"]
     option --> dependency_source["--dependency-source SOURCE"]
@@ -45,7 +45,7 @@ flowchart LR
 |---|---|---|
 | `source` | required | Package source. See [source types](source-types.md). |
 | `--mode` | `install` | Deployment mode to plan. One of: `bootstrap-core`, `install`, `upgrade`, `reinstall`, `resume`, `validate`. |
-| `--env` | `development` | Target environment name. |
+| `--policy` | `unlocked` | Deployment policy for disconnected planning. Connected plans read Core `DEPLOY_LOCKED` and reject this option. |
 | `--approve` | false | Approve policy-gated actions. |
 | `--package` | none | Package name or application name to select when `source` is a workspace root. |
 | `--dependency-source` | none | Additional source that may satisfy a dependency declared in the manifest. Repeatable. |
@@ -58,7 +58,7 @@ flowchart LR
 
 Prints a `dbpm.plan.v0` or `dbpm.multi-plan.v0` JSON object to stdout.
 
-When `--connect` or `--connect-name` is provided, the plan includes `installed_state` for each package, enabling accurate preflight evaluation. Without database access, installed state is omitted and the plan reflects resolution only.
+When `--connect` or `--connect-name` is provided, the plan includes `installed_state` for each package and reads Core `DEPLOY_LOCKED` for policy. Without database access, installed state is omitted and `--policy` may be used to model locked or unlocked policy.
 
 For upgrade with database access, if a stepwise chain is required, the output is a `dbpm.upgrade-chain.v0` plan with a `steps` array.
 

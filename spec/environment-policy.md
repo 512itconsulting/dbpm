@@ -1,62 +1,46 @@
-# Environment Policy Specification
+# Deployment Lock Policy Specification
 
 ## Purpose
 
-Environment policy controls which deployment behaviors are allowed in a target environment.
+Deployment lock policy controls which deployment behaviors are allowed in a target database.
 
-dbpm should evaluate policy before executing a deployment plan, especially when the plan includes destructive actions, dirty local source deployments, or production-oriented upgrades.
+dbpm should evaluate policy before executing a deployment plan, especially when the plan includes destructive actions or dirty local source deployments.
 
-## Environment Identity
+## Policy Source
 
-dbpm needs a reliable way to identify the target environment. Candidate sources include:
+For connected workflows, dbpm reads Core 3.5.0 deployment metadata from `APP_DICTIONARY`:
 
-- an explicit CLI option
-- a dbpm environment configuration file
-- a Core dictionary value such as `CORE / DEPLOY_ENVIRONMENT`
-- CI/CD variables supplied by the deployment runner
+- `CORE / DEPLOY_LOCKED`: authoritative policy value, `Y` or `N`
+- `CORE / DEPLOY_ENVIRONMENT`: optional human-readable environment label
 
-The selected source should be visible in the deployment plan.
+`DEPLOY_ENVIRONMENT` answers "Where am I?" and must not drive policy. `DEPLOY_LOCKED` answers "Should dangerous deployment behavior be blocked?"
 
-## Environment Classes
-
-Initial environment classes:
-
-- `development`
-- `test`
-- `staging`
-- `production`
-
-Local names such as `DEV`, `QA`, or `PROD` may map to these classes.
+For disconnected `plan` and `lock` workflows, dbpm may use `--policy locked|unlocked`. The disconnected default is `unlocked`.
 
 ## Default Rules
 
-Suggested defaults:
+| Mode | `DEPLOY_LOCKED=N` | `DEPLOY_LOCKED=Y` |
+|---|---:|---:|
+| `bootstrap-core` | Core install owns metadata setup | Core install owns metadata setup |
+| `install` | allow | allow |
+| `upgrade` | allow | allow |
+| `resume` | allow | require approval |
+| `validate` | allow | allow |
+| `reinstall` | allow with `--allow-destructive` | block |
 
-| Mode | development | test | staging | production |
-|---|---:|---:|---:|---:|
-| `bootstrap-core` | allow | allow | require approval | require approval |
-| `install` | allow | allow | allow | allow |
-| `upgrade` | allow | allow | allow | allow |
-| `repair` | allow | allow | require approval | require approval |
-| `reinstall` | allow | require approval | block | block |
+Dirty local source deployments should warn when unlocked and be blocked when locked.
 
-Dirty local source deployments should be allowed in development, require approval in test, and be blocked in staging and production.
+## Bootstrap
 
-## Overrides
-
-Policy overrides should be explicit and recorded in the deployment log. Destructive overrides should require both:
-
-- an explicit deployment mode such as `reinstall`
-- an explicit override or approval flag
+Before Core exists, dbpm cannot read `DEPLOY_LOCKED`. Core's bootstrap/install script requires the operator to supply `DEPLOY_LOCKED`, validates `Y/N`, and stores the normalized value.
 
 ## Plan Output
 
 The deployment plan should show:
 
-- resolved environment name
-- environment class
-- policy source
-- requested deployment modes
+- `deployment_locked`
+- policy source, such as `core-dictionary`, `cli-policy`, or `default`
+- `deploy_environment` when read from Core
 - blocked actions
 - required approvals
 - dirty-artifact or dirty-source warnings

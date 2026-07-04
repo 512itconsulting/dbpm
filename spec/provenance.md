@@ -29,7 +29,7 @@ build.time=2026-05-22T20:13:18Z
 
 For local source deployments, dbpm may derive provenance from repository state. This is useful during active development, but it should be visibly marked when the working tree is dirty.
 
-Dirty local deployments should be allowed only when the selected environment policy permits them. Released artifact deployments should normally require `git.dirty=false`.
+Dirty local deployments should be allowed only when deployment lock policy permits them. Released artifact deployments should normally require `git.dirty=false`.
 
 ## Injection
 

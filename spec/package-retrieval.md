@@ -21,7 +21,7 @@ dbpm should retrieve package archives over HTTP(S) where possible, using a built
 
 Consumer machines should not require Maven or a JDK solely to resolve and download dbpm packages.
 
-End-user applications should normally install and patch through dbpm when they depend on dbpm packages. The application owns its deployment entry points and lifecycle semantics, while dbpm owns artifact resolution, dependency planning, provenance injection, Core checks, environment policy evaluation, and execution orchestration.
+End-user applications should normally install and patch through dbpm when they depend on dbpm packages. The application owns its deployment entry points and lifecycle semantics, while dbpm owns artifact resolution, dependency planning, provenance injection, Core checks, deployment lock policy evaluation, and execution orchestration.
 
 End-user applications should not normally vendor live dependent repositories. They should declare dependencies in the manifest, commit a dependency lockfile for release-oriented workflows, and rely on immutable package artifacts.
 

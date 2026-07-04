@@ -287,7 +287,7 @@ dbpm reinstall \
   --confirm-delete-system CORE
 ```
 
-Avoid destructive reinstall in established environments unless the environment policy and operator intent are absolutely clear.
+Avoid destructive reinstall in established environments unless Core deployment-lock policy and operator intent are absolutely clear.
 
 ## Publish a Package
 

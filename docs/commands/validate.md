@@ -5,7 +5,7 @@ Run the validation or smoke-test script declared in the package manifest (`scrip
 ## Syntax
 
 ```
-dbpm validate source [--env ENV] [--approve] [--dry-run]
+dbpm validate source [--approve] [--dry-run]
                     [--package NAME] [--registry-url URL]
                     [--dependency-source SOURCE]...
                     [--connect STRING | --connect-name NAME] [--runner EXEC]
@@ -22,7 +22,6 @@ flowchart LR
     options --> end_node(("end"))
 
     options -. expands to .-> option["option"]
-    option --> env["--env ENV"]
     option --> approve["--approve"]
     option --> dry_run["--dry-run"]
     option --> package["--package NAME"]
@@ -42,7 +41,6 @@ flowchart LR
 | Argument | Default | Description |
 |---|---|---|
 | `source` | required | Package source. See [source types](source-types.md). |
-| `--env` | `development` | Target environment name. |
 | `--approve` | false | Approve policy-gated actions. |
 | `--dry-run` | false | Print the validation plan as JSON without executing. |
 | `--package` | none | Package name or application name to select when `source` is a workspace root. |

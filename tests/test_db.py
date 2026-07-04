@@ -1,13 +1,16 @@
 from dbpm.connect import sqlcl_name
 from dbpm.db import (
     ApplicationState,
+    DeploymentMetadata,
     SqlResult,
     _application_state_sql,
+    _core_deployment_metadata_sql,
     _core_check_sql,
     _delete_application_sql,
     _delete_system_sql,
     _deployment_provenance_sql,
     _parse_application_state,
+    _parse_core_deployment_metadata,
     _parse_deployment_provenance,
     _parse_reverse_dependencies,
     _parse_semver,
@@ -15,6 +18,7 @@ from dbpm.db import (
     _reverse_dependencies_sql,
     _stage_deployment_provenance_sql,
     get_application_state,
+    get_core_deployment_metadata,
     get_reverse_dependencies,
     run_sql_script,
 )
@@ -33,6 +37,26 @@ def test_core_check_sql_includes_version_check():
 
 def test_parse_semver():
     assert _parse_semver("1.2.3") == (1, 2, 3)
+
+
+def test_core_deployment_metadata_sql_reads_app_dictionary():
+    sql = _core_deployment_metadata_sql()
+
+    assert "pkg_app_dict.get_val_f('CORE', key)" in sql
+    assert "'DEPLOY_LOCKED'" in sql
+    assert "'DEPLOY_ENVIRONMENT'" in sql
+
+
+def test_parse_core_deployment_metadata():
+    output = """
+DBPM_CORE_METADATA|DEPLOY_ENVIRONMENT|DEV
+DBPM_CORE_METADATA|DEPLOY_LOCKED|N
+"""
+
+    assert _parse_core_deployment_metadata(output) == DeploymentMetadata(
+        deploy_locked="N",
+        deploy_environment="DEV",
+    )
 
 
 def test_run_sql_script_uses_sqlcl_named_connection_as_single_argument(monkeypatch):

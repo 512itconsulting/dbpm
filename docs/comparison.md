@@ -207,7 +207,7 @@ dbpm should own:
 - deployment planning
 - Core prerequisite checks
 - provenance injection
-- environment policy evaluation
+- deployment lock policy evaluation
 - install, upgrade, reinstall, and repair mode selection
 - execution orchestration across one or more packages
 

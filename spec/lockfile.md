@@ -90,4 +90,4 @@ If no configured trusted source can provide the locked artifact with the expecte
 
 Development workflows may allow local workspace or repository overrides for convenience.
 
-Such overrides should be visibly marked in the deployment plan and subject to environment policy. Production-oriented workflows should prefer locked immutable artifacts from trusted artifact sources.
+Such overrides should be visibly marked in the deployment plan and subject to deployment lock policy. Production-oriented workflows should prefer locked immutable artifacts from trusted artifact sources.

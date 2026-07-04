@@ -5,13 +5,13 @@ Install a package that is not yet registered in Core. Fails if the package is al
 ## Syntax
 
 ```
-dbpm install source [--env ENV] [--approve] [--dry-run]
+dbpm install source [--approve] [--dry-run]
                    [--package NAME]
                    [--dependency-source SOURCE]...
                    [--registry-url URL]
                    [--connect STRING | --connect-name NAME] [--runner EXEC]
 
-dbpm install --lockfile [PATH] [--env ENV] [--approve] [--dry-run]
+dbpm install --lockfile [PATH] [--approve] [--dry-run]
                         [--connect STRING | --connect-name NAME] [--runner EXEC]
 ```
 
@@ -37,7 +37,6 @@ flowchart LR
     source_option --> registry_url["--registry-url URL"]
     source_common -. expands to .-> source_option
 
-    common_option["common option"] --> env["--env ENV"]
     common_option --> approve["--approve"]
     common_option --> dry_run["--dry-run"]
     common_option --> connect["--connect STRING or --connect-name NAME"]
@@ -58,7 +57,6 @@ flowchart LR
 | Argument | Default | Description |
 |---|---|---|
 | `source` | required (unless `--lockfile`) | Package source. See [source types](source-types.md). |
-| `--env` | `development` | Target environment name. |
 | `--approve` | false | Approve policy-gated actions. |
 | `--dry-run` | false | Print the deployment plan as JSON without executing. |
 | `--package` | none | Package name or application name to select when `source` is a workspace root. |
@@ -132,7 +130,7 @@ dbpm install --lockfile --connect user/pass@db
 
 Install from a lockfile at a custom path:
 ```sh
-dbpm install --lockfile deploy/production.lock.json --env production --connect user/pass@db
+dbpm install --lockfile deploy/production.lock.json --connect user/pass@db
 ```
 
 Preview without executing:

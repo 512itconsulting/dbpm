@@ -26,8 +26,14 @@ from .registry import (
     load_publish_receipt,
     registry_base_url,
 )
-from .db import check_core, get_application_state, get_deployment_provenance, get_reverse_dependencies
-from .environment import resolve_environment
+from .db import (
+    check_core,
+    get_application_state,
+    get_core_deployment_metadata,
+    get_deployment_provenance,
+    get_reverse_dependencies,
+)
+from .environment import DeploymentPolicy, policy_from_core_values, resolve_deployment_policy
 from .errors import DbpmError
 from .executor import execute_plan
 from .lockfile import (
@@ -354,11 +360,13 @@ def _build_parser() -> argparse.ArgumentParser:
         default="install",
         help="Deployment mode to plan",
     )
+    _add_policy_arg(plan)
     _add_dependency_source_args(plan)
     _add_database_args(plan)
 
     lock = subparsers.add_parser("lock", help="Write or verify a dependency lockfile")
     _add_common_args(lock)
+    _add_policy_arg(lock)
     _add_dependency_source_args(lock)
     _add_database_args(lock)
     lock.add_argument("--output", default=LOCKFILE_NAME, help=f"Lockfile path, default: {LOCKFILE_NAME}")
@@ -534,7 +542,6 @@ def _add_common_args(parser: argparse.ArgumentParser, *, source_required: bool =
         parser.add_argument("source", help="Package source: local directory, ZIP, URL, Maven coordinate, or registry source")
     else:
         parser.add_argument("source", nargs="?", help="Package source: local directory, ZIP, URL, Maven coordinate, or registry source")
-    parser.add_argument("--env", default="development", help="Target environment name")
     parser.add_argument("--approve", action="store_true", help="Approve policy-gated actions")
     parser.add_argument(
         "--package",
@@ -545,6 +552,14 @@ def _add_common_args(parser: argparse.ArgumentParser, *, source_required: bool =
         "--registry-url",
         default=None,
         help="Registry base URL for registry: sources, default: DBPM_REGISTRY_URL or https://registry.dbpm.io",
+    )
+
+
+def _add_policy_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--policy",
+        choices=("locked", "unlocked"),
+        help="Deployment policy for disconnected planning; connected plans read CORE/DEPLOY_LOCKED",
     )
 
 
@@ -600,7 +615,7 @@ def _build_plan(
         for raw_path in dependency_source_args
     ]
     provenance = resolve_provenance(source)
-    environment = resolve_environment(args.env)
+    environment = _resolve_policy_for_plan(mode, args)
     allow_destructive = bool(getattr(args, "allow_destructive", False))
     confirm_delete_system = getattr(args, "confirm_delete_system", None) == source.manifest.application_name
     installed_state = None
@@ -715,7 +730,7 @@ def _build_plan_from_lockfile(
         for uri, checksum, alg, sig_url, publisher_key in dep_entries
     ]
 
-    environment = resolve_environment(args.env)
+    environment = _resolve_policy_for_plan("install", args)
     installed_states: dict[str, dict[str, str] | None] = {}
     reverse_dependencies_by_app: dict[str, list[str]] = {}
 
@@ -740,11 +755,28 @@ def _build_plan_from_lockfile(
     return plan
 
 
+def _resolve_policy_for_plan(mode: str, args: argparse.Namespace) -> DeploymentPolicy:
+    cli_policy = getattr(args, "policy", None)
+    has_database_access = _has_database_access(args)
+    if mode != "bootstrap-core" and has_database_access:
+        if cli_policy is not None:
+            raise DbpmError(
+                "--policy is only supported without database access; "
+                "connected plans read CORE/DEPLOY_LOCKED"
+            )
+        metadata = get_core_deployment_metadata(connect=_connect_spec(args), runner=args.runner)
+        return policy_from_core_values(
+            deploy_locked=metadata.deploy_locked,
+            deploy_environment=metadata.deploy_environment,
+        )
+    return resolve_deployment_policy(cli_policy, source="cli-policy" if cli_policy else "default")
+
+
 def _build_chain_plan(
     chain: list,
     args: argparse.Namespace,
     installed_version: str,
-    environment: object,
+    environment: DeploymentPolicy,
     allow_destructive: bool,
 ) -> dict[str, object]:
     from .provenance import resolve_provenance

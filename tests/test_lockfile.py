@@ -19,7 +19,7 @@ from dbpm.lockfile import (
 from dbpm.planner import create_plan
 from dbpm.provenance import resolve_provenance
 from dbpm.source import load_package_source
-from dbpm.environment import resolve_environment
+from dbpm.environment import resolve_deployment_policy
 
 
 def _write_zip(path: Path, *, version: str = "0.1.0") -> None:
@@ -45,7 +45,7 @@ def _plan_for_zip(path: Path, *, installed_state: dict[str, str] | None = None) 
         mode="install",
         source=source,
         provenance=resolve_provenance(source),
-        environment=resolve_environment("development"),
+        environment=resolve_deployment_policy(None),
         installed_state=installed_state,
     )
 

@@ -56,7 +56,7 @@ Re-run deployment steps for an application that is in a running (`R`) or failed 
 
 ## Environment Policy
 
-dbpm should evaluate environment policy before executing destructive modes. Environment rules are defined in `environment-policy.md`.
+dbpm should evaluate Core deployment-lock policy before executing destructive modes. Policy rules are defined in `environment-policy.md`.
 
 ## Relationship To Core
 
