@@ -96,6 +96,37 @@ scripts:
     assert source.resolve_script_path("deploy.sql") == source.work_path / "deploy.sql"
 
 
+@pytest.mark.parametrize(
+    "member",
+    [
+        "../outside.txt",
+        "demo/../../outside.txt",
+        "/absolute.txt",
+        "C:/absolute.txt",
+        "demo\\..\\outside.txt",
+    ],
+)
+def test_zip_source_rejects_unsafe_member_paths(tmp_path: Path, member: str):
+    archive_path = tmp_path / "demo.zip"
+    with ZipFile(archive_path, "w") as archive:
+        archive.writestr(
+            "demo/dbpm.yaml",
+            """
+package:
+  name: demo
+  version: "0.1.0"
+
+scripts:
+  install: deploy.sql
+""",
+        )
+        archive.writestr("demo/deploy.sql", "PROMPT deploy\n")
+        archive.writestr(member, "nope\n")
+
+    with pytest.raises(SourceError, match="Unsafe ZIP member path"):
+        load_package_source(str(archive_path))
+
+
 def test_load_github_maven_package_downloads_zip(tmp_path: Path, monkeypatch):
     fixture_archive = tmp_path / "fixture.zip"
     with ZipFile(fixture_archive, "w") as archive:

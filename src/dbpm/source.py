@@ -165,6 +165,7 @@ def _load_zip_source(path: Path) -> PackageSource:
     artifact_checksum = _sha256(path)
     with zipfile.ZipFile(path) as archive:
         names = archive.namelist()
+        _validate_zip_members(names, path)
         manifest_member = _find_zip_manifest(names)
         if manifest_member is None:
             manifest_member = _find_zip_pom(names)
@@ -456,6 +457,18 @@ def _find_zip_manifest(names: list[str]) -> str | None:
         return None
     candidates.sort(key=lambda name: (name.count("/"), name))
     return candidates[0]
+
+
+def _validate_zip_members(names: list[str], path: Path) -> None:
+    for name in names:
+        normalized = name.replace("\\", "/")
+        parts = Path(normalized).parts
+        if (
+            normalized.startswith("/")
+            or ":" in parts[0]
+            or any(part == ".." for part in parts)
+        ):
+            raise SourceError(f"Unsafe ZIP member path in {path}: {name}")
 
 
 def _find_zip_pom(names: list[str]) -> str | None:
