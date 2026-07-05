@@ -75,13 +75,26 @@ class DeploymentPolicy:
         return result
 
 
-def resolve_deployment_policy(value: str | None, *, source: str = "default") -> DeploymentPolicy:
+def resolve_deployment_policy(
+    value: str | None,
+    *,
+    source: str = "default",
+    deploy_environment: str | None = None,
+) -> DeploymentPolicy:
     if value is None:
-        return DeploymentPolicy(deployment_locked=False, source=source)
+        return DeploymentPolicy(
+            deployment_locked=False,
+            source=source,
+            deploy_environment=deploy_environment,
+        )
     normalized = value.strip().lower()
     if normalized not in LOCKED_VALUES:
         raise PolicyError(f"Unknown deployment policy: {value}")
-    return DeploymentPolicy(deployment_locked=LOCKED_VALUES[normalized], source=source)
+    return DeploymentPolicy(
+        deployment_locked=LOCKED_VALUES[normalized],
+        source=source,
+        deploy_environment=deploy_environment,
+    )
 
 
 def policy_from_core_values(

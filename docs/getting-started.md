@@ -173,7 +173,9 @@ Bootstrap Core into an empty or prepared schema:
 
 ```sh
 dbpm bootstrap-core \
-  gh-maven:512itconsulting/core:com.512itconsulting.database:core:3.5.0
+  gh-maven:512itconsulting/core:com.512itconsulting.database:core:3.5.0 \
+  --policy unlocked \
+  --deploy-environment DEV
 ```
 
 Verify Core:

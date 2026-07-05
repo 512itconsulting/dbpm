@@ -7,6 +7,7 @@ Generate and print a deployment plan as JSON without executing anything. Useful 
 ```
 dbpm plan source [--mode MODE] [--policy locked|unlocked] [--approve]
                [--package NAME]
+               [--deploy-environment NAME]
                [--dependency-source SOURCE]...
                [--registry-url URL]
                [--connect STRING | --connect-name NAME] [--runner EXEC]
@@ -25,6 +26,7 @@ flowchart LR
     options -. expands to .-> option["option"]
     option --> mode["--mode MODE"]
     option --> policy["--policy locked|unlocked"]
+    option --> deploy_environment["--deploy-environment NAME"]
     option --> approve["--approve"]
     option --> package["--package NAME"]
     option --> dependency_source["--dependency-source SOURCE"]
@@ -37,6 +39,7 @@ flowchart LR
     dependency_source -. repeatable .-> dep_note["may satisfy manifest dependencies"]
     registry_url -. only for registry sources .-> registry_note["sets registry base URL"]
     connect -. enriches output .-> state_note["includes installed state from Core"]
+    deploy_environment -. bootstrap-core only .-> env_note["models Core DEPLOY_ENVIRONMENT"]
 ```
 
 ## Arguments
@@ -46,6 +49,7 @@ flowchart LR
 | `source` | required | Package source. See [source types](source-types.md). |
 | `--mode` | `install` | Deployment mode to plan. One of: `bootstrap-core`, `install`, `upgrade`, `reinstall`, `resume`, `validate`. |
 | `--policy` | `unlocked` | Deployment policy for disconnected planning. Connected plans read Core `DEPLOY_LOCKED` and reject this option. |
+| `--deploy-environment` | none | Core `DEPLOY_ENVIRONMENT` label for `--mode bootstrap-core` plans before Core can be read. |
 | `--approve` | false | Approve policy-gated actions. |
 | `--package` | none | Package name or application name to select when `source` is a workspace root. |
 | `--dependency-source` | none | Additional source that may satisfy a dependency declared in the manifest. Repeatable. |
@@ -58,7 +62,7 @@ flowchart LR
 
 Prints a `dbpm.plan.v0` or `dbpm.multi-plan.v0` JSON object to stdout.
 
-When `--connect` or `--connect-name` is provided, the plan includes `installed_state` for each package and reads Core `DEPLOY_LOCKED` for policy. Without database access, installed state is omitted and `--policy` may be used to model locked or unlocked policy.
+When `--connect` or `--connect-name` is provided, the plan includes `installed_state` for each package and reads Core `DEPLOY_LOCKED` for policy. Without database access, installed state is omitted and `--policy` may be used to model locked or unlocked policy. For `--mode bootstrap-core`, use `--deploy-environment` to model the Core `DEPLOY_ENVIRONMENT` value that will be written during bootstrap.
 
 For upgrade with database access, if a stepwise chain is required, the output is a `dbpm.upgrade-chain.v0` plan with a `steps` array.
 

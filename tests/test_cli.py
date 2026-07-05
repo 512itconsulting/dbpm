@@ -210,6 +210,44 @@ def test_plan_accepts_disconnected_locked_policy(tmp_path: Path, capsys):
     }
 
 
+def test_plan_bootstrap_core_accepts_deploy_environment(tmp_path: Path, capsys):
+    package = tmp_path / "core"
+    _write_core_bootstrap_package(package)
+
+    assert (
+        cli.main(
+            [
+                "plan",
+                str(package),
+                "--mode",
+                "bootstrap-core",
+                "--policy",
+                "locked",
+                "--deploy-environment",
+                "PROD",
+            ]
+        )
+        == 0
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["policy"]["policy_context"] == {
+        "deployment_locked": True,
+        "source": "cli-policy",
+        "deploy_environment": "PROD",
+    }
+    assert output["execution"]["stdin"] == "Y\nPROD\n"
+
+
+def test_deploy_environment_rejected_for_non_bootstrap_plan(tmp_path: Path, capsys):
+    package = tmp_path / "package"
+    _write_package(package)
+
+    assert cli.main(["plan", str(package), "--deploy-environment", "PROD"]) == 2
+
+    assert "--deploy-environment is only supported for bootstrap-core" in capsys.readouterr().err
+
+
 def test_connected_plan_reads_core_deploy_locked(tmp_path: Path, monkeypatch, capsys):
     package = tmp_path / "package"
     _write_package(package)
@@ -2104,6 +2142,43 @@ def test_bootstrap_core_runs_when_core_is_not_installed(tmp_path: Path, monkeypa
 
     assert calls["application_name"] == "CORE"
     assert calls["plan"]["installed_state"] is None
+
+
+def test_bootstrap_core_accepts_policy_and_deploy_environment(tmp_path: Path, monkeypatch):
+    package = tmp_path / "core"
+    _write_core_bootstrap_package(package)
+    calls = {}
+
+    monkeypatch.setattr(cli, "get_application_state", lambda **kwargs: None)
+
+    def fake_execute_plan(plan, *, connect: str, runner: str):
+        calls["plan"] = plan
+        return 0
+
+    monkeypatch.setattr(cli, "execute_plan", fake_execute_plan)
+
+    assert (
+        cli.main(
+            [
+                "bootstrap-core",
+                str(package),
+                "--connect",
+                "user/pass@db",
+                "--policy",
+                "locked",
+                "--deploy-environment",
+                "PROD",
+            ]
+        )
+        == 0
+    )
+
+    assert calls["plan"]["policy"]["policy_context"] == {
+        "deployment_locked": True,
+        "source": "cli-policy",
+        "deploy_environment": "PROD",
+    }
+    assert calls["plan"]["execution"]["stdin"] == "Y\nPROD\n"
 
 
 def test_bootstrap_core_skips_core_version_check(tmp_path: Path, monkeypatch):

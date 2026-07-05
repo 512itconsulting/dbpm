@@ -361,6 +361,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Deployment mode to plan",
     )
     _add_policy_arg(plan)
+    _add_deploy_environment_arg(plan)
     _add_dependency_source_args(plan)
     _add_database_args(plan)
 
@@ -379,6 +380,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
     bootstrap = subparsers.add_parser("bootstrap-core", help="Bootstrap Core")
     _add_common_args(bootstrap)
+    _add_policy_arg(bootstrap)
+    _add_deploy_environment_arg(bootstrap)
     _add_execution_args(bootstrap)
 
     install = subparsers.add_parser("install", help="Install a package")
@@ -560,6 +563,13 @@ def _add_policy_arg(parser: argparse.ArgumentParser) -> None:
         "--policy",
         choices=("locked", "unlocked"),
         help="Deployment policy for disconnected planning; connected plans read CORE/DEPLOY_LOCKED",
+    )
+
+
+def _add_deploy_environment_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--deploy-environment",
+        help="Core DEPLOY_ENVIRONMENT value for bootstrap-core before Core can be read",
     )
 
 
@@ -757,6 +767,9 @@ def _build_plan_from_lockfile(
 
 def _resolve_policy_for_plan(mode: str, args: argparse.Namespace) -> DeploymentPolicy:
     cli_policy = getattr(args, "policy", None)
+    deploy_environment = getattr(args, "deploy_environment", None)
+    if deploy_environment is not None and mode != "bootstrap-core":
+        raise DbpmError("--deploy-environment is only supported for bootstrap-core")
     has_database_access = _has_database_access(args)
     if mode != "bootstrap-core" and has_database_access:
         if cli_policy is not None:
@@ -769,7 +782,11 @@ def _resolve_policy_for_plan(mode: str, args: argparse.Namespace) -> DeploymentP
             deploy_locked=metadata.deploy_locked,
             deploy_environment=metadata.deploy_environment,
         )
-    return resolve_deployment_policy(cli_policy, source="cli-policy" if cli_policy else "default")
+    return resolve_deployment_policy(
+        cli_policy,
+        source="cli-policy" if cli_policy else "default",
+        deploy_environment=deploy_environment,
+    )
 
 
 def _build_chain_plan(
