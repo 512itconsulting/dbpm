@@ -44,17 +44,25 @@ def execute_plan(
 
     script_ref = execution.get("script_ref")
     arguments = execution.get("arguments", [])
+    input_text = execution.get("stdin")
     if not script_ref:
         raise ExecutionError("Plan does not contain an executable script")
     if not isinstance(arguments, list):
         raise ExecutionError("Plan execution arguments must be a list")
+    if input_text is not None and not isinstance(input_text, str):
+        raise ExecutionError("Plan execution stdin must be a string")
 
     _execute_pre_actions(plan, connect=connect, runner=runner, context=context)
 
     command = build_sql_command(runner=runner, connect=connect, script_ref=script_ref, arguments=arguments)
     log_file = _next_log_file(context, plan)
     try:
-        returncode = _run_command(command, cwd=_cwd_for_script(script_ref), log_file=log_file)
+        returncode = _run_command(
+            command,
+            cwd=_cwd_for_script(script_ref),
+            log_file=log_file,
+            input_text=input_text,
+        )
     except FileNotFoundError as exc:
         raise ExecutionError(f"SQL runner not found: {runner}") from exc
     if returncode != 0:
@@ -85,16 +93,20 @@ def _safe_name(value: str) -> str:
     return "".join(char if char.isalnum() or char in {"_", "-"} else "_" for char in value)
 
 
-def _run_command(command: list[str], *, cwd: str | None, log_file: Path) -> int:
+def _run_command(command: list[str], *, cwd: str | None, log_file: Path, input_text: str | None = None) -> int:
     with log_file.open("w", encoding="utf-8", errors="replace") as log:
         process = subprocess.Popen(
             command,
             cwd=cwd,
+            stdin=subprocess.PIPE if input_text is not None else None,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
         )
+        if input_text is not None and process.stdin is not None:
+            process.stdin.write(input_text)
+            process.stdin.close()
         if process.stdout is not None:
             _tee_output(process.stdout, log)
         return process.wait()
@@ -138,14 +150,22 @@ def _execute_pre_actions(
         elif action_type == "execute_script":
             script_ref = action.get("script_ref")
             arguments = action.get("arguments", [])
+            input_text = action.get("stdin")
             if not script_ref:
                 raise ExecutionError("execute_script pre-action requires script_ref")
             if not isinstance(arguments, list):
                 raise ExecutionError("execute_script pre-action arguments must be a list")
+            if input_text is not None and not isinstance(input_text, str):
+                raise ExecutionError("execute_script pre-action stdin must be a string")
             command = build_sql_command(runner=runner, connect=connect, script_ref=script_ref, arguments=arguments)
             log_file = _next_log_file(context, plan)
             try:
-                returncode = _run_command(command, cwd=_cwd_for_script(script_ref), log_file=log_file)
+                returncode = _run_command(
+                    command,
+                    cwd=_cwd_for_script(script_ref),
+                    log_file=log_file,
+                    input_text=input_text,
+                )
             except FileNotFoundError as exc:
                 raise ExecutionError(f"SQL runner not found: {runner}") from exc
             if returncode != 0:

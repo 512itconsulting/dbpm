@@ -70,6 +70,7 @@ def create_plan(
             "script": script,
             "script_ref": str(source.resolve_script_path(script)) if script else None,
             "arguments": _script_arguments_for_mode(mode, provenance) if script else [],
+            "stdin": _script_stdin_for_mode(mode, manifest, environment) if script else None,
         },
     }
 
@@ -123,6 +124,14 @@ def _script_arguments_for_mode(mode: str, provenance: Provenance) -> list[str]:
     return [provenance.commit]
 
 
+def _script_stdin_for_mode(mode: str, manifest: PackageManifest, environment: DeploymentPolicy) -> str | None:
+    if mode not in {"bootstrap-core", "install", "reinstall"} or not manifest.is_core:
+        return None
+    deploy_locked = "Y" if environment.deployment_locked else "N"
+    deploy_environment = environment.deploy_environment or ""
+    return f"{deploy_locked}\n{deploy_environment}\n"
+
+
 def _pre_actions_for_mode(
     mode: str,
     manifest: PackageManifest,
@@ -143,6 +152,7 @@ def _pre_actions_for_mode(
                         "script": CORE_UNINSTALL_SCRIPT,
                         "script_ref": str(source.resolve_script_path(CORE_UNINSTALL_SCRIPT)),
                         "arguments": [],
+                        "stdin": "YES\n",
                     },
                 ]
             )

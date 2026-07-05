@@ -349,10 +349,12 @@ scripts:
             "script": "Deployment_Manifests/uninstall.core.sql",
             "script_ref": str(manifests / "uninstall.core.sql"),
             "arguments": [],
+            "stdin": "YES\n",
         },
     ]
     assert plan["post_actions"][0]["type"] == "record_deployment_provenance"
     assert plan["post_actions"][0]["payload"]["application_name"] == "CORE"
+    assert plan["execution"]["stdin"] == "N\n\n"
     assert plan["post_actions"][0]["payload"]["version"] == "3.4.0"
     assert plan["post_actions"][0]["payload"]["deployment_type"] == "I"
     assert plan["execution"]["script"] == "Deployment_Manifests/deploy.sql"

@@ -1,4 +1,5 @@
 import io
+import subprocess
 from unittest.mock import patch
 
 import pytest
@@ -12,6 +13,7 @@ class _FakeProcess:
     def __init__(self, *, returncode: int = 0, stdout: str = "ok\n"):
         self.returncode = returncode
         self.stdout = io.StringIO(stdout)
+        self.stdin = io.StringIO()
 
     def wait(self) -> int:
         return self.returncode
@@ -183,11 +185,13 @@ def test_execute_plan_runs_core_teardown_before_reinstall_script(tmp_path, monke
                 "type": "execute_script",
                 "script_ref": "Deployment_Manifests/uninstall.core.sql",
                 "arguments": [],
+                "stdin": "YES\n",
             },
         ],
         "execution": {
             "script_ref": "Deployment_Manifests/deploy.sql",
             "arguments": ["abc"],
+            "stdin": "N\nDEV\n",
         },
     }
     calls = []
@@ -195,13 +199,24 @@ def test_execute_plan_runs_core_teardown_before_reinstall_script(tmp_path, monke
     with patch("dbpm.executor.delete_system") as delete_system:
         with patch("dbpm.executor.subprocess.Popen") as popen:
             delete_system.side_effect = lambda **kwargs: calls.append(("delete_system", kwargs))
-            popen.side_effect = lambda *args, **kwargs: calls.append(("script", args[0])) or _FakeProcess(stdout="ok\n")
+            popen.side_effect = (
+                lambda *args, **kwargs: calls.append(("script", args[0], kwargs.get("stdin")))
+                or _FakeProcess(stdout="ok\n")
+            )
             execute_plan(plan, connect="user/pass@db", runner="sql")
 
     assert calls == [
         ("delete_system", {"connect": "user/pass@db", "runner": "sql"}),
-        ("script", ["sql", "-L", "user/pass@db", "@Deployment_Manifests/uninstall.core.sql"]),
-        ("script", ["sql", "-L", "user/pass@db", "@Deployment_Manifests/deploy.sql", "abc"]),
+        (
+            "script",
+            ["sql", "-L", "user/pass@db", "@Deployment_Manifests/uninstall.core.sql"],
+            subprocess.PIPE,
+        ),
+        (
+            "script",
+            ["sql", "-L", "user/pass@db", "@Deployment_Manifests/deploy.sql", "abc"],
+            subprocess.PIPE,
+        ),
     ]
     logs = sorted(path.name for path in (tmp_path / "logs").glob("*.log"))
     assert len(logs) == 2
