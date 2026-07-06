@@ -19,6 +19,17 @@ class _FakeProcess:
         return self.returncode
 
 
+class _NonClosingStringIO(io.StringIO):
+    def close(self) -> None:
+        pass
+
+
+class _CapturingProcess(_FakeProcess):
+    def __init__(self, *, returncode: int = 0, stdout: str = "ok\n"):
+        super().__init__(returncode=returncode, stdout=stdout)
+        self.stdin = _NonClosingStringIO()
+
+
 def test_execute_plan_runs_delete_pre_action_before_script(tmp_path, monkeypatch):
     monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
     payload = {
@@ -67,6 +78,52 @@ def test_execute_plan_runs_delete_pre_action_before_script(tmp_path, monkeypatch
     logs = list((tmp_path / "logs").glob("*-001-DEMO-install.log"))
     assert len(logs) == 1
     assert logs[0].read_text(encoding="utf-8") == "deployed\n"
+
+
+def test_execute_plan_sends_fallback_exit_success(tmp_path, monkeypatch):
+    monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
+    plan = {
+        "mode": "install",
+        "package": {
+            "application_name": "DEMO",
+        },
+        "pre_actions": [],
+        "execution": {
+            "script_ref": "deploy.sql",
+            "arguments": [],
+        },
+    }
+    process = _CapturingProcess(stdout="deployed\n")
+
+    with patch("dbpm.executor.subprocess.Popen") as popen:
+        popen.return_value = process
+        execute_plan(plan, connect="user/pass@db", runner="sql")
+
+    assert popen.call_args.kwargs["stdin"] == subprocess.PIPE
+    assert process.stdin.getvalue() == "EXIT SUCCESS\n"
+
+
+def test_execute_plan_sends_script_stdin_before_fallback_exit_success(tmp_path, monkeypatch):
+    monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
+    plan = {
+        "mode": "bootstrap-core",
+        "package": {
+            "application_name": "CORE",
+        },
+        "pre_actions": [],
+        "execution": {
+            "script_ref": "deploy.sql",
+            "arguments": [],
+            "stdin": "N\nDEV\n",
+        },
+    }
+    process = _CapturingProcess(stdout="deployed\n")
+
+    with patch("dbpm.executor.subprocess.Popen") as popen:
+        popen.return_value = process
+        execute_plan(plan, connect="user/pass@db", runner="sql")
+
+    assert process.stdin.getvalue() == "N\nDEV\nEXIT SUCCESS\n"
 
 
 def test_log_dir_expands_quoted_home(tmp_path, monkeypatch):
@@ -123,7 +180,7 @@ def test_execute_plan_runs_multi_package_children_in_order(tmp_path, monkeypatch
     }
 
     with patch("dbpm.executor.subprocess.Popen") as popen:
-        popen.return_value = _FakeProcess(stdout="ok\n")
+        popen.side_effect = lambda *args, **kwargs: _FakeProcess(stdout="ok\n")
         assert execute_plan(plan, connect="user/pass@db", runner="sql") == 0
 
     assert popen.call_count == 2

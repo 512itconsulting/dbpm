@@ -13,6 +13,9 @@ from .db import delete_application, delete_system, record_deployment_provenance,
 from .errors import ExecutionError
 
 
+FALLBACK_EXIT_COMMAND = "EXIT SUCCESS\n"
+
+
 @dataclass
 class _ExecutionContext:
     run_id: str
@@ -98,18 +101,25 @@ def _run_command(command: list[str], *, cwd: str | None, log_file: Path, input_t
         process = subprocess.Popen(
             command,
             cwd=cwd,
-            stdin=subprocess.PIPE if input_text is not None else None,
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
         )
-        if input_text is not None and process.stdin is not None:
-            process.stdin.write(input_text)
+        if process.stdin is not None:
+            process.stdin.write(_runner_stdin(input_text))
             process.stdin.close()
         if process.stdout is not None:
             _tee_output(process.stdout, log)
         return process.wait()
+
+
+def _runner_stdin(input_text: str | None) -> str:
+    if not input_text:
+        return FALLBACK_EXIT_COMMAND
+    separator = "" if input_text.endswith("\n") else "\n"
+    return f"{input_text}{separator}{FALLBACK_EXIT_COMMAND}"
 
 
 def _tee_output(source: TextIO, log: TextIO) -> None:
