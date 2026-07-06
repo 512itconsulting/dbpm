@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Any
@@ -9,6 +10,7 @@ from .errors import ManifestError
 
 
 MANIFEST_NAMES = ("dbpm.yaml", "dbpm.yml", "dbpm.json", "package.dbpm.yaml")
+PACKAGE_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
 
 
 @dataclass(frozen=True)
@@ -64,6 +66,7 @@ def parse_manifest(text: str, source_name: str) -> PackageManifest:
     publish_data = _optional_mapping(data, "publish")
 
     name = _required_string(package, "name", source_name)
+    _validate_package_name(name, source_name)
     version = _required_string(package, "version", source_name)
     dependencies = _parse_dependencies(data.get("dependencies", []), source_name)
 
@@ -84,7 +87,28 @@ def parse_manifest(text: str, source_name: str) -> PackageManifest:
 
 
 def normalize_script_path(path: str) -> str:
-    return PurePosixPath(path.replace("\\", "/")).as_posix()
+    if any(char in path for char in "\r\n"):
+        raise ManifestError(f"Script paths must not contain control characters: {path!r}")
+    normalized = PurePosixPath(path.replace("\\", "/"))
+    parts = normalized.parts
+    if (
+        not parts
+        or normalized.as_posix() in {"", "."}
+        or normalized.is_absolute()
+        or ".." in parts
+        or any(":" in part for part in parts)
+        or parts[0].startswith("@")
+    ):
+        raise ManifestError(f"Script paths must be package-relative paths: {path!r}")
+    return normalized.as_posix()
+
+
+def _validate_package_name(name: str, source_name: str) -> None:
+    if not PACKAGE_NAME_RE.fullmatch(name):
+        raise ManifestError(
+            f"`package.name` in {source_name} must start with a lowercase letter "
+            "and contain only lowercase letters, digits, underscores, or hyphens"
+        )
 
 
 def _parse_structured_text(text: str, source_name: str) -> Any:

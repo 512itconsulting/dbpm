@@ -372,6 +372,41 @@ def test_core_generation_is_rejected(tmp_path: Path):
         )
 
 
+def test_generation_rejects_invalid_application_name_override(tmp_path: Path):
+    repo, baseline = _repo(tmp_path, manifest=False)
+
+    with pytest.raises(DbpmError, match="Application name"):
+        resolve_generation_options(
+            repo,
+            from_ref=baseline,
+            version="1.0.0",
+            application_name="demo'; execute immediate 'drop table application'; --",
+        )
+
+
+def test_object_registration_escapes_quote_bearing_names(tmp_path: Path):
+    repo, _ = _repo(tmp_path, manifest=False)
+    _write(repo, "Tables/O'HARE.sql", "CREATE TABLE \"O'HARE\" (ID NUMBER);\n")
+    _commit(repo, "quote bearing table")
+
+    options = resolve_generation_options(repo, version="1.0.0")
+    generate_scripts(options)
+
+    install_sql = (repo / "Deployment_Manifests/deploy.sql").read_text(encoding="utf-8")
+    assert "ip_object_name => 'O''HARE'" in install_sql
+
+
+def test_generation_rejects_control_characters_in_include_paths(tmp_path: Path):
+    repo, _ = _repo(tmp_path, manifest=False)
+    _write(repo, "Tables/SAFE.sql")
+    _write(repo, "Tables/EVIL\nPROMPT injected.sql")
+    _commit(repo, "control char path")
+
+    options = resolve_generation_options(repo, version="1.0.0")
+    with pytest.raises(DbpmError, match="control characters"):
+        generate_scripts(options)
+
+
 def test_new_table_with_evolution_script_is_rejected(tmp_path: Path):
     repo, baseline = _repo(tmp_path)
     _write(repo, "Tables/NEW_TABLE.sql")

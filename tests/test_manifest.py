@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from dbpm.errors import ManifestError
@@ -68,6 +70,42 @@ package:
   version: "0.1.0"
 """,
             "dbpm.yaml",
+        )
+
+
+@pytest.mark.parametrize("name", ["Demo", "123demo", "_demo", "demo'; drop table application; --"])
+def test_package_name_rejects_sql_surface_metacharacters(name: str):
+    with pytest.raises(ManifestError, match="package.name"):
+        parse_manifest(
+            f"""
+package:
+  name: "{name}"
+  version: "0.1.0"
+""",
+            "dbpm.yaml",
+        )
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "../deploy.sql",
+        "/tmp/deploy.sql",
+        "C:/packages/deploy.sql",
+        "@deploy.sql",
+        "deploy.sql\nPROMPT injected",
+    ],
+)
+def test_script_paths_must_stay_package_relative(script: str):
+    with pytest.raises(ManifestError, match="Script paths"):
+        parse_manifest(
+            json.dumps(
+                {
+                    "package": {"name": "demo", "version": "0.1.0"},
+                    "scripts": {"install": script},
+                }
+            ),
+            "dbpm.json",
         )
 
 

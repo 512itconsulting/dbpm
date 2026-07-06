@@ -150,6 +150,7 @@ def resolve_generation_options(
         manifest.application_name if manifest else _application_name(package_root.name)
     )
     resolved_application = _application_name(resolved_application)
+    _validate_application_name(resolved_application)
     if resolved_application == "CORE":
         raise DbpmError(
             "Core script generation is not supported; Core requires bootstrap-aware lifecycle SQL"
@@ -610,7 +611,7 @@ def _registration_sql(item: ObjectFile) -> str:
     return (
         "EXEC pkg_application.add_object_p("
         f"ip_application_name => '&&APPLICATION_NAME', "
-        f"ip_object_name => '{item.name.upper()}', "
+        f"ip_object_name => {_sql_literal(item.name.upper())}, "
         f"ip_object_type => {item.object_constant});"
     )
 
@@ -681,8 +682,12 @@ def _tree_paths(git_root: Path, subpath: Path, ref: str) -> list[str]:
         posix_sub = subpath.as_posix()
         dirs = [f"{posix_sub}/{d}" for d in OBJECT_DIRECTORY_SEARCH_PATHS]
         prefix = posix_sub + "/"
-    output = _git(git_root, "ls-tree", "-r", "--name-only", ref, "--", *dirs)
-    return [line[len(prefix):] for line in output.splitlines() if line]
+    output = _git(git_root, "ls-tree", "-z", "-r", "--name-only", ref, "--", *dirs)
+    paths = []
+    for path in _split_nul(output):
+        _validate_sqlplus_path(path)
+        paths.append(path[len(prefix):])
+    return paths
 
 
 def _diff_paths(git_root: Path, subpath: Path, from_ref: str, to_ref: str) -> dict[str, str]:
@@ -696,6 +701,7 @@ def _diff_paths(git_root: Path, subpath: Path, from_ref: str, to_ref: str) -> di
     output = _git(
         git_root,
         "diff",
+        "-z",
         "--name-status",
         "--find-renames",
         from_ref,
@@ -704,14 +710,25 @@ def _diff_paths(git_root: Path, subpath: Path, from_ref: str, to_ref: str) -> di
         *dirs,
     )
     changed: dict[str, str] = {}
-    for line in output.splitlines():
-        fields = line.split("\t")
-        status = fields[0][0]
+    fields = _split_nul(output)
+    index = 0
+    while index < len(fields):
+        status_text = fields[index]
+        index += 1
+        status = status_text[0]
         if status == "R":
-            changed[fields[1][len(prefix):]] = "D"
-            changed[fields[2][len(prefix):]] = "A"
+            old_path = fields[index]
+            new_path = fields[index + 1]
+            index += 2
+            _validate_sqlplus_path(old_path)
+            _validate_sqlplus_path(new_path)
+            changed[old_path[len(prefix):]] = "D"
+            changed[new_path[len(prefix):]] = "A"
         else:
-            changed[fields[1][len(prefix):]] = status
+            path = fields[index]
+            index += 1
+            _validate_sqlplus_path(path)
+            changed[path[len(prefix):]] = status
     return changed
 
 
@@ -759,9 +776,15 @@ def _git_optional(root: Path, *args: str) -> str | None:
         return None
 
 
+def _split_nul(output: str) -> list[str]:
+    return [field for field in output.split("\0") if field]
+
+
 def _include_path(output_path: str, source_path: str) -> str:
+    _validate_sqlplus_path(source_path)
     parent = PurePosixPath(output_path).parent
     relative = os.path.relpath(source_path, parent.as_posix()).replace(os.sep, "/")
+    _validate_sqlplus_path(relative)
     return f"@@{relative}"
 
 
@@ -852,6 +875,22 @@ def _normalize_output(value: str) -> str:
 
 def _application_name(name: str) -> str:
     return name.replace("-", "_").upper()
+
+
+def _validate_application_name(name: str) -> None:
+    if not re.fullmatch(r"[A-Z][A-Z0-9_]*", name):
+        raise DbpmError(
+            "Application name must start with a letter and contain only letters, digits, underscores, or hyphens"
+        )
+
+
+def _validate_sqlplus_path(path: str) -> None:
+    if any(char in path for char in "\r\n"):
+        raise DbpmError(f"SQL script paths must not contain control characters: {path!r}")
+
+
+def _sql_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
 
 
 def _optional_string(value: object) -> str | None:
