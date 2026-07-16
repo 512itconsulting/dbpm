@@ -32,11 +32,15 @@ TREE_CHECKSUM_EXCLUDES = (
     ".ruff_cache",
     ".venv",
     "__pycache__",
+    "*.egg-info",
+    "*.log",
+)
+# Producer build outputs are excluded only at the package root; nested
+# directories with these names (such as os/dist/ runtime wheels) are payload.
+TREE_CHECKSUM_ROOT_EXCLUDES = (
     "build",
     "dist",
     "target",
-    "*.egg-info",
-    "*.log",
 )
 DBPMIGNORE_NAME = ".dbpmignore"
 
@@ -629,10 +633,14 @@ def _tree_files(path: Path) -> list[Path]:
 
 
 def _tree_path_excluded(relative_parts: tuple[str, ...]) -> bool:
-    return any(
+    if any(
         fnmatch(part, pattern)
         for part in relative_parts
         for pattern in TREE_CHECKSUM_EXCLUDES
+    ):
+        return True
+    return any(
+        fnmatch(relative_parts[0], pattern) for pattern in TREE_CHECKSUM_ROOT_EXCLUDES
     )
 
 

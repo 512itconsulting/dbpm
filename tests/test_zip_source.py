@@ -745,3 +745,32 @@ def test_signature_verification_uses_expected_url_even_with_stale_colocated_sign
     assert downloaded == [signature_url]
     assert verified
     assert verified[0].name != "artifact.zip.asc"
+
+
+def test_directory_tree_checksum_keeps_nested_dist_payload(tmp_path: Path):
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: demo
+  version: "0.1.0"
+
+scripts:
+  install: deploy.sql
+""",
+        encoding="utf-8",
+    )
+    (package / "deploy.sql").write_text("PROMPT deploy\n", encoding="utf-8")
+    baseline = load_package_source(str(package)).artifact_checksum
+
+    # Root-level build outputs stay excluded from the tree checksum.
+    (package / "dist").mkdir()
+    (package / "dist" / "demo-0.1.0.zip").write_text("ignored", encoding="utf-8")
+    assert load_package_source(str(package)).artifact_checksum == baseline
+
+    # Nested dist directories are payload, such as bundled runtime wheels.
+    payload = package / "os" / "dist"
+    payload.mkdir(parents=True)
+    (payload / "runner-0.1.0-py3-none-any.whl").write_text("wheel", encoding="utf-8")
+    assert load_package_source(str(package)).artifact_checksum != baseline
