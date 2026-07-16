@@ -11,6 +11,7 @@ from .errors import ManifestError
 
 MANIFEST_NAMES = ("dbpm.yaml", "dbpm.yml", "dbpm.json", "package.dbpm.yaml")
 PACKAGE_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
+ENVIRONMENT_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,16 @@ class Dependency:
 
 
 @dataclass(frozen=True)
+class RuntimeComponent:
+    name: str
+    home_env: str
+    install: str
+    upgrade: str | None = None
+    validate: str | None = None
+    uninstall: str | None = None
+
+
+@dataclass(frozen=True)
 class PackageManifest:
     name: str
     version: str
@@ -48,10 +59,16 @@ class PackageManifest:
     dependencies: tuple[Dependency, ...]
     scripts: ScriptSet
     publish: PublishConfig | None = None
+    runtime: RuntimeComponent | None = None
 
     @property
     def is_core(self) -> bool:
         return self.application_name == "CORE"
+
+    @property
+    def has_database_component(self) -> bool:
+        scripts = self.scripts
+        return any((scripts.install, scripts.upgrade, scripts.validate, scripts.uninstall))
 
 
 def parse_manifest(text: str, source_name: str) -> PackageManifest:
@@ -64,6 +81,7 @@ def parse_manifest(text: str, source_name: str) -> PackageManifest:
     core = _optional_mapping(data, "core")
     scripts = _optional_mapping(data, "scripts")
     publish_data = _optional_mapping(data, "publish")
+    runtime_data = data.get("runtime")
 
     name = _required_string(package, "name", source_name)
     _validate_package_name(name, source_name)
@@ -83,6 +101,7 @@ def parse_manifest(text: str, source_name: str) -> PackageManifest:
         dependencies=tuple(dependencies),
         scripts=_parse_scripts(scripts, source_name),
         publish=_parse_publish_config(publish_data, source_name) if publish_data else None,
+        runtime=_parse_runtime(runtime_data, source_name) if runtime_data is not None else None,
     )
 
 
@@ -207,6 +226,44 @@ def _optional_script(data: dict[str, Any], key: str) -> str | None:
     return None if value is None else normalize_script_path(value)
 
 
+def _parse_runtime(data: Any, source_name: str) -> RuntimeComponent:
+    if not isinstance(data, dict):
+        raise ManifestError(f"`runtime` in {source_name} must be a mapping")
+    if "into" in data:
+        raise ManifestError(
+            f"`runtime.into` contributions are not supported yet in {source_name}; "
+            "declare an owned runtime with `runtime.name`"
+        )
+    name = _required_string(data, "name", source_name)
+    if not PACKAGE_NAME_RE.fullmatch(name):
+        raise ManifestError(
+            f"`runtime.name` in {source_name} must start with a lowercase letter "
+            "and contain only lowercase letters, digits, underscores, or hyphens"
+        )
+    home_env = _optional_string(data, "home_env") or _default_home_env(name)
+    if not ENVIRONMENT_NAME_RE.fullmatch(home_env):
+        raise ManifestError(
+            f"`runtime.home_env` in {source_name} must be an uppercase "
+            f"environment variable name, got: {home_env!r}"
+        )
+    scripts = _optional_mapping(data, "scripts")
+    install = _optional_script(scripts, "install")
+    if install is None:
+        raise ManifestError(f"`runtime.scripts.install` is required in {source_name}")
+    return RuntimeComponent(
+        name=name,
+        home_env=home_env,
+        install=install,
+        upgrade=_optional_script(scripts, "upgrade"),
+        validate=_optional_script(scripts, "validate"),
+        uninstall=_optional_script(scripts, "uninstall"),
+    )
+
+
+def _default_home_env(name: str) -> str:
+    return f"{name.replace('-', '_').upper()}_HOME"
+
+
 def _application_name(name: str) -> str:
     return name.replace("-", "_").upper()
 
@@ -217,6 +274,7 @@ def _parse_simple_yaml(text: str, source_name: str) -> dict[str, Any]:
     current_map: dict[str, Any] | None = None
     current_list: list[dict[str, Any]] | None = None
     current_item: dict[str, Any] | None = None
+    current_submap: dict[str, Any] | None = None
 
     for raw_line in text.splitlines():
         raw_line = raw_line.lstrip("\ufeff")
@@ -244,6 +302,7 @@ def _parse_simple_yaml(text: str, source_name: str) -> dict[str, Any]:
                 current_map = None
                 current_list = None
                 current_item = None
+            current_submap = None
         elif indent == 2 and stripped.startswith("- "):
             if current_list is None:
                 raise ManifestError(f"Unexpected list item in {source_name}: {raw_line}")
@@ -257,12 +316,20 @@ def _parse_simple_yaml(text: str, source_name: str) -> dict[str, Any]:
             if current_map is None:
                 raise ManifestError(f"Unexpected mapping item in {source_name}: {raw_line}")
             key, value = _split_yaml_pair(stripped, source_name)
-            current_map[key] = _yaml_scalar(value)
+            if value is None:
+                current_submap = {}
+                current_map[key] = current_submap
+            else:
+                current_map[key] = _yaml_scalar(value)
+                current_submap = None
         elif indent == 4:
-            if current_item is None:
-                raise ManifestError(f"Unexpected nested item in {source_name}: {raw_line}")
             key, value = _split_yaml_pair(stripped, source_name)
-            current_item[key] = _yaml_scalar(value)
+            if current_item is not None:
+                current_item[key] = _yaml_scalar(value)
+            elif current_submap is not None:
+                current_submap[key] = _yaml_scalar(value)
+            else:
+                raise ManifestError(f"Unexpected nested item in {source_name}: {raw_line}")
         else:
             raise ManifestError(f"Unsupported YAML indentation in {source_name}: {raw_line}")
 

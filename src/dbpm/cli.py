@@ -575,6 +575,11 @@ def _add_deploy_environment_arg(parser: argparse.ArgumentParser) -> None:
 
 def _add_execution_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--dry-run", action="store_true", help="Print the plan without executing")
+    parser.add_argument(
+        "--runtime-prefix",
+        default=None,
+        help="Target prefix for runtime components; overrides the runtime home environment variable",
+    )
     _add_database_args(parser)
 
 
@@ -630,7 +635,11 @@ def _build_plan(
     confirm_delete_system = getattr(args, "confirm_delete_system", None) == source.manifest.application_name
     installed_state = None
     reverse_dependencies = None
-    if include_installed_state and _should_read_installed_state(mode, source.manifest.is_core):
+    if (
+        include_installed_state
+        and source.manifest.has_database_component
+        and _should_read_installed_state(mode, source.manifest.is_core)
+    ):
         installed_state = _get_installed_state(args, source.manifest.application_name)
         if not source.manifest.is_core:
             reverse_dependencies = _get_reverse_dependencies(args, source.manifest.application_name)
@@ -833,6 +842,8 @@ def _execute_or_explain(plan: dict[str, object], args: argparse.Namespace) -> No
         _execute_upgrade_chain(plan, args)
         return
 
+    connect = _connect_spec(args) if _plan_needs_database(plan) else None
+    runtime_prefix = getattr(args, "runtime_prefix", None)
     packages = plan.get("packages")
     if isinstance(packages, list):
         allow_dependent_break = getattr(args, "allow_dependent_break", False)
@@ -843,14 +854,33 @@ def _execute_or_explain(plan: dict[str, object], args: argparse.Namespace) -> No
             _enforce_installed_state(child_plan)
             _enforce_core_minimum_version(child_plan, args)
             _enforce_major_upgrade_dependencies(child_plan, allow_dependent_break)
-        execute_plan(plan, connect=_connect_spec(args), runner=args.runner)
+        execute_plan(plan, connect=connect, runner=args.runner, runtime_prefix=runtime_prefix)
         return
 
     _execute_or_explain_policy(plan)
     _enforce_installed_state(plan)
     _enforce_core_minimum_version(plan, args)
     _enforce_major_upgrade_dependencies(plan, getattr(args, "allow_dependent_break", False))
-    execute_plan(plan, connect=_connect_spec(args), runner=args.runner)
+    execute_plan(plan, connect=connect, runner=args.runner, runtime_prefix=runtime_prefix)
+
+
+def _plan_needs_database(plan: dict[str, object]) -> bool:
+    packages = plan.get("packages")
+    if isinstance(packages, list):
+        return any(
+            _plan_needs_database(child_plan)
+            for child_plan in packages
+            if isinstance(child_plan, dict)
+        )
+    execution = plan.get("execution")
+    if isinstance(execution, dict) and execution.get("script"):
+        return True
+    if plan.get("pre_actions") or plan.get("post_actions"):
+        return True
+    core = plan.get("core")
+    if isinstance(core, dict) and core.get("minimum_version"):
+        return True
+    return False
 
 
 def _execute_upgrade_chain(plan: dict[str, object], args: argparse.Namespace) -> None:
@@ -872,7 +902,12 @@ def _execute_upgrade_chain(plan: dict[str, object], args: argparse.Namespace) ->
         _enforce_installed_state(step_plan)
         _enforce_core_minimum_version(step_plan, args)
         _enforce_major_upgrade_dependencies(step_plan, allow_dependent_break)
-        execute_plan(step_plan, connect=_connect_spec(args), runner=args.runner)
+        execute_plan(
+            step_plan,
+            connect=_connect_spec(args),
+            runner=args.runner,
+            runtime_prefix=getattr(args, "runtime_prefix", None),
+        )
 
 
 def _enforce_major_upgrade_dependencies(
@@ -979,6 +1014,11 @@ def _get_reverse_dependencies(args: argparse.Namespace, application_name: str) -
 
 
 def _enforce_installed_state(plan: dict[str, object]) -> None:
+    execution = plan.get("execution")
+    if isinstance(execution, dict) and not execution.get("script"):
+        # Runtime-only package plans have no Core registration; the runtime
+        # receipt enforces installed state at execution time instead.
+        return
     mode = plan.get("mode")
     state = plan.get("installed_state")
     package = plan.get("package")

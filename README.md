@@ -64,12 +64,14 @@ For a guided setup, see [Getting Started](docs/getting-started.md).
 - Core provenance staging through `pkg_application.stage_deployment_provenance_p`
 - Core `DEPLOY_LOCKED`-aware deployment policy
 - Install, upgrade, reinstall, resume, and validate workflows
+- Manifest-declared runtime components (`runtime:` in `dbpm.yaml`) for non-database payloads, installed into an operator-provided prefix with a `.dbpm/receipt.json` installed-state receipt (see [spec/runtime-component.md](spec/runtime-component.md))
 - ZIP artifact publishing to GitHub Packages and generic Maven repositories
 - GPG artifact signing and lockfile-driven signature verification
 - dbpm registry source resolution and artifact metadata indexing
 
 ## Known Limitations
 - Multi-package dependency execution does not support `reinstall`.
+- Runtime components support the owned `runtime.name` form only; `runtime.into` contributions, `uninstall` orchestration, and typed component kinds such as `python-venv` are not implemented yet.
 - Lockfile database provenance reconciliation requires Core 3.3.0 or newer.
 - Non-lockfile installs use the coordinate-based cache without checksum verification; the lockfile path has full SHA-256 verification.
 

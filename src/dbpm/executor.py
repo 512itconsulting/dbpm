@@ -11,6 +11,7 @@ from typing import TextIO
 from .connect import ConnectSpec, build_sql_command
 from .db import delete_application, delete_system, record_deployment_provenance, stage_deployment_provenance
 from .errors import ExecutionError
+from .runtime import execute_runtime_step
 
 
 FALLBACK_EXIT_COMMAND = "EXIT SUCCESS\n"
@@ -26,8 +27,9 @@ class _ExecutionContext:
 def execute_plan(
     plan: dict[str, object],
     *,
-    connect: str | ConnectSpec,
+    connect: str | ConnectSpec | None,
     runner: str,
+    runtime_prefix: str | None = None,
     context: _ExecutionContext | None = None,
 ) -> int:
     context = context or _new_execution_context()
@@ -38,7 +40,13 @@ def execute_plan(
         for child_plan in packages:
             if not isinstance(child_plan, dict):
                 raise ExecutionError("Multi-package plan entries must be objects")
-            execute_plan(child_plan, connect=connect, runner=runner, context=context)
+            execute_plan(
+                child_plan,
+                connect=connect,
+                runner=runner,
+                runtime_prefix=runtime_prefix,
+                context=context,
+            )
         return 0
 
     execution = plan.get("execution")
@@ -48,30 +56,43 @@ def execute_plan(
     script_ref = execution.get("script_ref")
     arguments = execution.get("arguments", [])
     input_text = execution.get("stdin")
-    if not script_ref:
+    runtime_step = plan.get("runtime")
+    if runtime_step is not None and not isinstance(runtime_step, dict):
+        raise ExecutionError("Plan runtime step must be an object")
+    if not script_ref and runtime_step is None:
         raise ExecutionError("Plan does not contain an executable script")
     if not isinstance(arguments, list):
         raise ExecutionError("Plan execution arguments must be a list")
     if input_text is not None and not isinstance(input_text, str):
         raise ExecutionError("Plan execution stdin must be a string")
 
-    _execute_pre_actions(plan, connect=connect, runner=runner, context=context)
+    if script_ref:
+        if connect is None:
+            raise ExecutionError("Database deployment requires a connect specification")
+        _execute_pre_actions(plan, connect=connect, runner=runner, context=context)
 
-    command = build_sql_command(runner=runner, connect=connect, script_ref=script_ref, arguments=arguments)
-    log_file = _next_log_file(context, plan)
-    try:
-        returncode = _run_command(
-            command,
-            cwd=_cwd_for_script(script_ref),
-            log_file=log_file,
-            input_text=input_text,
+        command = build_sql_command(runner=runner, connect=connect, script_ref=script_ref, arguments=arguments)
+        log_file = _next_log_file(context, plan)
+        try:
+            returncode = _run_command(
+                command,
+                cwd=_cwd_for_script(script_ref),
+                log_file=log_file,
+                input_text=input_text,
+            )
+        except FileNotFoundError as exc:
+            raise ExecutionError(f"SQL runner not found: {runner}") from exc
+        if returncode != 0:
+            raise ExecutionError(f"Deployment command failed with exit code {returncode}; see {log_file}")
+        _execute_post_actions(plan, connect=connect, runner=runner)
+
+    if runtime_step is not None:
+        execute_runtime_step(
+            runtime_step,
+            log_file=_next_log_file(context, plan, suffix="runtime"),
+            prefix_override=runtime_prefix,
         )
-    except FileNotFoundError as exc:
-        raise ExecutionError(f"SQL runner not found: {runner}") from exc
-    if returncode != 0:
-        raise ExecutionError(f"Deployment command failed with exit code {returncode}; see {log_file}")
-    _execute_post_actions(plan, connect=connect, runner=runner)
-    return returncode
+    return 0
 
 
 def _new_execution_context() -> _ExecutionContext:
@@ -80,13 +101,15 @@ def _new_execution_context() -> _ExecutionContext:
     return _ExecutionContext(run_id=run_id, log_dir=log_dir)
 
 
-def _next_log_file(context: _ExecutionContext, plan: dict[str, object]) -> Path:
+def _next_log_file(context: _ExecutionContext, plan: dict[str, object], suffix: str | None = None) -> Path:
     context.sequence += 1
     package = plan.get("package")
     app_name = "package"
     if isinstance(package, dict):
         app_name = str(package.get("application_name") or package.get("name") or app_name)
     mode = str(plan.get("mode") or "execute")
+    if suffix:
+        mode = f"{mode}-{suffix}"
     file_name = f"{context.run_id}-{context.sequence:03d}-{_safe_name(app_name)}-{_safe_name(mode)}.log"
     context.log_dir.mkdir(parents=True, exist_ok=True)
     return context.log_dir / file_name

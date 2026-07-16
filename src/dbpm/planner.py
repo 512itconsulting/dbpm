@@ -37,7 +37,12 @@ def create_plan(
         confirm_delete_system=confirm_delete_system,
     )
     script = _script_for_mode(mode, manifest)
-    if mode in {"bootstrap-core", "install", "reinstall", "resume", "upgrade", "validate"} and not script:
+    runtime_step = _runtime_step_for_mode(mode, manifest, source, provenance)
+    if (
+        mode in {"bootstrap-core", "install", "reinstall", "resume", "upgrade", "validate"}
+        and not script
+        and runtime_step is None
+    ):
         raise ManifestError(f"No script is declared for deployment mode `{mode}`")
 
     return {
@@ -72,6 +77,7 @@ def create_plan(
             "arguments": _script_arguments_for_mode(mode, provenance) if script else [],
             "stdin": _script_stdin_for_mode(mode, manifest, environment) if script else None,
         },
+        "runtime": runtime_step,
     }
 
 
@@ -118,6 +124,49 @@ def _script_for_mode(mode: str, manifest: PackageManifest) -> str | None:
     return None
 
 
+def _runtime_script_for_mode(mode: str, manifest: PackageManifest) -> str | None:
+    runtime = manifest.runtime
+    if runtime is None:
+        return None
+    if mode in {"install", "reinstall", "resume"}:
+        return runtime.install
+    if mode == "upgrade":
+        return runtime.upgrade or runtime.install
+    if mode == "validate":
+        return runtime.validate
+    return None
+
+
+def _runtime_step_for_mode(
+    mode: str,
+    manifest: PackageManifest,
+    source: PackageSource,
+    provenance: Provenance,
+) -> dict[str, object] | None:
+    runtime = manifest.runtime
+    script = _runtime_script_for_mode(mode, manifest)
+    if runtime is None or script is None:
+        return None
+    checksum = (
+        source.artifact_checksum if source.artifact_checksum_alg == "SHA-256" else None
+    )
+    return {
+        "name": runtime.name,
+        "home_env": runtime.home_env,
+        "script": script,
+        "script_ref": str(source.resolve_script_path(script)),
+        "package_root": str(source.work_path or source.path),
+        "environment": {
+            "DBPM_RUNTIME_MODE": mode,
+            "DBPM_PACKAGE_NAME": manifest.name,
+            "DBPM_PACKAGE_VERSION": manifest.version,
+            "DBPM_COMMIT_HASH": provenance.commit,
+            "DBPM_ARTIFACT_URL": source.display_path,
+            "DBPM_ARTIFACT_SHA256": checksum or "",
+        },
+    }
+
+
 def _script_arguments_for_mode(mode: str, provenance: Provenance) -> list[str]:
     if mode == "validate":
         return []
@@ -140,6 +189,8 @@ def _pre_actions_for_mode(
     installed_state: dict[str, str] | None,
 ) -> list[dict[str, object]]:
     actions: list[dict[str, object]] = []
+    if not manifest.has_database_component:
+        return actions
     if mode == "reinstall":
         if manifest.is_core:
             actions.extend(
@@ -192,6 +243,8 @@ def _post_actions_for_mode(
     installed_state: dict[str, str] | None,
 ) -> list[dict[str, object]]:
     actions: list[dict[str, object]] = []
+    if not manifest.has_database_component:
+        return actions
     if mode in {"bootstrap-core", "reinstall"} and _can_record_core_post_deploy_provenance(manifest):
         actions.append(
             {

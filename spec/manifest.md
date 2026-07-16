@@ -55,6 +55,7 @@ scripts:
 - `core.minimum_version`: Minimum Core version required before dbpm executes the package deployment.
 - `dependencies`: Package dependencies beyond Core.
 - `scripts`: SQL*Plus/SQLcl-compatible entry points. Scripts should accept dbpm-injected provenance parameters instead of hard-coding commit hashes.
+- `runtime`: Optional non-database runtime component with its own executable entry points, deployed into an operator-provided prefix. See `runtime-component.md`.
 
 Version values follow [Semantic Versioning 2.0.0](https://semver.org/) and should be quoted in YAML so they are always parsed as strings.
 

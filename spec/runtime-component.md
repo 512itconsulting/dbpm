@@ -2,8 +2,11 @@
 
 ## Status
 
-Draft. Not implemented. This document defines the design direction for
-non-database package payloads before any manifest or CLI changes land.
+MVP implemented. The owner form (`runtime.name`), prefix resolution, script
+execution with the injected environment contract, receipt handling, and plan
+output are live. The `runtime.into` contribution form, `uninstall`
+orchestration, typed component kinds, and external locked runtime artifacts
+remain design-only; see MVP Scope below.
 
 ## Purpose
 
@@ -119,9 +122,11 @@ runtime:
   also appear in `dependencies` with a version constraint; that constraint is
   how the contribution states which runtime contract it supports.
 - `runtime.scripts`: executable entry points relative to the package root.
-  `install` is required; the rest are optional. Scripts follow the same
-  philosophy as SQL entry points: dbpm does not infer behavior from directory
-  names, it executes what the manifest declares.
+  `install` is required; the rest are optional. When `upgrade` is not
+  declared, upgrades run the `install` script (which must be idempotent);
+  when `validate` is not declared, validate skips the runtime component.
+  Scripts follow the same philosophy as SQL entry points: dbpm does not infer
+  behavior from directory names, it executes what the manifest declares.
 
 Database-only packages omit `runtime` entirely and behave exactly as before.
 Runtime-only packages (no database objects) may omit `database` and
@@ -168,7 +173,7 @@ Runtime scripts are executed:
 | `DBPM_INSTALLED_VERSION` | previously installed version from the receipt, empty on first install |
 | `DBPM_COMMIT_HASH` | resolved 40-character commit hash from artifact provenance |
 | `DBPM_ARTIFACT_URL` | resolved artifact URL or coordinate |
-| `DBPM_ARTIFACT_SHA256` | verified artifact checksum |
+| `DBPM_ARTIFACT_SHA256` | verified artifact checksum; empty for local directory sources, whose checksum is TREE-SHA-256 |
 
 Environment variables are used instead of positional arguments because
 runtime scripts are ordinary executables, not SQL*Plus scripts; the
@@ -232,7 +237,8 @@ that has installed into the prefix — the owner and any contributors:
       "artifact_url": "https://...",
       "artifact_sha256": "<hex>",
       "installed_at": "2026-07-13T18:04:00Z",
-      "mode": "install"
+      "mode": "install",
+      "status": "complete"
     },
     "warehouse_loads": {
       "role": "contributor",
@@ -241,7 +247,8 @@ that has installed into the prefix — the owner and any contributors:
       "artifact_url": "https://...",
       "artifact_sha256": "<hex>",
       "installed_at": "2026-07-13T18:09:00Z",
-      "mode": "install"
+      "mode": "install",
+      "status": "complete"
     }
   }
 }
@@ -253,9 +260,13 @@ same way `--check-db` verifies Core state today.
 
 Rules:
 
-- dbpm writes the receipt only after the runtime script exits successfully.
-- A failed runtime step should mark the entry with a failed status rather
-  than leaving the prior entry intact, so `resume` has accurate state.
+- dbpm writes the receipt only after the runtime script exits: a successful
+  exit records `"status": "complete"`, a failure records `"status": "failed"`.
+- A failed entry replaces the prior entry rather than leaving it intact, so
+  `resume` has accurate state. Failed entries carry a `previous_version`
+  field with the last completed version (or null), which feeds
+  `DBPM_INSTALLED_VERSION` on the next attempt. `validate` never writes the
+  receipt.
 - dbpm must take a simple exclusive lock (for example
   `<prefix>/.dbpm/lock`) while mutating the receipt to guard against
   concurrent deployments into the same prefix.

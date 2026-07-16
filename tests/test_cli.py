@@ -892,7 +892,7 @@ scripts:
 
     monkeypatch.setattr(cli, "get_application_state", lambda **kwargs: None)
 
-    def fake_execute_plan(plan, *, connect: str, runner: str):
+    def fake_execute_plan(plan, *, connect: str, runner: str, runtime_prefix: str | None = None):
         calls["plan"] = plan
         calls["connect"] = connect
         calls["runner"] = runner
@@ -927,7 +927,7 @@ def test_install_from_lockfile_executes_locked_plan(tmp_path: Path, monkeypatch)
 
     monkeypatch.setattr(cli, "get_application_state", lambda **kwargs: None)
 
-    def fake_execute_plan(plan, *, connect: str, runner: str):
+    def fake_execute_plan(plan, *, connect: str, runner: str, runtime_prefix: str | None = None):
         calls["plan"] = plan
         calls["connect"] = connect
         calls["runner"] = runner
@@ -1270,7 +1270,7 @@ def test_core_reinstall_allows_delete_system_confirmation(tmp_path: Path, monkey
         lambda **kwargs: ApplicationState("CORE", "3.4.0", "C", "abc"),
     )
 
-    def fake_execute_plan(plan, *, connect: str, runner: str):
+    def fake_execute_plan(plan, *, connect: str, runner: str, runtime_prefix: str | None = None):
         calls["policy"] = plan["policy"]
         return 0
 
@@ -1386,7 +1386,7 @@ scripts:
             deploy_commit_hash="abc",
         )
 
-    def fake_execute_plan(plan, *, connect: str, runner: str):
+    def fake_execute_plan(plan, *, connect: str, runner: str, runtime_prefix: str | None = None):
         calls["plan"] = plan
         calls["connect"] = connect
         calls["runner"] = runner
@@ -1501,7 +1501,7 @@ def test_core_upgrade_reads_installed_state_and_executes(tmp_path: Path, monkeyp
             deploy_commit_hash="abc",
         )
 
-    def fake_execute_plan(plan, *, connect: str, runner: str):
+    def fake_execute_plan(plan, *, connect: str, runner: str, runtime_prefix: str | None = None):
         calls["plan"] = plan
         calls["connect"] = connect
         calls["runner"] = runner
@@ -1554,7 +1554,7 @@ scripts:
             deploy_commit_hash="abc",
         )
 
-    def fake_execute_plan(plan, *, connect: str, runner: str):
+    def fake_execute_plan(plan, *, connect: str, runner: str, runtime_prefix: str | None = None):
         calls["plan"] = plan
         calls["connect"] = connect
         calls["runner"] = runner
@@ -2131,7 +2131,7 @@ def test_bootstrap_core_runs_when_core_is_not_installed(tmp_path: Path, monkeypa
         calls["application_name"] = kwargs["application_name"]
         return None
 
-    def fake_execute_plan(plan, *, connect: str, runner: str):
+    def fake_execute_plan(plan, *, connect: str, runner: str, runtime_prefix: str | None = None):
         calls["plan"] = plan
         return 0
 
@@ -2151,7 +2151,7 @@ def test_bootstrap_core_accepts_policy_and_deploy_environment(tmp_path: Path, mo
 
     monkeypatch.setattr(cli, "get_application_state", lambda **kwargs: None)
 
-    def fake_execute_plan(plan, *, connect: str, runner: str):
+    def fake_execute_plan(plan, *, connect: str, runner: str, runtime_prefix: str | None = None):
         calls["plan"] = plan
         return 0
 
@@ -2276,7 +2276,7 @@ def test_upgrade_chain_executes_steps_in_order(tmp_path: Path, monkeypatch):
 
     executed_versions = []
 
-    def fake_execute_plan(plan, *, connect, runner):
+    def fake_execute_plan(plan, *, connect, runner, runtime_prefix=None):
         package = plan.get("package", {})
         executed_versions.append(package.get("version"))
         versions_returned.append(package.get("version"))
