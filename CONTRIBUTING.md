@@ -54,9 +54,14 @@ Before opening a pull request:
 - Add or update tests for behavioral changes.
 - Update docs, examples, or command references when user-facing behavior
   changes.
+- Add user-visible changes to the `Unreleased` section of
+  [CHANGELOG.md](CHANGELOG.md).
 - Include the commands you ran and any tests you could not run.
 - Keep changes scoped to the issue or feature being addressed.
 - Avoid rewriting unrelated formatting or generated files.
+
+See [Releasing dbpm](docs/releases.md) for the version-bump and release
+checklist.
 
 ## Compatibility Notes
 
@@ -69,4 +74,3 @@ dbpm uses semantic versioning. Be careful with changes that affect:
 - SQL generated for package execution or script generation.
 
 Breaking changes should be called out clearly in the pull request.
-

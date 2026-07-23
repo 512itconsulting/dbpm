@@ -42,6 +42,8 @@ dbpm install --lockfile dbpm-lock.json
 ```
 
 For a guided setup, see [Getting Started](docs/getting-started.md).
+See the [changelog](CHANGELOG.md) for release contents and
+[release checklist](docs/releases.md) for the versioning process.
 
 ## Features
 - Package manifests through `dbpm.yaml`, `dbpm.yml`, `dbpm.json`, or `package.dbpm.yaml`
