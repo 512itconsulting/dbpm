@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import tempfile
+import shutil
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -339,6 +340,7 @@ def stage_application_runtime_graph(
     prefix: Path,
     mode: str,
     log_dir: Path,
+    staging_path: Path | None = None,
 ) -> StagedApplicationRuntime:
     root_package = _nonempty_string(
         graph.get("root_package"),
@@ -362,9 +364,17 @@ def stage_application_runtime_graph(
     with application_runtime_lock(prefix):
         staging_parent = prefix / APPLICATION_RECEIPT_DIR_NAME / "staging"
         staging_parent.mkdir(parents=True, exist_ok=True)
-        staging_path = Path(tempfile.mkdtemp(prefix="generation-", dir=staging_parent))
+        staging_path = staging_path or Path(
+            tempfile.mkdtemp(prefix="generation-", dir=staging_parent)
+        )
+        staging_path.mkdir(parents=True, exist_ok=True)
+        (staging_path / "graph.json").write_text(
+            json.dumps(graph, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        _write_stage_status(staging_path, "staging")
         payload_root = staging_path / "packages"
-        payload_root.mkdir()
+        payload_root.mkdir(exist_ok=True)
         log_files: list[Path] = []
 
         for sequence, raw_payload in enumerate(payloads, start=1):
@@ -433,17 +443,72 @@ def stage_application_runtime_graph(
                 log_file=log_file,
             )
             if returncode != 0:
+                _write_stage_status(staging_path, "failed")
                 raise ExecutionError(
                     f"Runtime script for {package_name} failed with exit code "
                     f"{returncode}; staged files remain in {staging_path}; see {log_file}"
                 )
 
         _validate_staged_commands(commands, staging_path, payloads)
+        _write_stage_status(staging_path, "ready")
         return StagedApplicationRuntime(
             path=staging_path,
             payload_root=payload_root,
             log_files=tuple(log_files),
         )
+
+
+def resume_application_runtime_graph(
+    graph: dict[str, object],
+    *,
+    prefix: Path,
+    log_dir: Path,
+) -> StagedApplicationRuntime:
+    staging_parent = prefix / APPLICATION_RECEIPT_DIR_NAME / "staging"
+    expected = json.dumps(graph, sort_keys=True, separators=(",", ":"))
+    matches: list[Path] = []
+    if staging_parent.is_dir():
+        for candidate in staging_parent.iterdir():
+            graph_file = candidate / "graph.json"
+            status_file = candidate / "status.json"
+            if not graph_file.is_file() or not status_file.is_file():
+                continue
+            try:
+                recorded = json.loads(graph_file.read_text(encoding="utf-8"))
+                status = json.loads(status_file.read_text(encoding="utf-8")).get("status")
+            except (OSError, json.JSONDecodeError):
+                continue
+            if (
+                json.dumps(recorded, sort_keys=True, separators=(",", ":")) == expected
+                and status in {"failed", "staging", "ready"}
+            ):
+                matches.append(candidate)
+    if not matches:
+        raise ExecutionError("No matching incomplete application runtime generation to resume")
+    candidate = max(matches, key=lambda item: item.stat().st_mtime_ns)
+    if json.loads((candidate / "status.json").read_text(encoding="utf-8")).get("status") == "ready":
+        return StagedApplicationRuntime(
+            path=candidate,
+            payload_root=candidate / "packages",
+            log_files=(),
+        )
+    payload_root = candidate / "packages"
+    if payload_root.exists():
+        shutil.rmtree(payload_root)
+    return stage_application_runtime_graph(
+        graph,
+        prefix=prefix,
+        mode="resume",
+        log_dir=log_dir,
+        staging_path=candidate,
+    )
+
+
+def _write_stage_status(staging_path: Path, status: str) -> None:
+    (staging_path / "status.json").write_text(
+        json.dumps({"status": status}, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 @contextmanager

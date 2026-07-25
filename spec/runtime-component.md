@@ -15,8 +15,9 @@ command names. Install execution stages package payloads, runs package-local
 scripts, validates exports, promotes payloads, activates command links, and
 writes the application receipt. Validate reconciles that receipt with the
 planned graph, payload identities, managed command links, and package-declared
-health scripts. Upgrade, resume, reinstall, and uninstall orchestration remain
-incomplete. The removed `runtime.name`,
+health scripts. Resume can deterministically retry a matching failed or
+interrupted staging generation. Upgrade, reinstall, and uninstall
+orchestration remain incomplete. The removed `runtime.name`,
 `runtime.home_env`, `runtime.into`, and `runtime.layout` fields are rejected.
 
 ## Purpose
@@ -475,8 +476,10 @@ observability, not authority.
   active versions, validate, and atomically switch activation.
 - **reinstall**: reconstruct package payloads with explicit destructive intent,
   but never implicitly delete application-owned `etc` or `var` content.
-- **resume**: continue or repeat staging based on receipt and recovery state;
-  it must not treat a partially staged graph as active.
+- **resume**: implemented for incomplete staging; selects only a generation
+  whose recorded graph exactly matches the requested graph, reuses a ready
+  stage or reconstructs a failed/interrupted payload set in the same staging
+  directory, and never treats partial content as active.
 - **validate**: implemented; verifies receipt identity, package payload and
   artifact identity, the exact managed command-link set, executable targets,
   and package-declared read-only health checks without mutating activation.
@@ -607,6 +610,5 @@ specified and tested before code changes:
 
 ## Proposed Delivery Sequence
 
-1. Add deterministic resume.
-2. Add upgrade retention and garbage collection.
-3. Design uninstall and rollback only after activation recovery is proven.
+1. Add upgrade retention and garbage collection.
+2. Design uninstall and rollback only after activation recovery is proven.

@@ -35,6 +35,9 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Added graph-aware runtime validation for receipt/package provenance,
   payload directories, the exact managed command-link set, executable target
   integrity, and package-declared read-only validation scripts.
+- Added deterministic runtime resume metadata. Failed, interrupted, and ready
+  stages record their exact graph and status; resume selects only a matching
+  incomplete generation and reconstructs failed payloads in place.
 
 ### Deprecated
 

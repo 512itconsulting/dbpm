@@ -12,6 +12,7 @@ from dbpm.application_runtime import (
     application_runtime_lock,
     load_application_runtime_receipt,
     parse_application_runtime_receipt,
+    resume_application_runtime_graph,
     stage_application_runtime_graph,
     write_application_runtime_receipt,
 )
@@ -236,6 +237,58 @@ def test_application_runtime_lock_rejects_concurrent_operation(tmp_path: Path):
         with pytest.raises(ExecutionError, match="appears to be active"):
             with application_runtime_lock(tmp_path):
                 pass
+
+
+def test_resume_reuses_matching_failed_generation(tmp_path: Path):
+    prefix = tmp_path / "app"
+    prefix.mkdir()
+    package_root = tmp_path / "artifact"
+    package_root.mkdir()
+    script = package_root / "install.sh"
+    marker = package_root / "failed-once"
+    script.write_text(
+        "#!/bin/sh\n"
+        f"if [ ! -f '{marker}' ]; then touch '{marker}'; exit 7; fi\n"
+        "mkdir -p \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin\"\n"
+        "printf '#!/bin/sh\\nexit 0\\n' > \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin/demo\"\n"
+        "chmod +x \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin/demo\"\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    graph = _graph(package_root=package_root, script=script)
+
+    with pytest.raises(ExecutionError, match="failed with exit code 7") as exc_info:
+        stage_application_runtime_graph(
+            graph,
+            prefix=prefix,
+            mode="install",
+            log_dir=tmp_path / "logs",
+        )
+    failed_path = Path(
+        str(exc_info.value).split("staged files remain in ", 1)[1].split(";", 1)[0]
+    )
+
+    resumed = resume_application_runtime_graph(
+        graph,
+        prefix=prefix,
+        log_dir=tmp_path / "logs",
+    )
+
+    assert resumed.path == failed_path
+    assert json.loads((resumed.path / "status.json").read_text())["status"] == "ready"
+    assert (resumed.path / "packages/demo/1.0.0/bin/demo").is_file()
+
+
+def test_resume_rejects_when_no_matching_generation(tmp_path: Path):
+    prefix = tmp_path / "app"
+    prefix.mkdir()
+
+    with pytest.raises(ExecutionError, match="No matching incomplete"):
+        resume_application_runtime_graph(
+            {"root_package": "demo", "root_version": "1.0.0", "payloads": [], "commands": []},
+            prefix=prefix,
+            log_dir=tmp_path / "logs",
+        )
 
 
 def _graph(*, package_root: Path, script: Path) -> dict[str, object]:

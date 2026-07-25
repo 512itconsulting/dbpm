@@ -15,6 +15,7 @@ from .application_runtime import (
     activate_staged_application_runtime,
     stage_application_runtime_graph,
     validate_application_runtime_graph,
+    resume_application_runtime_graph,
 )
 
 
@@ -123,6 +124,14 @@ def _execute_application_runtime(
             prefix=prefix,
             log_dir=context.log_dir,
         )
+        return
+    if mode == "resume":
+        staged = resume_application_runtime_graph(
+            graph,
+            prefix=prefix,
+            log_dir=context.log_dir,
+        )
+        activate_staged_application_runtime(graph, staged, prefix=prefix)
         return
     if mode != "install":
         raise ExecutionError(
