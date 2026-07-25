@@ -2,7 +2,10 @@ import json
 from pathlib import Path
 
 import pytest
+import errno
+import os
 
+import dbpm.application_runtime as application_runtime_module
 from dbpm.application_runtime import (
     APPLICATION_RECEIPT_SCHEMA,
     ActivatedRuntimeCommand,
@@ -406,6 +409,26 @@ def test_activation_journal_recovers_interrupted_bin_switch(tmp_path: Path):
     assert (staging / "bin/new").read_text() == "new"
     assert (staging / "packages/demo/2.0.0/new").read_text() == "new"
     assert not (prefix / ".dbpm/activation.json").exists()
+
+
+def test_command_publication_falls_back_to_hard_link(monkeypatch, tmp_path: Path):
+    target = tmp_path / "target"
+    target.write_text("#!/bin/sh\n")
+    target.chmod(0o755)
+    link = tmp_path / "command"
+
+    def deny_symlink(*args, **kwargs):
+        raise OSError(errno.EPERM, "symlinks unavailable")
+
+    monkeypatch.setattr(application_runtime_module.os, "symlink", deny_symlink)
+    application_runtime_module._create_command_link(
+        link,
+        target,
+        relative_target="../target",
+    )
+
+    assert not link.is_symlink()
+    assert os.path.samefile(link, target)
 
 
 def _generation_receipt(generation: int, version: str) -> ApplicationRuntimeReceipt:

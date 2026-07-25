@@ -55,6 +55,9 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   package and records the reactivation as a new generation.
 - Added durable activation journaling and automatic crash recovery across
   payload promotion, command-directory switching, and receipt publication.
+- Added cross-platform command publication: relative symlinks are preferred,
+  with executable hard-link fallback and identity-based validation when
+  symlink creation is denied by the platform or local policy.
 
 ### Deprecated
 

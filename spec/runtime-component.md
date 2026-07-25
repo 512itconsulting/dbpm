@@ -143,9 +143,10 @@ normative:
   implicitly.
 
 Package and version path segments must be derived from validated manifest
-values and must not permit path traversal. dbpm should use relative symlinks
-for application-level links so an application runtime can be relocated as a
-unit when the underlying platform supports it.
+values and must not permit path traversal. dbpm prefers relative symlinks for
+application-level commands so a runtime can be relocated as a unit. When the
+platform or local policy denies symlink creation, dbpm falls back to hard
+links for executable files and validates them with file identity checks.
 
 The prefix must exist and be writable by the invoking user. Creating OS users,
 root-owned directories, systemd units, or other privileged host resources
@@ -607,11 +608,9 @@ specified and tested before code changes:
 1. Exact payload path encoding, including build metadata and non-semver local
    versions.
 2. Activation-generation storage and crash-recovery protocol.
-3. Cross-platform link strategy, including systems without symlink support.
-4. Upgrade script semantics when old and new payload directories are isolated.
-5. Retention, garbage-collection, uninstall, and rollback policy.
-6. Interaction between runtime activation and database deployment failure.
-7. Dry-run and plan output for payload, export, link, and removal changes.
+3. Upgrade script semantics when old and new payload directories are isolated.
+4. Interaction between runtime activation and database deployment failure.
+5. Dry-run and plan output for payload, export, link, and removal changes.
 
 ## Proposed Delivery Sequence
 

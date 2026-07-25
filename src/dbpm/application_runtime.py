@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import errno
 import os
 import subprocess
 import tempfile
@@ -210,10 +211,15 @@ def validate_application_runtime_graph(
         raise ExecutionError("Application runtime bin directory does not match the receipt")
     for name, (_, _, target) in expected_commands.items():
         link = bin_path / name
-        if not link.is_symlink():
-            raise ExecutionError(f"Application runtime command is not a managed symlink: {link}")
         expected_target = (prefix / target).resolve(strict=True)
-        if link.resolve(strict=True) != expected_target or not os.access(expected_target, os.X_OK):
+        if not link.exists():
+            raise ExecutionError(f"Application runtime command is missing: {link}")
+        matches = (
+            link.resolve(strict=True) == expected_target
+            if link.is_symlink()
+            else link.is_file() and os.path.samefile(link, expected_target)
+        )
+        if not matches or not os.access(expected_target, os.X_OK):
             raise ExecutionError(f"Application runtime command target is invalid: {link}")
     return receipt
 
@@ -272,7 +278,11 @@ def activate_staged_application_runtime(
             command = _mapping(raw_command, "application runtime command")
             name = _command_name(command.get("name"), "runtime command name")
             target = _safe_relative_path(command.get("target"), f"runtime command {name} target")
-            os.symlink(f"../{target}", staged_bin / name)
+            _create_command_link(
+                staged_bin / name,
+                prefix / target,
+                relative_target=f"../{target}",
+            )
 
         try:
             for raw_payload in payloads:
@@ -465,6 +475,27 @@ def _write_activation_journal(path: Path, journal: dict[str, object]) -> None:
     temp = path.with_suffix(".tmp")
     temp.write_text(json.dumps(journal, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     temp.replace(path)
+
+
+def _create_command_link(
+    link: Path,
+    target: Path,
+    *,
+    relative_target: str,
+) -> None:
+    try:
+        os.symlink(relative_target, link)
+        return
+    except OSError as exc:
+        if exc.errno not in {errno.EPERM, errno.EACCES, errno.ENOTSUP}:
+            raise
+    try:
+        os.link(target, link)
+    except OSError as exc:
+        raise ExecutionError(
+            f"Cannot publish runtime command {link}; symlink creation is unavailable "
+            f"and hard-link fallback failed: {exc}"
+        ) from exc
 
 
 def stage_application_runtime_graph(
@@ -957,7 +988,11 @@ def rollback_application_runtime(
                 raise ExecutionError(
                     f"Rollback command target is not executable: {command.target}"
                 )
-            os.symlink(f"../{command.target}", staged_bin / command.name)
+            _create_command_link(
+                staged_bin / command.name,
+                executable,
+                relative_target=f"../{command.target}",
+            )
         active_archive = generations_root / str(active.generation)
         active_archive.mkdir(parents=True, exist_ok=True)
         (active_archive / APPLICATION_RECEIPT_FILE_NAME).write_text(
