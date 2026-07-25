@@ -69,7 +69,7 @@ def create_multi_package_plan(
         for item in ordered_sources
     }
     for item in _reachable_dependency_sources(source, dependency_sources):
-        if item.manifest.application_name in planned_apps:
+        if item.manifest.application_name in planned_apps or item.manifest.runtime is None:
             continue
         runtime_plans.append(
             create_plan(
