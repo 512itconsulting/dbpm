@@ -65,6 +65,7 @@ def create_multi_package_plan(
         plan["application_runtime"] = create_application_runtime_graph_plan(
             package_plans,
             root_package_name=source.manifest.name,
+            root_package_version=source.manifest.version,
         )
         for package_plan in package_plans:
             package_plan.pop("application_runtime", None)

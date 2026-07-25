@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, Iterator, TextIO
 
 from .errors import ExecutionError
 from .manifest import PACKAGE_NAME_RE, RUNTIME_COMMAND_NAME_RE
@@ -79,6 +83,259 @@ class ApplicationRuntimeReceipt:
                 for command in self.commands
             },
         }
+
+
+@dataclass(frozen=True)
+class StagedApplicationRuntime:
+    path: Path
+    payload_root: Path
+    log_files: tuple[Path, ...]
+
+
+def stage_application_runtime_graph(
+    graph: dict[str, object],
+    *,
+    prefix: Path,
+    mode: str,
+    log_dir: Path,
+) -> StagedApplicationRuntime:
+    root_package = _nonempty_string(
+        graph.get("root_package"),
+        "application runtime graph root_package",
+    )
+    root_version = _nonempty_string(
+        graph.get("root_version"),
+        "application runtime graph root_version",
+    )
+    payloads = graph.get("payloads")
+    commands = graph.get("commands")
+    if not isinstance(payloads, list):
+        raise ExecutionError("Application runtime graph payloads must be a list")
+    if not isinstance(commands, list):
+        raise ExecutionError("Application runtime graph commands must be a list")
+    if mode not in {"install", "upgrade", "reinstall", "resume"}:
+        raise ExecutionError(f"Application runtime staging does not support mode `{mode}`")
+    _assert_runtime_prefix(prefix)
+
+    log_dir.mkdir(parents=True, exist_ok=True)
+    with application_runtime_lock(prefix):
+        staging_parent = prefix / APPLICATION_RECEIPT_DIR_NAME / "staging"
+        staging_parent.mkdir(parents=True, exist_ok=True)
+        staging_path = Path(tempfile.mkdtemp(prefix="generation-", dir=staging_parent))
+        payload_root = staging_path / "packages"
+        payload_root.mkdir()
+        log_files: list[Path] = []
+
+        for sequence, raw_payload in enumerate(payloads, start=1):
+            payload = _mapping(raw_payload, "application runtime payload")
+            package_name = _package_name(
+                payload.get("package"),
+                "application runtime payload package",
+            )
+            package_version = _nonempty_string(
+                payload.get("version"),
+                f"application runtime payload {package_name} version",
+            )
+            relative_payload = _safe_relative_path(
+                payload.get("payload_path"),
+                f"application runtime payload {package_name} path",
+            )
+            package_prefix = staging_path / relative_payload
+            package_prefix.mkdir(parents=True)
+            script = _runtime_script_for_mode(payload, mode)
+            if script is None:
+                continue
+            script_path = Path(
+                _nonempty_string(
+                    script.get("ref"),
+                    f"application runtime payload {package_name} script",
+                )
+            )
+            if not script_path.is_file():
+                raise ExecutionError(f"Runtime script not found: {script_path}")
+            package_root = Path(
+                _nonempty_string(
+                    payload.get("package_root"),
+                    f"application runtime payload {package_name} package_root",
+                )
+            )
+            artifact = _mapping(
+                payload.get("artifact"),
+                f"application runtime payload {package_name} artifact",
+            )
+            environment = dict(os.environ)
+            environment.update(
+                {
+                    "DBPM_RUNTIME_PREFIX": str(prefix.resolve()),
+                    "DBPM_RUNTIME_PACKAGE_PREFIX": str(package_prefix.resolve()),
+                    "DBPM_RUNTIME_MODE": mode,
+                    "DBPM_ROOT_PACKAGE_NAME": root_package,
+                    "DBPM_ROOT_PACKAGE_VERSION": root_version,
+                    "DBPM_PACKAGE_NAME": package_name,
+                    "DBPM_PACKAGE_VERSION": package_version,
+                    "DBPM_INSTALLED_VERSION": "",
+                    "DBPM_COMMIT_HASH": str(artifact.get("commit") or ""),
+                    "DBPM_ARTIFACT_URL": str(artifact.get("uri") or ""),
+                    "DBPM_ARTIFACT_SHA256": (
+                        str(artifact.get("checksum") or "")
+                        if artifact.get("checksum_alg") == "SHA-256"
+                        else ""
+                    ),
+                }
+            )
+            log_file = log_dir / f"{sequence:03d}-{package_name}-runtime-stage.log"
+            log_files.append(log_file)
+            returncode = _run_runtime_script(
+                script_path,
+                cwd=package_root,
+                environment=environment,
+                log_file=log_file,
+            )
+            if returncode != 0:
+                raise ExecutionError(
+                    f"Runtime script for {package_name} failed with exit code "
+                    f"{returncode}; staged files remain in {staging_path}; see {log_file}"
+                )
+
+        _validate_staged_commands(commands, staging_path, payloads)
+        return StagedApplicationRuntime(
+            path=staging_path,
+            payload_root=payload_root,
+            log_files=tuple(log_files),
+        )
+
+
+@contextmanager
+def application_runtime_lock(prefix: Path) -> Iterator[None]:
+    metadata = prefix / APPLICATION_RECEIPT_DIR_NAME
+    metadata.mkdir(parents=True, exist_ok=True)
+    lock_file = metadata / "lock"
+    try:
+        descriptor = os.open(lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        raise ExecutionError(
+            f"Another dbpm application runtime operation appears to be active: "
+            f"{lock_file}"
+        ) from None
+    try:
+        os.write(descriptor, f"{os.getpid()}\n".encode("utf-8"))
+        os.close(descriptor)
+        yield
+    finally:
+        lock_file.unlink(missing_ok=True)
+
+
+def _assert_runtime_prefix(prefix: Path) -> None:
+    if not prefix.is_dir():
+        raise ExecutionError(
+            f"Application runtime prefix does not exist or is not a directory: {prefix}"
+        )
+    if not os.access(prefix, os.W_OK):
+        raise ExecutionError(
+            f"Application runtime prefix is not writable by the current user: {prefix}"
+        )
+
+
+def _runtime_script_for_mode(
+    payload: dict[str, Any],
+    mode: str,
+) -> dict[str, Any] | None:
+    scripts = _mapping(payload.get("scripts"), "application runtime payload scripts")
+    script_name = "upgrade" if mode == "upgrade" else "install"
+    raw_script = scripts.get(script_name)
+    if mode == "upgrade" and (
+        not isinstance(raw_script, dict) or raw_script.get("ref") is None
+    ):
+        raw_script = scripts.get("install")
+    if not isinstance(raw_script, dict) or raw_script.get("ref") is None:
+        return None
+    return raw_script
+
+
+def _run_runtime_script(
+    script_path: Path,
+    *,
+    cwd: Path,
+    environment: dict[str, str],
+    log_file: Path,
+) -> int:
+    try:
+        mode = script_path.stat().st_mode
+        if not mode & 0o111:
+            script_path.chmod(mode | 0o100)
+    except OSError as exc:
+        raise ExecutionError(f"Runtime script is not executable: {script_path}: {exc}") from exc
+    with log_file.open("w", encoding="utf-8", errors="replace") as log:
+        try:
+            process = subprocess.Popen(
+                [str(script_path)],
+                cwd=cwd,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                env=environment,
+            )
+        except OSError as exc:
+            raise ExecutionError(f"Cannot execute runtime script {script_path}: {exc}") from exc
+        if process.stdout is not None:
+            _tee_output(process.stdout, log)
+        return process.wait()
+
+
+def _tee_output(stream: TextIO, log: TextIO) -> None:
+    for line in iter(stream.readline, ""):
+        log.write(line)
+        log.flush()
+    stream.close()
+
+
+def _validate_staged_commands(
+    commands: list[object],
+    staging_path: Path,
+    payloads: list[object],
+) -> None:
+    package_paths: dict[str, Path] = {}
+    for raw_payload in payloads:
+        payload = _mapping(raw_payload, "application runtime payload")
+        package = _package_name(payload.get("package"), "application runtime payload package")
+        relative = _safe_relative_path(
+            payload.get("payload_path"),
+            f"application runtime payload {package} path",
+        )
+        package_paths[package] = (staging_path / relative).resolve()
+
+    for raw_command in commands:
+        command = _mapping(raw_command, "application runtime command")
+        name = _command_name(command.get("name"), "activated runtime command")
+        package = _package_name(
+            command.get("package"),
+            f"runtime command {name} package",
+        )
+        package_path = package_paths.get(package)
+        if package_path is None:
+            raise ExecutionError(
+                f"Runtime command `{name}` references missing payload `{package}`"
+            )
+        target = staging_path / _safe_relative_path(
+            command.get("target"),
+            f"runtime command {name} target",
+        )
+        try:
+            resolved = target.resolve(strict=True)
+        except OSError as exc:
+            raise ExecutionError(
+                f"Runtime command `{name}` target does not exist: {target}"
+            ) from exc
+        if not resolved.is_relative_to(package_path):
+            raise ExecutionError(
+                f"Runtime command `{name}` target escapes package `{package}` payload"
+            )
+        if not resolved.is_file() or not os.access(resolved, os.X_OK):
+            raise ExecutionError(
+                f"Runtime command `{name}` target is not an executable file: {target}"
+            )
 
 
 def application_receipt_path(prefix: Path) -> Path:

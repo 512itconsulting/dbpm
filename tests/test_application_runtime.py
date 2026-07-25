@@ -9,8 +9,10 @@ from dbpm.application_runtime import (
     ApplicationRuntimePackage,
     ApplicationRuntimeReceipt,
     application_receipt_path,
+    application_runtime_lock,
     load_application_runtime_receipt,
     parse_application_runtime_receipt,
+    stage_application_runtime_graph,
     write_application_runtime_receipt,
 )
 from dbpm.errors import ExecutionError
@@ -141,3 +143,143 @@ def test_application_runtime_receipt_rejects_unsafe_package_path():
 
     with pytest.raises(ExecutionError, match="safe relative path"):
         parse_application_runtime_receipt(receipt)
+
+
+def test_stage_application_runtime_executes_package_in_isolated_prefix(tmp_path: Path):
+    prefix = tmp_path / "app"
+    prefix.mkdir()
+    package_root = tmp_path / "artifact"
+    package_root.mkdir()
+    script = package_root / "install.sh"
+    script.write_text(
+        "#!/bin/sh\n"
+        "mkdir -p \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin\"\n"
+        "printf '#!/bin/sh\\nexit 0\\n' > "
+        "\"$DBPM_RUNTIME_PACKAGE_PREFIX/bin/demo\"\n"
+        "chmod +x \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin/demo\"\n"
+        "printf '%s\\n' \"$DBPM_ROOT_PACKAGE_NAME\" \"$DBPM_PACKAGE_NAME\"\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+
+    staged = stage_application_runtime_graph(
+        _graph(package_root=package_root, script=script),
+        prefix=prefix,
+        mode="install",
+        log_dir=tmp_path / "logs",
+    )
+
+    command = staged.path / "packages/demo/1.0.0/bin/demo"
+    assert command.is_file()
+    assert command.stat().st_mode & 0o111
+    assert not (prefix / "packages").exists()
+    assert staged.log_files[0].read_text(encoding="utf-8") == "demo\ndemo\n"
+    assert not (prefix / ".dbpm" / "lock").exists()
+
+
+def test_stage_application_runtime_keeps_failed_payload_for_diagnostics(tmp_path: Path):
+    prefix = tmp_path / "app"
+    prefix.mkdir()
+    package_root = tmp_path / "artifact"
+    package_root.mkdir()
+    script = package_root / "install.sh"
+    script.write_text(
+        "#!/bin/sh\n"
+        "printf broken > \"$DBPM_RUNTIME_PACKAGE_PREFIX/partial.txt\"\n"
+        "exit 7\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+
+    with pytest.raises(ExecutionError, match="failed with exit code 7") as exc_info:
+        stage_application_runtime_graph(
+            _graph(package_root=package_root, script=script),
+            prefix=prefix,
+            mode="install",
+            log_dir=tmp_path / "logs",
+        )
+
+    message = str(exc_info.value)
+    staging_path = Path(message.split("staged files remain in ", 1)[1].split(";", 1)[0])
+    assert (staging_path / "packages/demo/1.0.0/partial.txt").read_text() == "broken"
+    assert not (prefix / ".dbpm" / "lock").exists()
+
+
+def test_stage_application_runtime_rejects_export_symlink_escape(tmp_path: Path):
+    prefix = tmp_path / "app"
+    prefix.mkdir()
+    package_root = tmp_path / "artifact"
+    package_root.mkdir()
+    outside = tmp_path / "outside"
+    outside.write_text("#!/bin/sh\n", encoding="utf-8")
+    outside.chmod(0o755)
+    script = package_root / "install.sh"
+    script.write_text(
+        "#!/bin/sh\n"
+        "mkdir -p \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin\"\n"
+        f"ln -s {outside} \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin/demo\"\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+
+    with pytest.raises(ExecutionError, match="escapes package"):
+        stage_application_runtime_graph(
+            _graph(package_root=package_root, script=script),
+            prefix=prefix,
+            mode="install",
+            log_dir=tmp_path / "logs",
+        )
+
+
+def test_application_runtime_lock_rejects_concurrent_operation(tmp_path: Path):
+    with application_runtime_lock(tmp_path):
+        with pytest.raises(ExecutionError, match="appears to be active"):
+            with application_runtime_lock(tmp_path):
+                pass
+
+
+def _graph(*, package_root: Path, script: Path) -> dict[str, object]:
+    return {
+        "root_package": "demo",
+        "root_version": "1.0.0",
+        "payloads": [
+            {
+                "package": "demo",
+                "version": "1.0.0",
+                "payload_path": "packages/demo/1.0.0",
+                "package_root": str(package_root),
+                "artifact": {
+                    "uri": str(package_root),
+                    "checksum": None,
+                    "checksum_alg": "TREE-SHA-256",
+                    "commit": "a" * 40,
+                },
+                "scripts": {
+                    "install": {"path": "install.sh", "ref": str(script)},
+                    "upgrade": {"path": None, "ref": None},
+                    "validate": {"path": None, "ref": None},
+                    "uninstall": {"path": None, "ref": None},
+                },
+                "exports": {
+                    "commands": [
+                        {
+                            "name": "demo",
+                            "target": "bin/demo",
+                            "canonical": "demo.demo",
+                        }
+                    ]
+                },
+                "activation": {"commands": {"aliases": {}, "disabled": []}},
+            }
+        ],
+        "commands": [
+            {
+                "name": "demo",
+                "canonical": "demo.demo",
+                "package": "demo",
+                "export": "demo",
+                "target": "packages/demo/1.0.0/bin/demo",
+                "link": "bin/demo",
+            }
+        ],
+    }

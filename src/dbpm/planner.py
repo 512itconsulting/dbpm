@@ -37,7 +37,7 @@ def create_plan(
         confirm_delete_system=confirm_delete_system,
     )
     script = _script_for_mode(mode, manifest)
-    runtime_package = _application_runtime_package(manifest, source)
+    runtime_package = _application_runtime_package(manifest, source, provenance)
     if (
         mode in {"bootstrap-core", "install", "reinstall", "resume", "upgrade", "validate"}
         and not script
@@ -83,6 +83,7 @@ def create_plan(
         plan["application_runtime"] = create_application_runtime_graph_plan(
             [plan],
             root_package_name=manifest.name,
+            root_package_version=manifest.version,
         )
     return plan
 
@@ -133,6 +134,7 @@ def _script_for_mode(mode: str, manifest: PackageManifest) -> str | None:
 def _application_runtime_package(
     manifest: PackageManifest,
     source: PackageSource,
+    provenance: Provenance,
 ) -> dict[str, object] | None:
     runtime = manifest.runtime
     if runtime is None:
@@ -148,6 +150,12 @@ def _application_runtime_package(
         "version": manifest.version,
         "payload_path": f"packages/{manifest.name}/{manifest.version}",
         "package_root": str(source.work_path or source.path),
+        "artifact": {
+            "uri": source.display_path,
+            "checksum": source.artifact_checksum,
+            "checksum_alg": source.artifact_checksum_alg,
+            "commit": provenance.commit,
+        },
         "scripts": {
             name: {
                 "path": path,
@@ -180,6 +188,7 @@ def create_application_runtime_graph_plan(
     package_plans: list[dict[str, object]],
     *,
     root_package_name: str,
+    root_package_version: str,
 ) -> dict[str, object]:
     runtime_packages: list[dict[str, object]] = []
     root_runtime: dict[str, object] | None = None
@@ -260,6 +269,7 @@ def create_application_runtime_graph_plan(
     return {
         "schema_version": "dbpm.application-runtime-plan.v1",
         "root_package": root_package_name,
+        "root_version": root_package_version,
         "payloads": runtime_packages,
         "commands": activated,
     }

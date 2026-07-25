@@ -77,11 +77,13 @@ See the [changelog](CHANGELOG.md) for release contents and
 ## Known Limitations
 - Multi-package dependency execution does not support `reinstall`.
 - Application-owned runtime composition, isolated dependency payloads, and
-  declarative command exports can be validated and planned. Runtime execution,
-  activation, uninstall orchestration, and typed component kinds such as
-  `python-venv` are not implemented yet. The removed package-owned fields
-  `runtime.name`, `runtime.home_env`, `runtime.into`, and `runtime.layout` are
-  rejected.
+  declarative command exports can be validated and planned. An internal
+  execution layer stages isolated payloads, runs package-local scripts, and
+  validates exported executables; normal deployment remains blocked until
+  atomic activation is implemented. Uninstall orchestration and typed
+  component kinds such as `python-venv` are also not implemented. The removed
+  package-owned fields `runtime.name`, `runtime.home_env`, `runtime.into`, and
+  `runtime.layout` are rejected.
 - Lockfile database provenance reconciliation requires Core 3.3.0 or newer.
 - Non-lockfile installs use the coordinate-based cache without checksum verification; the lockfile path has full SHA-256 verification.
 

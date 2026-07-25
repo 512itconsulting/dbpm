@@ -207,6 +207,7 @@ def test_application_runtime_graph_uses_root_aliases_and_disabled_exports():
     graph = create_application_runtime_graph_plan(
         [dependency, root],
         root_package_name="warehouse_app",
+        root_package_version="2.0.0",
     )
 
     assert [command["name"] for command in graph["commands"]] == [
@@ -226,6 +227,7 @@ def test_application_runtime_graph_rejects_command_collision():
         create_application_runtime_graph_plan(
             [first, second],
             root_package_name="second",
+            root_package_version="1.0.0",
         )
 
 
@@ -238,7 +240,11 @@ def test_application_runtime_graph_rejects_unknown_activation_reference():
     )
 
     with pytest.raises(ManifestError, match="unknown command exports"):
-        create_application_runtime_graph_plan([root], root_package_name="demo")
+        create_application_runtime_graph_plan(
+            [root],
+            root_package_name="demo",
+            root_package_version="1.0.0",
+        )
 
 
 def _write_runtime_package(

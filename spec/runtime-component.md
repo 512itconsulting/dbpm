@@ -12,7 +12,9 @@ application level.
 
 The manifest parser recognizes the new `runtime` shape, and the planner
 produces a read-only graph with isolated payload paths and resolved command
-names. Execution rejects that plan until staging and activation are
+names. Isolated staging, package-local script execution, log capture, and
+staged export security validation are implemented as an internal execution
+layer. Normal deployment execution remains blocked until atomic activation is
 implemented. The removed `runtime.name`, `runtime.home_env`, `runtime.into`,
 and `runtime.layout` fields are rejected.
 
@@ -374,6 +376,11 @@ Service quiescence remains an operator responsibility. Plan output must show
 all runtime payload and activated-command changes so the operator can decide
 whether a running process needs to be stopped.
 
+The current implementation completes staging and validation but deliberately
+does not call that layer from normal deployment execution. A staged generation
+remains beneath `<prefix>/.dbpm/staging/`; it does not modify
+`<prefix>/packages`, `<prefix>/bin`, or the active receipt.
+
 ## Runtime Receipt
 
 The receipt is authoritative for host-side application runtime state:
@@ -597,8 +604,7 @@ specified and tested before code changes:
 
 ## Proposed Delivery Sequence
 
-1. Implement isolated staging and package-local script execution.
-2. Implement command export validation and atomic activation.
-3. Add graph-aware validation and deterministic resume.
-4. Add upgrade retention and garbage collection.
-5. Design uninstall and rollback only after activation recovery is proven.
+1. Implement atomic activation of validated payloads and command exports.
+2. Add graph-aware validation and deterministic resume.
+3. Add upgrade retention and garbage collection.
+4. Design uninstall and rollback only after activation recovery is proven.

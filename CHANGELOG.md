@@ -22,8 +22,13 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   application-runtime receipt model.
 - Added read-only application runtime graph planning, including isolated
   payload paths, root-controlled aliases and suppression, and export collision
-  checks. Execution remains intentionally blocked until staging and activation
-  are implemented.
+  checks. Deployment execution remains intentionally blocked until activation
+  is implemented.
+- Added locked application runtime staging, package-local script execution
+  with the injected application environment contract, per-package log capture,
+  and staged command validation that rejects missing, non-executable, or
+  payload-escaping targets. Activation remains intentionally disconnected from
+  normal deployment execution.
 
 ### Deprecated
 
