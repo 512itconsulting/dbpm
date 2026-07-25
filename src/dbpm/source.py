@@ -26,6 +26,7 @@ TREE_CHECKSUM_EXCLUDES = (
     ".hg",
     ".svn",
     ".dbpm-cache*",
+    "dbpm-lock.json",
     "dbpm-publish-receipt.json",
     ".pytest_cache",
     ".mypy_cache",

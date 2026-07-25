@@ -420,6 +420,29 @@ scripts:
     assert source.artifact_checksum_alg == "TREE-SHA-256"
 
 
+def test_directory_tree_checksum_excludes_lockfile(tmp_path: Path):
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: demo
+  version: "1.0.0"
+scripts:
+  install: deploy.sql
+""",
+        encoding="utf-8",
+    )
+    (package / "deploy.sql").write_text("select 1 from dual;\n", encoding="utf-8")
+    baseline = load_package_source(str(package)).artifact_checksum
+
+    (package / "dbpm-lock.json").write_text('{"revision": 1}\n', encoding="utf-8")
+    assert load_package_source(str(package)).artifact_checksum == baseline
+
+    (package / "dbpm-lock.json").write_text('{"revision": 2}\n', encoding="utf-8")
+    assert load_package_source(str(package)).artifact_checksum == baseline
+
+
 def test_directory_tree_checksum_ignores_local_noise(tmp_path: Path):
     package = tmp_path / "package"
     package.mkdir()
