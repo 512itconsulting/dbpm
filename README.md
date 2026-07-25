@@ -66,23 +66,22 @@ See the [changelog](CHANGELOG.md) for release contents and
 - Core provenance staging through `pkg_application.stage_deployment_provenance_p`
 - Core `DEPLOY_LOCKED`-aware deployment policy
 - Install, upgrade, reinstall, resume, and validate workflows
-- Manifest-declared package-owned runtime components (`runtime:` in
-  `dbpm.yaml`) for non-database payloads, installed into an operator-provided
-  prefix with a `.dbpm/receipt.json` installed-state receipt. A thoroughly
-  specified successor model will compose isolated dependency payloads and
-  command exports beneath a root-application prefix (see
-  [spec/runtime-component.md](spec/runtime-component.md)).
+- Read-only planning for manifest-declared composable runtimes (`runtime:` in
+  `dbpm.yaml`), including isolated dependency payload paths and command exports
+  beneath a root-application prefix. Filesystem staging and activation remain
+  in progress (see [spec/runtime-component.md](spec/runtime-component.md)).
 - ZIP artifact publishing to GitHub Packages and generic Maven repositories
 - GPG artifact signing and lockfile-driven signature verification
 - dbpm registry source resolution and artifact metadata indexing
 
 ## Known Limitations
 - Multi-package dependency execution does not support `reinstall`.
-- Runtime components support the transitional `runtime.name` form only.
-  Application-owned runtime composition, isolated dependency payloads,
-  declarative exports, uninstall orchestration, and typed component kinds such
-  as `python-venv` are design-only. The earlier `runtime.into` contribution
-  design has been superseded and should not be implemented.
+- Application-owned runtime composition, isolated dependency payloads, and
+  declarative command exports can be validated and planned. Runtime execution,
+  activation, uninstall orchestration, and typed component kinds such as
+  `python-venv` are not implemented yet. The removed package-owned fields
+  `runtime.name`, `runtime.home_env`, `runtime.into`, and `runtime.layout` are
+  rejected.
 - Lockfile database provenance reconciliation requires Core 3.3.0 or newer.
 - Non-lockfile installs use the coordinate-based cache without checksum verification; the lockfile path has full SHA-256 verification.
 

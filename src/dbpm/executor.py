@@ -11,7 +11,6 @@ from typing import TextIO
 from .connect import ConnectSpec, build_sql_command
 from .db import delete_application, delete_system, record_deployment_provenance, stage_deployment_provenance
 from .errors import ExecutionError
-from .runtime import execute_runtime_step
 
 
 FALLBACK_EXIT_COMMAND = "EXIT SUCCESS\n"
@@ -33,6 +32,11 @@ def execute_plan(
     context: _ExecutionContext | None = None,
 ) -> int:
     context = context or _new_execution_context()
+    if plan.get("application_runtime") is not None:
+        raise ExecutionError(
+            "Application runtime graph execution is not implemented yet; "
+            "the plan is read-only"
+        )
     packages = plan.get("packages")
     if packages is not None:
         if not isinstance(packages, list):
@@ -56,10 +60,7 @@ def execute_plan(
     script_ref = execution.get("script_ref")
     arguments = execution.get("arguments", [])
     input_text = execution.get("stdin")
-    runtime_step = plan.get("runtime")
-    if runtime_step is not None and not isinstance(runtime_step, dict):
-        raise ExecutionError("Plan runtime step must be an object")
-    if not script_ref and runtime_step is None:
+    if not script_ref:
         raise ExecutionError("Plan does not contain an executable script")
     if not isinstance(arguments, list):
         raise ExecutionError("Plan execution arguments must be a list")
@@ -86,12 +87,6 @@ def execute_plan(
             raise ExecutionError(f"Deployment command failed with exit code {returncode}; see {log_file}")
         _execute_post_actions(plan, connect=connect, runner=runner)
 
-    if runtime_step is not None:
-        execute_runtime_step(
-            runtime_step,
-            log_file=_next_log_file(context, plan, suffix="runtime"),
-            prefix_override=runtime_prefix,
-        )
     return 0
 
 

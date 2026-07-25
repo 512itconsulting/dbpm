@@ -14,8 +14,16 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Replaced the design-only `runtime.into` proposal with a composable
   application runtime specification based on a root-application prefix,
   isolated versioned dependency payloads, declarative command exports, and
-  graph-level activation receipts. The implemented `runtime.name` behavior is
-  unchanged.
+  graph-level activation receipts.
+- Replaced the short-lived package-owned runtime manifest and execution path;
+  `runtime.name`, `runtime.home_env`, `runtime.into`, and `runtime.layout` are
+  rejected rather than maintained as compatibility contracts.
+- Added validation for the composable `runtime` manifest and an
+  application-runtime receipt model.
+- Added read-only application runtime graph planning, including isolated
+  payload paths, root-controlled aliases and suppression, and export collision
+  checks. Execution remains intentionally blocked until staging and activation
+  are implemented.
 
 ### Deprecated
 

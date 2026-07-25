@@ -11,7 +11,7 @@ from .errors import ManifestError
 
 MANIFEST_NAMES = ("dbpm.yaml", "dbpm.yml", "dbpm.json", "package.dbpm.yaml")
 PACKAGE_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
-ENVIRONMENT_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+RUNTIME_COMMAND_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 @dataclass(frozen=True)
@@ -36,14 +36,26 @@ class Dependency:
 
 
 @dataclass(frozen=True)
-class RuntimeComponent:
+class RuntimeCommandExport:
     name: str
-    home_env: str
-    install: str
+    target: str
+
+
+@dataclass(frozen=True)
+class RuntimeCommandAlias:
+    export: str
+    name: str
+
+
+@dataclass(frozen=True)
+class RuntimeComponent:
+    install: str | None
     upgrade: str | None = None
     validate: str | None = None
     uninstall: str | None = None
-
+    command_exports: tuple[RuntimeCommandExport, ...] = ()
+    command_aliases: tuple[RuntimeCommandAlias, ...] = ()
+    disabled_commands: tuple[str, ...] = ()
 
 @dataclass(frozen=True)
 class PackageManifest:
@@ -229,40 +241,164 @@ def _optional_script(data: dict[str, Any], key: str) -> str | None:
 def _parse_runtime(data: Any, source_name: str) -> RuntimeComponent:
     if not isinstance(data, dict):
         raise ManifestError(f"`runtime` in {source_name} must be a mapping")
-    if "into" in data:
+    removed = [field for field in ("name", "home_env", "into", "layout") if field in data]
+    if removed:
+        fields = ", ".join(f"`runtime.{field}`" for field in removed)
         raise ManifestError(
-            f"`runtime.into` contributions are not supported yet in {source_name}; "
-            "declare an owned runtime with `runtime.name`"
+            f"{fields} in {source_name} are not part of the composable runtime "
+            "manifest; declare package-local scripts, exports, or root activation"
         )
-    name = _required_string(data, "name", source_name)
-    if not PACKAGE_NAME_RE.fullmatch(name):
-        raise ManifestError(
-            f"`runtime.name` in {source_name} must start with a lowercase letter "
-            "and contain only lowercase letters, digits, underscores, or hyphens"
-        )
-    home_env = _optional_string(data, "home_env") or _default_home_env(name)
-    if not ENVIRONMENT_NAME_RE.fullmatch(home_env):
-        raise ManifestError(
-            f"`runtime.home_env` in {source_name} must be an uppercase "
-            f"environment variable name, got: {home_env!r}"
-        )
+
     scripts = _optional_mapping(data, "scripts")
+    exports = _optional_mapping(data, "exports")
+    activation = _optional_mapping(data, "activation")
+    activation_commands = _optional_mapping(activation, "commands")
+    command_exports = _parse_runtime_command_exports(
+        exports.get("commands"),
+        source_name,
+    )
+    command_aliases = _parse_runtime_command_aliases(
+        activation_commands.get("aliases"),
+        source_name,
+    )
+    disabled_commands = _parse_disabled_runtime_commands(
+        activation_commands.get("disabled"),
+        source_name,
+    )
+    overlap = {alias.export for alias in command_aliases}.intersection(disabled_commands)
+    if overlap:
+        names = ", ".join(sorted(overlap))
+        raise ManifestError(
+            f"Runtime command exports cannot be both aliased and disabled in "
+            f"{source_name}: {names}"
+        )
     install = _optional_script(scripts, "install")
-    if install is None:
-        raise ManifestError(f"`runtime.scripts.install` is required in {source_name}")
+    if command_exports and install is None:
+        raise ManifestError(
+            f"`runtime.scripts.install` is required when "
+            f"`runtime.exports.commands` are declared in {source_name}"
+        )
+
     return RuntimeComponent(
-        name=name,
-        home_env=home_env,
         install=install,
         upgrade=_optional_script(scripts, "upgrade"),
         validate=_optional_script(scripts, "validate"),
         uninstall=_optional_script(scripts, "uninstall"),
+        command_exports=tuple(command_exports),
+        command_aliases=tuple(command_aliases),
+        disabled_commands=tuple(disabled_commands),
     )
 
 
-def _default_home_env(name: str) -> str:
-    return f"{name.replace('-', '_').upper()}_HOME"
+def _parse_runtime_command_exports(
+    value: Any,
+    source_name: str,
+) -> list[RuntimeCommandExport]:
+    if value is None:
+        return []
+    if not isinstance(value, dict):
+        raise ManifestError(
+            f"`runtime.exports.commands` in {source_name} must be a mapping"
+        )
+    exports: list[RuntimeCommandExport] = []
+    for raw_name, raw_target in value.items():
+        name = str(raw_name)
+        _validate_runtime_command_name(
+            name,
+            field="runtime.exports.commands",
+            source_name=source_name,
+        )
+        if raw_target is None or str(raw_target).strip() == "":
+            raise ManifestError(
+                f"Command export `{name}` in {source_name} requires a target path"
+            )
+        exports.append(
+            RuntimeCommandExport(
+                name=name,
+                target=normalize_script_path(str(raw_target)),
+            )
+        )
+    return exports
 
+
+def _parse_runtime_command_aliases(
+    value: Any,
+    source_name: str,
+) -> list[RuntimeCommandAlias]:
+    if value is None:
+        return []
+    if not isinstance(value, dict):
+        raise ManifestError(
+            f"`runtime.activation.commands.aliases` in {source_name} must be a mapping"
+        )
+    aliases: list[RuntimeCommandAlias] = []
+    activated_names: set[str] = set()
+    for raw_export, raw_name in value.items():
+        export = _validate_canonical_runtime_export(str(raw_export), source_name)
+        name = str(raw_name)
+        _validate_runtime_command_name(
+            name,
+            field="runtime.activation.commands.aliases",
+            source_name=source_name,
+        )
+        if name in activated_names:
+            raise ManifestError(
+                f"Runtime command alias `{name}` is assigned more than once in "
+                f"{source_name}"
+            )
+        activated_names.add(name)
+        aliases.append(RuntimeCommandAlias(export=export, name=name))
+    return aliases
+
+
+def _parse_disabled_runtime_commands(value: Any, source_name: str) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ManifestError(
+            f"`runtime.activation.commands.disabled` in {source_name} must be a list"
+        )
+    disabled: list[str] = []
+    for raw_export in value:
+        if isinstance(raw_export, (dict, list)) or raw_export is None:
+            raise ManifestError(
+                f"Each disabled runtime command in {source_name} must be a "
+                "canonical `<package>.<export>` string"
+            )
+        export = _validate_canonical_runtime_export(str(raw_export), source_name)
+        if export in disabled:
+            raise ManifestError(
+                f"Disabled runtime command `{export}` is repeated in {source_name}"
+            )
+        disabled.append(export)
+    return disabled
+
+
+def _validate_canonical_runtime_export(value: str, source_name: str) -> str:
+    package_name, separator, export_name = value.partition(".")
+    if (
+        not separator
+        or not PACKAGE_NAME_RE.fullmatch(package_name)
+        or not RUNTIME_COMMAND_NAME_RE.fullmatch(export_name)
+    ):
+        raise ManifestError(
+            f"Runtime command export reference in {source_name} must use canonical "
+            f"`<package>.<export>` form, got: {value!r}"
+        )
+    return value
+
+
+def _validate_runtime_command_name(
+    value: str,
+    *,
+    field: str,
+    source_name: str,
+) -> None:
+    if not RUNTIME_COMMAND_NAME_RE.fullmatch(value):
+        raise ManifestError(
+            f"`{field}` command names in {source_name} must start with a letter "
+            "or digit and contain only letters, digits, dots, underscores, or hyphens"
+        )
 
 def _application_name(name: str) -> str:
     return name.replace("-", "_").upper()

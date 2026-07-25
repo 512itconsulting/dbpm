@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from .environment import DeploymentPolicy
 from .errors import DependencyError
-from .planner import create_plan
+from .planner import create_application_runtime_graph_plan, create_plan
 from .provenance import resolve_provenance
 from .source import PackageSource, load_package_source
 
@@ -45,7 +45,7 @@ def create_multi_package_plan(
             )
         )
 
-    return {
+    plan: dict[str, object] = {
         "schema_version": "dbpm.multi-plan.v0",
         "mode": mode,
         "package": {
@@ -61,6 +61,14 @@ def create_multi_package_plan(
         "satisfied_dependencies": satisfied,
         "packages": package_plans,
     }
+    if any(package_plan.get("runtime_package") is not None for package_plan in package_plans):
+        plan["application_runtime"] = create_application_runtime_graph_plan(
+            package_plans,
+            root_package_name=source.manifest.name,
+        )
+        for package_plan in package_plans:
+            package_plan.pop("application_runtime", None)
+    return plan
 
 
 def _resolve_dependency_order(

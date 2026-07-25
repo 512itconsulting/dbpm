@@ -37,15 +37,15 @@ def create_plan(
         confirm_delete_system=confirm_delete_system,
     )
     script = _script_for_mode(mode, manifest)
-    runtime_step = _runtime_step_for_mode(mode, manifest, source, provenance)
+    runtime_package = _application_runtime_package(manifest, source)
     if (
         mode in {"bootstrap-core", "install", "reinstall", "resume", "upgrade", "validate"}
         and not script
-        and runtime_step is None
+        and runtime_package is None
     ):
         raise ManifestError(f"No script is declared for deployment mode `{mode}`")
 
-    return {
+    plan: dict[str, object] = {
         "schema_version": "dbpm.plan.v0",
         "mode": mode,
         "package": _package_dict(manifest),
@@ -77,8 +77,14 @@ def create_plan(
             "arguments": _script_arguments_for_mode(mode, provenance) if script else [],
             "stdin": _script_stdin_for_mode(mode, manifest, environment) if script else None,
         },
-        "runtime": runtime_step,
+        "runtime_package": runtime_package,
     }
+    if runtime_package is not None:
+        plan["application_runtime"] = create_application_runtime_graph_plan(
+            [plan],
+            root_package_name=manifest.name,
+        )
+    return plan
 
 
 def _package_dict(manifest: PackageManifest) -> dict[str, object]:
@@ -124,46 +130,138 @@ def _script_for_mode(mode: str, manifest: PackageManifest) -> str | None:
     return None
 
 
-def _runtime_script_for_mode(mode: str, manifest: PackageManifest) -> str | None:
+def _application_runtime_package(
+    manifest: PackageManifest,
+    source: PackageSource,
+) -> dict[str, object] | None:
     runtime = manifest.runtime
     if runtime is None:
         return None
-    if mode in {"install", "reinstall", "resume"}:
-        return runtime.install
-    if mode == "upgrade":
-        return runtime.upgrade or runtime.install
-    if mode == "validate":
-        return runtime.validate
-    return None
-
-
-def _runtime_step_for_mode(
-    mode: str,
-    manifest: PackageManifest,
-    source: PackageSource,
-    provenance: Provenance,
-) -> dict[str, object] | None:
-    runtime = manifest.runtime
-    script = _runtime_script_for_mode(mode, manifest)
-    if runtime is None or script is None:
-        return None
-    checksum = (
-        source.artifact_checksum if source.artifact_checksum_alg == "SHA-256" else None
-    )
+    scripts = {
+        "install": runtime.install,
+        "upgrade": runtime.upgrade,
+        "validate": runtime.validate,
+        "uninstall": runtime.uninstall,
+    }
     return {
-        "name": runtime.name,
-        "home_env": runtime.home_env,
-        "script": script,
-        "script_ref": str(source.resolve_script_path(script)),
+        "package": manifest.name,
+        "version": manifest.version,
+        "payload_path": f"packages/{manifest.name}/{manifest.version}",
         "package_root": str(source.work_path or source.path),
-        "environment": {
-            "DBPM_RUNTIME_MODE": mode,
-            "DBPM_PACKAGE_NAME": manifest.name,
-            "DBPM_PACKAGE_VERSION": manifest.version,
-            "DBPM_COMMIT_HASH": provenance.commit,
-            "DBPM_ARTIFACT_URL": source.display_path,
-            "DBPM_ARTIFACT_SHA256": checksum or "",
+        "scripts": {
+            name: {
+                "path": path,
+                "ref": str(source.resolve_script_path(path)) if path else None,
+            }
+            for name, path in scripts.items()
         },
+        "exports": {
+            "commands": [
+                {
+                    "name": item.name,
+                    "target": item.target,
+                    "canonical": f"{manifest.name}.{item.name}",
+                }
+                for item in runtime.command_exports
+            ]
+        },
+        "activation": {
+            "commands": {
+                "aliases": {
+                    item.export: item.name for item in runtime.command_aliases
+                },
+                "disabled": list(runtime.disabled_commands),
+            }
+        },
+    }
+
+
+def create_application_runtime_graph_plan(
+    package_plans: list[dict[str, object]],
+    *,
+    root_package_name: str,
+) -> dict[str, object]:
+    runtime_packages: list[dict[str, object]] = []
+    root_runtime: dict[str, object] | None = None
+    for package_plan in package_plans:
+        package = package_plan.get("package")
+        package_name = package.get("name") if isinstance(package, dict) else None
+        runtime_package = package_plan.get("runtime_package")
+        if isinstance(runtime_package, dict):
+            runtime_packages.append(runtime_package)
+            if package_name == root_package_name:
+                root_runtime = runtime_package
+
+    if not runtime_packages:
+        raise ManifestError("Application runtime graph has no application-v1 packages")
+    aliases: dict[str, str] = {}
+    disabled: set[str] = set()
+    if root_runtime is not None:
+        activation = root_runtime.get("activation")
+        commands = activation.get("commands") if isinstance(activation, dict) else None
+        if isinstance(commands, dict):
+            raw_aliases = commands.get("aliases")
+            raw_disabled = commands.get("disabled")
+            if isinstance(raw_aliases, dict):
+                aliases = {
+                    str(canonical): str(name)
+                    for canonical, name in raw_aliases.items()
+                }
+            if isinstance(raw_disabled, list):
+                disabled = {str(item) for item in raw_disabled}
+
+    available: dict[str, tuple[dict[str, object], dict[str, object]]] = {}
+    for runtime_package in runtime_packages:
+        exports = runtime_package.get("exports")
+        commands = exports.get("commands") if isinstance(exports, dict) else None
+        if not isinstance(commands, list):
+            continue
+        for command in commands:
+            if not isinstance(command, dict):
+                continue
+            canonical = command.get("canonical")
+            if isinstance(canonical, str):
+                available[canonical] = (runtime_package, command)
+
+    unknown = (set(aliases) | disabled).difference(available)
+    if unknown:
+        raise ManifestError(
+            "Root runtime activation references unknown command exports: "
+            + ", ".join(sorted(unknown))
+        )
+
+    activated: list[dict[str, object]] = []
+    names: dict[str, str] = {}
+    for canonical, (runtime_package, command) in available.items():
+        if canonical in disabled:
+            continue
+        activated_name = aliases.get(canonical, str(command.get("name") or ""))
+        previous = names.get(activated_name)
+        if previous is not None:
+            raise ManifestError(
+                f"Runtime command name collision for `{activated_name}` between "
+                f"`{previous}` and `{canonical}`; alias or disable one export "
+                "in the root application"
+            )
+        names[activated_name] = canonical
+        payload_path = str(runtime_package.get("payload_path") or "")
+        target = str(command.get("target") or "")
+        activated.append(
+            {
+                "name": activated_name,
+                "canonical": canonical,
+                "package": runtime_package.get("package"),
+                "export": command.get("name"),
+                "target": f"{payload_path}/{target}",
+                "link": f"bin/{activated_name}",
+            }
+        )
+
+    return {
+        "schema_version": "dbpm.application-runtime-plan.v1",
+        "root_package": root_package_name,
+        "payloads": runtime_packages,
+        "commands": activated,
     }
 
 

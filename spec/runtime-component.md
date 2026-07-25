@@ -2,27 +2,19 @@
 
 ## Status
 
-Design revision; not implemented.
+Partially implemented; execution design in progress.
 
-dbpm 1.3 implements a transitional package-owned runtime model: a package
-declares `runtime.name`, dbpm installs its script-managed payload directly into
-an operator-provided prefix, and installed state is recorded in
-`<prefix>/.dbpm/receipt.json`.
+The composable application runtime replaces the short-lived package-owned
+runtime implementation. The selected root application owns one application
+runtime. Runtime-bearing dependencies install into isolated package
+directories beneath it and declare exports that dbpm activates at the
+application level.
 
-This specification supersedes the unimplemented `runtime.into` contribution
-design. The revised model makes the selected root application the owner of one
-application runtime. Runtime-bearing dependencies install into isolated
-package directories beneath that application runtime and declare exports that
-dbpm activates at the application level.
-
-Until this design is implemented:
-
-- `runtime.name` remains the only supported runtime manifest form.
-- the existing receipt schema and direct-to-prefix installation behavior
-  remain unchanged
-- manifests must not use the proposed `runtime.exports` or application runtime
-  composition fields described below
-- `runtime.into` should not be implemented or adopted
+The manifest parser recognizes the new `runtime` shape, and the planner
+produces a read-only graph with isolated payload paths and resolved command
+names. Execution rejects that plan until staging and activation are
+implemented. The removed `runtime.name`, `runtime.home_env`, `runtime.into`,
+and `runtime.layout` fields are rejected.
 
 ## Purpose
 
@@ -212,8 +204,8 @@ Proposed field semantics:
 
 - `runtime.scripts`: executable entry points relative to the package artifact
   root. `install` is required when a package needs to construct or copy a
-  payload. A future manifest revision may permit export-only packages whose
-  payload is copied declaratively.
+  payload and whenever the package declares command exports. It may be omitted
+  by an activation-only root application that has no package-local payload.
 - `runtime.scripts.upgrade`: optional migration entry point. If absent,
   upgrade uses the idempotent `install` entry point against a newly staged
   package directory.
@@ -224,8 +216,9 @@ Proposed field semantics:
   command name to a relative executable path within the installed package
   payload.
 
-`runtime.name`, `runtime.home_env`, and `runtime.into` do not belong in the
-new manifest contract. Package identity already comes from `package.name`;
+`runtime.name`, `runtime.home_env`, `runtime.into`, and `runtime.layout` do not
+belong in the manifest contract. Package identity already comes from
+`package.name`;
 the application prefix belongs to the root deployment; and every dependency
 contributes through isolation plus exports rather than by writing into another
 package's directory.
@@ -243,25 +236,28 @@ specific names through explicit configuration:
 
 ```yaml
 runtime:
-  commands:
-    aliases:
-      job_control.job-control: warehouse-jobs
+  activation:
+    commands:
+      aliases:
+        job_control.job-control: warehouse-jobs
+      disabled:
+        - warehouse_loads.load-now
 ```
 
 The canonical identity of an export is `<package-name>.<export-name>`, such as
 `job_control.job-control`. Canonical identities are stable references within
 plans, lockfiles, receipts, and application configuration.
 
-The exact location of application-level configuration remains an
-implementation design decision. It may be part of the root package manifest
-or a separate deployment manifest if operator choices must remain outside the
-published package artifact. Before implementation, the schema must define:
+Application-level command configuration is declared under
+`runtime.activation.commands`:
 
-- aliases from canonical command identities to activated names
-- explicit selection when more than one package requests the same name
-- optional suppression of an otherwise exported command
-- whether environment-specific overrides may change command presentation
-  without changing dependency resolution
+- `aliases` maps canonical command identities to activated names
+- `disabled` lists canonical identities that should not be activated
+
+These settings take effect only when the declaring package is selected as the
+root application. This allows any reusable package to remain independently
+deployable as a root without letting a dependency configure its consumer's
+application namespace.
 
 Aliases affect presentation only. They must not change package resolution or
 artifact identity.
@@ -386,9 +382,8 @@ The receipt is authoritative for host-side application runtime state:
 <prefix>/.dbpm/receipt.json
 ```
 
-A new schema version is required because the existing
-`dbpm.receipt.v0` owner/contributor model has different semantics. An
-illustrative shape is:
+The application runtime uses receipt schema
+`dbpm.application-runtime.v1`. Its shape is:
 
 ```json
 {
@@ -397,22 +392,31 @@ illustrative shape is:
     "name": "warehouse_app",
     "version": "2.0.0"
   },
+  "generation": 3,
+  "resolution": {
+    "lock_schema": "dbpm.lock.v0",
+    "lock_checksum": "sha256:<hex>"
+  },
   "packages": {
     "warehouse_app": {
       "version": "2.0.0",
       "path": "packages/warehouse_app/2.0.0",
       "commit": "<40-char hash>",
-      "artifact_url": "https://...",
-      "artifact_sha256": "<hex>",
-      "status": "complete"
+      "artifact": {
+        "uri": "https://...",
+        "checksum": "<hex>",
+        "checksum_alg": "SHA-256"
+      }
     },
     "job_control": {
       "version": "1.1.0",
       "path": "packages/job_control/1.1.0",
       "commit": "<40-char hash>",
-      "artifact_url": "https://...",
-      "artifact_sha256": "<hex>",
-      "status": "complete"
+      "artifact": {
+        "uri": "https://...",
+        "checksum": "<hex>",
+        "checksum_alg": "SHA-256"
+      }
     }
   },
   "commands": {
@@ -433,12 +437,21 @@ illustrative shape is:
 
 The final schema should also record:
 
-- root artifact identity and the lockfile identity used for resolution
+- root artifact identity through the root entry in `packages`
 - every runtime-bearing package's artifact provenance and installed path
-- the canonical identity and activated name of each export
-- deployment mode and activation generation
+- the canonical identity and activated name of each command export
+- the activation generation
 - enough prior-generation state for deterministic resume or rollback
 - platform information needed to interpret links
+
+`resolution.lock_schema` and `resolution.lock_checksum` must either both be
+present or both be null for an unlocked local workflow. The checksum is the
+SHA-256 identity of the exact lockfile bytes used for deployment.
+
+Each command target is application-prefix-relative and must resolve beneath
+the payload path recorded for its package. Each package artifact must provide
+both `checksum` and `checksum_alg`, or neither for a development source whose
+identity has not yet been captured.
 
 The receipt is dbpm-owned. Runtime programs may read it but must not modify it.
 The receipt describes host state and does not replace Core's database
@@ -522,8 +535,8 @@ payload directory.
 
 ### Dependencies own runtime prefixes
 
-The transitional `runtime.name` model makes a reusable dependency appear to
-own the deployment boundary. This works for a standalone program but does not
+A package-owned runtime makes a reusable dependency appear to own the
+deployment boundary. This can work for a standalone program but does not
 represent the normal dbpm case in which an application composes several
 packages.
 
@@ -554,27 +567,6 @@ A source workspace can contain several independently deployable applications
 or reusable packages. Making it the runtime owner would confuse repository
 organization with deployment identity.
 
-## Compatibility And Migration
-
-The implemented `runtime.name` behavior cannot be silently reinterpreted
-because existing scripts may write throughout `DBPM_RUNTIME_PREFIX` and
-existing receipts use owner semantics.
-
-Implementation requires an explicit compatibility plan:
-
-1. Introduce the new manifest and receipt schema behind a version or
-   capability boundary.
-2. Continue reading legacy manifests and receipts with their original
-   semantics for a documented transition period.
-3. Provide a dry-run migration report that identifies legacy files, proposed
-   package payload locations, exports, and unmanaged conflicts.
-4. Require explicit operator action to adopt an existing prefix; never infer
-   ownership from directory names.
-5. Do not create `runtime.into` as an intermediate migration mechanism.
-
-Whether the new manifest retains the top-level name `runtime` or uses an
-explicit manifest schema version must be settled before implementation.
-
 ## Relationship To Existing Specifications
 
 - `manifest.md`: the selected root package and its normal dependencies define
@@ -594,25 +586,19 @@ explicit manifest schema version must be settled before implementation.
 The design intentionally precedes implementation. The following must be
 specified and tested before code changes:
 
-1. Final manifest schema for exports and application-level aliases.
-2. Manifest-version negotiation and legacy `runtime.name` migration.
-3. Exact payload path encoding, including build metadata and non-semver local
+1. Exact payload path encoding, including build metadata and non-semver local
    versions.
-4. Receipt schema, activation generations, and crash-recovery protocol.
-5. Cross-platform link strategy, including systems without symlink support.
-6. Collision handling for aliases and pre-existing unmanaged files.
-7. Upgrade script semantics when old and new payload directories are isolated.
-8. Retention, garbage-collection, uninstall, and rollback policy.
-9. Interaction between runtime activation and database deployment failure.
-10. Dry-run and plan output for payload, export, link, and removal changes.
+2. Activation-generation storage and crash-recovery protocol.
+3. Cross-platform link strategy, including systems without symlink support.
+4. Upgrade script semantics when old and new payload directories are isolated.
+5. Retention, garbage-collection, uninstall, and rollback policy.
+6. Interaction between runtime activation and database deployment failure.
+7. Dry-run and plan output for payload, export, link, and removal changes.
 
 ## Proposed Delivery Sequence
 
-1. Finalize manifest and receipt schemas with examples and validation rules.
-2. Add read-only planning for application runtime graphs and export conflicts.
-3. Implement isolated staging and package-local script execution.
-4. Implement command export validation and atomic activation.
-5. Add graph-aware validation and deterministic resume.
-6. Add upgrade retention and garbage collection.
-7. Add explicit legacy-prefix migration tooling.
-8. Design uninstall and rollback only after activation recovery is proven.
+1. Implement isolated staging and package-local script execution.
+2. Implement command export validation and atomic activation.
+3. Add graph-aware validation and deterministic resume.
+4. Add upgrade retention and garbage collection.
+5. Design uninstall and rollback only after activation recovery is proven.
