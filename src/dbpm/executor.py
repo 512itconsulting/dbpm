@@ -16,6 +16,7 @@ from .application_runtime import (
     stage_application_runtime_graph,
     validate_application_runtime_graph,
     resume_application_runtime_graph,
+    garbage_collect_application_runtime,
 )
 
 
@@ -132,6 +133,7 @@ def _execute_application_runtime(
             log_dir=context.log_dir,
         )
         activate_staged_application_runtime(graph, staged, prefix=prefix, mode=mode)
+        garbage_collect_application_runtime(prefix, retain_generations=1)
         return
     if mode not in {"install", "upgrade", "reinstall"}:
         raise ExecutionError(
@@ -144,6 +146,7 @@ def _execute_application_runtime(
         log_dir=context.log_dir,
     )
     activate_staged_application_runtime(graph, staged, prefix=prefix, mode=mode)
+    garbage_collect_application_runtime(prefix, retain_generations=1)
 
 
 def _new_execution_context() -> _ExecutionContext:

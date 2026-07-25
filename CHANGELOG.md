@@ -42,6 +42,10 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   only identity-matching unchanged payloads and retains prior versions;
   reinstall reconstructs same-version payloads while retaining recovery
   backups.
+- Added receipt-reachability retention and garbage collection. The active and
+  immediately prior generation are retained; unreachable payload versions,
+  expired receipts, command backups, and reinstall backups are removed under
+  the application runtime lock.
 
 ### Deprecated
 

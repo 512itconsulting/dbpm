@@ -18,7 +18,10 @@ planned graph, payload identities, managed command links, and package-declared
 health scripts. Resume can deterministically retry a matching failed or
 interrupted staging generation. Upgrade retains prior versioned payloads while
 activating the new graph; reinstall reconstructs same-version payloads while
-retaining recoverable backups. Uninstall remains incomplete. The removed `runtime.name`,
+retaining recoverable backups. The active and immediately prior generation
+are retained; receipt-reachability garbage collection removes older,
+unreferenced payloads and recovery data. Uninstall remains incomplete. The
+removed `runtime.name`,
 `runtime.home_env`, `runtime.into`, and `runtime.layout` fields are rejected.
 
 ## Purpose
@@ -493,7 +496,8 @@ observability, not authority.
 
 Removing or changing a dependency is an application upgrade driven by the new
 resolved graph. A package payload becomes eligible for garbage collection only
-when no activated or retained generation references it.
+when no active or retained generation references it. The current policy
+retains one prior generation and runs collection after successful activation.
 
 ## Upgrade And Rollback
 
@@ -613,5 +617,4 @@ specified and tested before code changes:
 
 ## Proposed Delivery Sequence
 
-1. Add upgrade retention and garbage collection.
-2. Design uninstall and rollback only after activation recovery is proven.
+1. Design uninstall and rollback only after activation recovery is proven.

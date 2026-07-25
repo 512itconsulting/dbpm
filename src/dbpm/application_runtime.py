@@ -346,6 +346,18 @@ def activate_staged_application_runtime(
                     for item in (_mapping(raw, "application runtime command") for raw in commands)
                 ),
             )
+            if prior is not None:
+                generation_dir = (
+                    prefix
+                    / APPLICATION_RECEIPT_DIR_NAME
+                    / "generations"
+                    / str(prior.generation)
+                )
+                generation_dir.mkdir(parents=True, exist_ok=True)
+                (generation_dir / APPLICATION_RECEIPT_FILE_NAME).write_text(
+                    json.dumps(prior.as_dict(), indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
             write_application_runtime_receipt(prefix, receipt)
             return receipt
         except Exception:
@@ -684,6 +696,72 @@ def _validate_staged_commands(
 
 def application_receipt_path(prefix: Path) -> Path:
     return prefix / APPLICATION_RECEIPT_DIR_NAME / APPLICATION_RECEIPT_FILE_NAME
+
+
+def garbage_collect_application_runtime(
+    prefix: Path,
+    *,
+    retain_generations: int = 1,
+) -> tuple[Path, ...]:
+    if retain_generations < 0:
+        raise ExecutionError("retain_generations must not be negative")
+    with application_runtime_lock(prefix):
+        return _garbage_collect_application_runtime_unlocked(
+            prefix,
+            retain_generations=retain_generations,
+        )
+
+
+def _garbage_collect_application_runtime_unlocked(
+    prefix: Path,
+    *,
+    retain_generations: int,
+) -> tuple[Path, ...]:
+    active = load_application_runtime_receipt(prefix)
+    generations_root = prefix / APPLICATION_RECEIPT_DIR_NAME / "generations"
+    generation_dirs = sorted(
+        (
+            item
+            for item in generations_root.iterdir()
+            if item.is_dir() and item.name.isdigit()
+        ),
+        key=lambda item: int(item.name),
+        reverse=True,
+    ) if generations_root.is_dir() else []
+    retained = generation_dirs[:retain_generations]
+    receipts = [active]
+    for directory in retained:
+        value = json.loads((directory / APPLICATION_RECEIPT_FILE_NAME).read_text(encoding="utf-8"))
+        receipts.append(parse_application_runtime_receipt(value, source=str(directory)))
+    referenced = {package.path for receipt in receipts for package in receipt.packages}
+    removed: list[Path] = []
+    packages_root = prefix / "packages"
+    if packages_root.is_dir():
+        for package_dir in packages_root.iterdir():
+            if not package_dir.is_dir():
+                continue
+            for version_dir in package_dir.iterdir():
+                relative = version_dir.relative_to(prefix).as_posix()
+                if version_dir.is_dir() and relative not in referenced:
+                    shutil.rmtree(version_dir)
+                    removed.append(version_dir)
+    for directory in generation_dirs[retain_generations:]:
+        shutil.rmtree(directory)
+        removed.append(directory)
+        bin_backup = prefix / APPLICATION_RECEIPT_DIR_NAME / f"bin-generation-{directory.name}"
+        if bin_backup.exists():
+            shutil.rmtree(bin_backup)
+            removed.append(bin_backup)
+        payload_backup = (
+            prefix
+            / APPLICATION_RECEIPT_DIR_NAME
+            / "payload-backups"
+            / f"generation-{directory.name}"
+        )
+        if payload_backup.exists():
+            shutil.rmtree(payload_backup)
+            removed.append(payload_backup)
+    return tuple(removed)
 
 
 def parse_application_runtime_receipt(

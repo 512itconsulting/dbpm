@@ -10,6 +10,7 @@ from dbpm.application_runtime import (
     ApplicationRuntimeReceipt,
     application_receipt_path,
     application_runtime_lock,
+    garbage_collect_application_runtime,
     load_application_runtime_receipt,
     parse_application_runtime_receipt,
     resume_application_runtime_graph,
@@ -289,6 +290,65 @@ def test_resume_rejects_when_no_matching_generation(tmp_path: Path):
             prefix=prefix,
             log_dir=tmp_path / "logs",
         )
+
+
+def test_garbage_collection_preserves_active_and_retained_payloads(tmp_path: Path):
+    prefix = tmp_path / "app"
+    prefix.mkdir()
+    active = _generation_receipt(3, "3.0.0")
+    retained = _generation_receipt(2, "2.0.0")
+    expired = _generation_receipt(1, "1.0.0")
+    write_application_runtime_receipt(prefix, active)
+    for receipt in (retained, expired):
+        directory = prefix / ".dbpm/generations" / str(receipt.generation)
+        directory.mkdir(parents=True)
+        (directory / "receipt.json").write_text(
+            json.dumps(receipt.as_dict()),
+            encoding="utf-8",
+        )
+        backup = prefix / ".dbpm" / f"bin-generation-{receipt.generation}"
+        backup.mkdir()
+    for version in ("1.0.0", "2.0.0", "3.0.0", "orphan"):
+        (prefix / "packages/demo" / version).mkdir(parents=True)
+
+    removed = garbage_collect_application_runtime(prefix, retain_generations=1)
+
+    assert not (prefix / "packages/demo/1.0.0").exists()
+    assert not (prefix / "packages/demo/orphan").exists()
+    assert (prefix / "packages/demo/2.0.0").is_dir()
+    assert (prefix / "packages/demo/3.0.0").is_dir()
+    assert not (prefix / ".dbpm/generations/1").exists()
+    assert (prefix / ".dbpm/generations/2").is_dir()
+    assert not (prefix / ".dbpm/bin-generation-1").exists()
+    assert any(path.name == "1.0.0" for path in removed)
+
+
+def test_garbage_collection_rejects_negative_retention(tmp_path: Path):
+    with pytest.raises(ExecutionError, match="must not be negative"):
+        garbage_collect_application_runtime(tmp_path, retain_generations=-1)
+
+
+def _generation_receipt(generation: int, version: str) -> ApplicationRuntimeReceipt:
+    return ApplicationRuntimeReceipt(
+        application_name="demo",
+        application_version=version,
+        generation=generation,
+        activated_at="2026-07-25T18:04:00Z",
+        lock_schema=None,
+        lock_checksum=None,
+        packages=(
+            ApplicationRuntimePackage(
+                name="demo",
+                version=version,
+                path=f"packages/demo/{version}",
+                commit="a" * 40,
+                artifact_uri=f"https://example.invalid/demo-{version}.zip",
+                artifact_checksum=None,
+                artifact_checksum_alg=None,
+            ),
+        ),
+        commands=(),
+    )
 
 
 def _graph(*, package_root: Path, script: Path) -> dict[str, object]:

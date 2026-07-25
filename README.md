@@ -83,7 +83,9 @@ See the [changelog](CHANGELOG.md) for release contents and
   receipt, payload identities, managed links, executable targets, and package
   health scripts. Runtime resume can retry a matching incomplete staged
   generation. Runtime upgrade retains prior versioned payloads, and reinstall
-  reconstructs same-version payloads with recovery backups. Uninstall
+  reconstructs same-version payloads with recovery backups. The active and
+  immediately prior generation are retained; unreachable older payloads and
+  recovery metadata are garbage-collected after activation. Uninstall
   orchestration is not implemented yet. The removed
   package-owned fields `runtime.name`, `runtime.home_env`, `runtime.into`, and
   `runtime.layout` are rejected.
