@@ -158,6 +158,24 @@ runtime:
         )
 
 
+def test_planner_rejects_unsafe_runtime_version_path(tmp_path: Path):
+    package = _write_runtime_package(
+        tmp_path / "pkg",
+        package="demo",
+        version="../escape",
+        command="demo",
+    )
+    source = load_package_source(str(package))
+
+    with pytest.raises(ManifestError, match="runtime path segment"):
+        create_plan(
+            mode="install",
+            source=source,
+            provenance=resolve_provenance(source),
+            environment=resolve_deployment_policy(None),
+        )
+
+
 def test_planner_includes_read_only_application_runtime_graph(
     tmp_path: Path,
     monkeypatch,

@@ -618,7 +618,7 @@ def _add_execution_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--runtime-prefix",
         default=None,
-        help="Target prefix for runtime components; overrides the runtime home environment variable",
+        help="Application-level target prefix for the complete runtime dependency graph",
     )
     _add_database_args(parser)
 

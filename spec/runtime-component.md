@@ -600,18 +600,15 @@ organization with deployment identity.
 - `provenance.md`: runtime scripts receive the same resolved artifact
   provenance as database scripts.
 
-## Implementation Decisions Still Required
+## Implementation Status
 
-The design intentionally precedes implementation. The following must be
-specified and tested before code changes:
+The composable application runtime lifecycle described here is implemented.
+Runtime version path segments accept letters, digits, dots, underscores,
+pluses, and hyphens and reject separators or traversal. Plans expose the
+operation plus affected payload and command paths before execution.
 
-1. Exact payload path encoding, including build metadata and non-semver local
-   versions.
-2. Activation-generation storage and crash-recovery protocol.
-3. Upgrade script semantics when old and new payload directories are isolated.
-4. Interaction between runtime activation and database deployment failure.
-5. Dry-run and plan output for payload, export, link, and removal changes.
-
-## Proposed Delivery Sequence
-
-1. Design uninstall and rollback only after activation recovery is proven.
+Database components execute before runtime staging because host programs
+normally depend on the deployed schema contract. If database execution fails,
+runtime mutation does not begin. If runtime staging or activation fails after
+database success, the database remains advanced and `resume` is the recovery
+path; dbpm does not attempt an unsafe automatic database downgrade.

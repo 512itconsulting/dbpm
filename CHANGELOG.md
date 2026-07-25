@@ -58,6 +58,8 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Added cross-platform command publication: relative symlinks are preferred,
   with executable hard-link fallback and identity-based validation when
   symlink creation is denied by the platform or local policy.
+- Added safe runtime version-path validation and plan-visible payload/command
+  effects, and documented database-first partial-failure recovery semantics.
 
 ### Deprecated
 

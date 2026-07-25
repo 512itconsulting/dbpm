@@ -85,8 +85,9 @@ See the [changelog](CHANGELOG.md) for release contents and
   generation. Runtime upgrade retains prior versioned payloads, and reinstall
   reconstructs same-version payloads with recovery backups. The active and
   immediately prior generation are retained; unreachable older payloads and
-  recovery metadata are garbage-collected after activation. Uninstall
-  orchestration is not implemented yet. The removed
+  recovery metadata are garbage-collected after activation. Uninstall removes
+  dbpm-owned runtime state while preserving operator data, and rollback
+  reactivates only database-compatible retained generations. The removed
   package-owned fields `runtime.name`, `runtime.home_env`, `runtime.into`, and
   `runtime.layout` are rejected.
 - Lockfile database provenance reconciliation requires Core 3.3.0 or newer.

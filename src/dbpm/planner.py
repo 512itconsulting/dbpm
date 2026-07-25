@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import re
 from .environment import DeploymentPolicy
 from .errors import ManifestError
 from .manifest import PackageManifest
@@ -9,6 +10,7 @@ from .source import PackageSource
 
 
 CORE_UNINSTALL_SCRIPT = "Deployment_Manifests/uninstall.core.sql"
+RUNTIME_PATH_SEGMENT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
 
 
 def create_plan(
@@ -84,6 +86,7 @@ def create_plan(
             [plan],
             root_package_name=manifest.name,
             root_package_version=manifest.version,
+            mode=mode,
         )
     return plan
 
@@ -150,7 +153,7 @@ def _application_runtime_package(
     return {
         "package": manifest.name,
         "version": manifest.version,
-        "payload_path": f"packages/{manifest.name}/{manifest.version}",
+        "payload_path": _runtime_payload_path(manifest),
         "package_root": str(source.work_path or source.path),
         "artifact": {
             "uri": source.display_path,
@@ -191,6 +194,7 @@ def create_application_runtime_graph_plan(
     *,
     root_package_name: str,
     root_package_version: str,
+    mode: str = "install",
 ) -> dict[str, object]:
     runtime_packages: list[dict[str, object]] = []
     root_runtime: dict[str, object] | None = None
@@ -274,7 +278,23 @@ def create_application_runtime_graph_plan(
         "root_version": root_package_version,
         "payloads": runtime_packages,
         "commands": activated,
+        "effects": {
+            "operation": mode,
+            "payloads": [
+                payload.get("payload_path") for payload in runtime_packages
+            ],
+            "commands": [command.get("link") for command in activated],
+        },
     }
+
+
+def _runtime_payload_path(manifest: PackageManifest) -> str:
+    if not RUNTIME_PATH_SEGMENT_RE.fullmatch(manifest.version):
+        raise ManifestError(
+            f"`package.version` cannot be used as a runtime path segment: "
+            f"{manifest.version!r}"
+        )
+    return f"packages/{manifest.name}/{manifest.version}"
 
 
 def _script_arguments_for_mode(mode: str, provenance: Provenance) -> list[str]:

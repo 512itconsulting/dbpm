@@ -2577,3 +2577,65 @@ def test_publish_index_failure_preserves_receipt_and_returns_failure(tmp_path: P
     assert ret == 2
     assert (package / "dbpm-publish-receipt.json").exists()
     assert "Publishing succeeded" in capsys.readouterr().err
+
+
+def test_rollback_cli_checks_database_versions_and_reports_generation(
+    tmp_path: Path,
+    capsys,
+    monkeypatch,
+):
+    from types import SimpleNamespace
+
+    target = SimpleNamespace(packages=[SimpleNamespace(name="demo")])
+    monkeypatch.setattr(
+        cli,
+        "load_retained_application_runtime_receipt",
+        lambda *args, **kwargs: target,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_get_installed_state",
+        lambda args, app_name: {"version": "1.0.0", "deploy_status": "C"},
+    )
+    captured = {}
+
+    def fake_rollback(prefix, *, database_versions, target_generation):
+        captured["prefix"] = prefix
+        captured["versions"] = database_versions
+        captured["target"] = target_generation
+        return SimpleNamespace(generation=4)
+
+    monkeypatch.setattr(cli, "rollback_application_runtime", fake_rollback)
+
+    result = cli.main(
+        [
+            "rollback",
+            "--runtime-prefix",
+            str(tmp_path),
+            "--target-generation",
+            "2",
+            "--connect",
+            "user/password@db",
+        ]
+    )
+
+    assert result == 0
+    assert captured["versions"] == {"demo": "1.0.0"}
+    assert captured["target"] == 2
+    assert "ROLLED_BACK_RUNTIME_GENERATION=4" in capsys.readouterr().out
+
+
+def test_uninstall_cli_exposes_destructive_runtime_options():
+    args = cli._build_parser().parse_args(
+        [
+            "uninstall",
+            ".",
+            "--runtime-prefix",
+            "/opt/demo",
+            "--allow-destructive",
+        ]
+    )
+
+    assert args.command == "uninstall"
+    assert args.runtime_prefix == "/opt/demo"
+    assert args.allow_destructive is True

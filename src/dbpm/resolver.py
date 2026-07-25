@@ -68,6 +68,7 @@ def create_multi_package_plan(
             package_plans,
             root_package_name=source.manifest.name,
             root_package_version=source.manifest.version,
+            mode=mode,
         )
         for package_plan in package_plans:
             package_plan.pop("application_runtime", None)
