@@ -63,9 +63,26 @@ def create_multi_package_plan(
         "satisfied_dependencies": satisfied,
         "packages": package_plans,
     }
-    if any(package_plan.get("runtime_package") is not None for package_plan in package_plans):
+    runtime_plans = list(package_plans)
+    planned_apps = {
+        item.manifest.application_name
+        for item in ordered_sources
+    }
+    for item in _reachable_dependency_sources(source, dependency_sources):
+        if item.manifest.application_name in planned_apps:
+            continue
+        runtime_plans.append(
+            create_plan(
+                mode=_dependency_mode(mode),
+                source=item,
+                provenance=resolve_provenance(item),
+                environment=environment,
+                installed_state=installed_states.get(item.manifest.application_name),
+            )
+        )
+    if any(package_plan.get("runtime_package") is not None for package_plan in runtime_plans):
         plan["application_runtime"] = create_application_runtime_graph_plan(
-            package_plans,
+            runtime_plans,
             root_package_name=source.manifest.name,
             root_package_version=source.manifest.version,
             mode=mode,
@@ -73,6 +90,33 @@ def create_multi_package_plan(
         for package_plan in package_plans:
             package_plan.pop("application_runtime", None)
     return plan
+
+
+def _reachable_dependency_sources(
+    source: PackageSource,
+    dependency_sources: list[PackageSource],
+) -> list[PackageSource]:
+    available = {
+        item.manifest.application_name: item
+        for item in dependency_sources
+    }
+    ordered: list[PackageSource] = []
+    visited: set[str] = set()
+
+    def visit(item: PackageSource) -> None:
+        for dependency in item.manifest.dependencies:
+            dependency_source = available.get(_application_name(dependency.name))
+            if dependency_source is None:
+                continue
+            app_name = dependency_source.manifest.application_name
+            if app_name in visited:
+                continue
+            visited.add(app_name)
+            visit(dependency_source)
+            ordered.append(dependency_source)
+
+    visit(source)
+    return ordered
 
 
 def _resolve_dependency_order(

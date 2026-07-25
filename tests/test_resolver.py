@@ -115,6 +115,62 @@ def test_multi_package_plan_skips_satisfied_installed_dependency(tmp_path: Path)
     assert plan["satisfied_dependencies"][0]["application_name"] == "FIXTURE_BASE"
 
 
+def test_satisfied_database_dependency_remains_in_application_runtime(tmp_path: Path):
+    base = tmp_path / "base"
+    consumer = tmp_path / "consumer"
+    _write_package(base, name="fixture_base")
+    _write_package(consumer, name="fixture_consumer", dependency=("fixture_base", "1.0.0"))
+    with (base / "dbpm.yaml").open("a", encoding="utf-8") as manifest:
+        manifest.write(
+            """
+runtime:
+  scripts:
+    install: runtime.sh
+  exports:
+    commands:
+      base-tool: bin/base-tool
+"""
+        )
+    (base / "runtime.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+    with (consumer / "dbpm.yaml").open("a", encoding="utf-8") as manifest:
+        manifest.write(
+            """
+runtime:
+  activation:
+    commands:
+      aliases:
+        fixture_base.base-tool: app-tool
+"""
+        )
+
+    plan = create_multi_package_plan(
+        mode="upgrade",
+        source=load_package_source(str(consumer)),
+        dependency_sources=[load_package_source(str(base))],
+        environment=resolve_deployment_policy(None),
+        installed_states={
+            "FIXTURE_BASE": {
+                "application_name": "FIXTURE_BASE",
+                "version": "1.0.0",
+                "deploy_status": "C",
+                "deploy_commit_hash": "abc",
+            },
+            "FIXTURE_CONSUMER": {
+                "application_name": "FIXTURE_CONSUMER",
+                "version": "1.0.0",
+                "deploy_status": "C",
+                "deploy_commit_hash": "def",
+            },
+        },
+    )
+
+    assert plan["execution_order"] == ["FIXTURE_CONSUMER"]
+    assert [
+        payload["package"] for payload in plan["application_runtime"]["payloads"]
+    ] == ["fixture_consumer", "fixture_base"]
+    assert plan["application_runtime"]["commands"][0]["name"] == "app-tool"
+
+
 def test_multi_package_plan_fails_for_missing_dependency_source(tmp_path: Path):
     consumer = tmp_path / "consumer"
     _write_package(consumer, name="fixture_consumer", dependency=("fixture_base", "1.0.0"))
