@@ -7,7 +7,7 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added
+## [1.4.0] - 2026-07-25
 
 ### Changed
 
@@ -22,8 +22,7 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   application-runtime receipt model.
 - Added read-only application runtime graph planning, including isolated
   payload paths, root-controlled aliases and suppression, and export collision
-  checks. Deployment execution remains intentionally blocked until activation
-  is implemented.
+  checks.
 - Added locked application runtime staging, package-local script execution
   with the injected application environment contract, per-package log capture,
   and staged command validation that rejects missing, non-executable, or
@@ -61,13 +60,17 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Added safe runtime version-path validation and plan-visible payload/command
   effects, and documented database-first partial-failure recovery semantics.
 
-### Deprecated
-
-### Removed
-
 ### Fixed
 
-### Security
+- Relocated text launchers created in staging before payload promotion so
+  virtual-environment entry points continue to work from their final paths.
+- Retained supplied runtime artifacts for dependencies already satisfied in
+  the database, while excluding database-only dependencies from runtime
+  staging.
+- Deferred root activation references until the complete dependency graph is
+  available.
+- Excluded `dbpm-lock.json` from local directory artifact checksums so a
+  tracked lockfile does not change its own package identity.
 
 ## [1.3.0] - 2026-07-23
 
@@ -132,7 +135,8 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Set the intended Oracle schema explicitly in generated deployment scripts.
 
-[Unreleased]: https://github.com/512itconsulting/dbpm/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/512itconsulting/dbpm/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/512itconsulting/dbpm/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/512itconsulting/dbpm/compare/v1.2.2...v1.3.0
 [1.2.2]: https://github.com/512itconsulting/dbpm/compare/v1.2.0...v1.2.2
 [1.2.0]: https://github.com/512itconsulting/dbpm/compare/v1.1.2...v1.2.0
