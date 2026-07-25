@@ -11,6 +11,12 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Replaced the design-only `runtime.into` proposal with a composable
+  application runtime specification based on a root-application prefix,
+  isolated versioned dependency payloads, declarative command exports, and
+  graph-level activation receipts. The implemented `runtime.name` behavior is
+  unchanged.
+
 ### Deprecated
 
 ### Removed

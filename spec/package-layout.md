@@ -138,4 +138,11 @@ Each listed package root still contains its own package manifest, such as `dbpm.
 
 Commands can select a package from a workspace root with `--package`, and `dbpm workspace list` shows the package names, application names, versions, and paths declared by the workspace. Local workspace packages may be used as dependency sources during development, with lockfiles recording the exact resolved artifact identities for reproducible CI and production deployments.
 
+Workspace membership does not define a deployed application or a shared host
+runtime. A workspace may contain several independently deployable root
+applications and reusable packages. For runtime composition, the package
+explicitly selected for installation is the root application; its resolved
+dependency graph is materialized beneath that application's operator-selected
+runtime prefix. See `runtime-component.md`.
+
 The single package-root contract remains valid: invoking dbpm directly against a directory with a package manifest behaves as it did before workspace support.

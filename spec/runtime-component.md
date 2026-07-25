@@ -1,448 +1,618 @@
-# Runtime Component Specification
+# Composable Application Runtime Specification
 
 ## Status
 
-MVP implemented. The owner form (`runtime.name`), prefix resolution, script
-execution with the injected environment contract, receipt handling, and plan
-output are live. The `runtime.into` contribution form, `uninstall`
-orchestration, typed component kinds, and external locked runtime artifacts
-remain design-only; see MVP Scope below.
+Design revision; not implemented.
+
+dbpm 1.3 implements a transitional package-owned runtime model: a package
+declares `runtime.name`, dbpm installs its script-managed payload directly into
+an operator-provided prefix, and installed state is recorded in
+`<prefix>/.dbpm/receipt.json`.
+
+This specification supersedes the unimplemented `runtime.into` contribution
+design. The revised model makes the selected root application the owner of one
+application runtime. Runtime-bearing dependencies install into isolated
+package directories beneath that application runtime and declare exports that
+dbpm activates at the application level.
+
+Until this design is implemented:
+
+- `runtime.name` remains the only supported runtime manifest form.
+- the existing receipt schema and direct-to-prefix installation behavior
+  remain unchanged
+- manifests must not use the proposed `runtime.exports` or application runtime
+  composition fields described below
+- `runtime.into` should not be implemented or adopted
 
 ## Purpose
 
-Some dbpm packages ship more than database objects. A package such as
-`job_control` deploys a database application through the normal dbpm flow, but
-it also has an OS-side runtime: a Python scheduler program, helper scripts, a
-runtime home directory, and configuration templates.
+dbpm is a package manager for composable Oracle applications. Reusable
+packages are normally dependencies of an end-user application rather than
+standalone deployments. Some packages also contain host-side programs,
+scripts, templates, or other non-database assets.
 
-Today dbpm installs only the database component and leaves the rest to
-hand-managed documentation. This spec defines how a package declares a
-**runtime component**, how dbpm installs and upgrades it, and how installed
-state is tracked on the host.
+The runtime model must compose those assets with the same dependency graph
+that dbpm resolves for the database deployment. Given an application package
+that depends on packages such as `job_control`, dbpm should materialize one
+application runtime containing isolated payloads for the root application and
+each runtime-bearing dependency.
 
-The goals are the same ones dbpm already applies to database deployments:
+This model provides:
 
-- explicit, manifest-declared entry points instead of tribal knowledge
-- immutable versioned artifacts with checksum verification
-- version coupling between the runtime and the database contract it depends on
-- repeatable installs driven by the same plan/lock/install workflow
+- one operator-selected runtime root per deployed application
+- isolated, versioned package payloads
+- application-level commands assembled from declarative package exports
+- deterministic conflict detection and application-controlled aliases
+- graph-level installed-state and artifact provenance
+- staging and atomic activation instead of in-place replacement
+- a foundation for validation, rollback, uninstall, and garbage collection
 
-## Non-Goals
+## Design Principles
 
-dbpm is not a configuration manager or an OS package manager. The runtime
-component model deliberately excludes:
+### The root application owns the runtime
 
-- **Privileged host setup.** Creating OS users, writing systemd units,
-  creating root-owned directories, and opening firewall rules remain
-  documented operator prerequisites. dbpm must never require root.
-- **Secrets and rendered configuration.** dbpm may place configuration
-  *templates*; it must never render or store credentials. Connection files
-  such as `etc/dbconnect` remain operator-managed, consistent with the
-  connection-agnostic script rule in `package-layout.md`.
-- **Language-ecosystem package management.** dbpm does not resolve PyPI or
-  npm dependency graphs. A runtime that embeds a Python program should ship
-  it as a built wheel inside the package artifact; installing that wheel into
-  a virtual environment is the job of the runtime install script (or a future
-  typed component kind), not of dbpm's resolver.
-- **Service lifecycle management.** Starting, stopping, and supervising
-  daemons belongs to systemd or the operator. dbpm may run a validate script
-  that performs a read-only health check; it does not manage processes.
+The package selected by the operator is the root application and defines the
+deployment boundary. Its full resolved dependency graph is installed into one
+application runtime prefix.
+
+A reusable dependency does not own the application prefix and does not choose
+where its consumers deploy it. The same package may be installed independently
+under several application prefixes at different versions.
+
+### Packages own isolated payloads
+
+Each runtime-bearing package installs only within its assigned package
+directory. It must not write directly into another package directory or into
+application-level `bin`, `etc`, or `var` directories.
+
+dbpm, rather than package install order, owns application-level composition.
+
+### Exports are declarative
+
+A package declares the commands or other resources it makes available to a
+consuming application. dbpm validates and activates those exports. Package
+install scripts prepare package-local content but do not create
+application-level links.
+
+### Mutable state is separate from immutable payloads
+
+Versioned package directories contain replaceable package payloads. Persistent
+configuration, secrets, logs, queues, and other operator or application data
+do not belong in those directories.
+
+### Workspace and runtime are different concepts
+
+A `dbpm-workspace.yaml` file describes source-repository package discovery. It
+does not define a deployed runtime boundary. The root package selected for an
+install, together with its resolved dependency graph, defines that boundary.
 
 ## Terminology
 
-- **Runtime component**: the non-database payload of a dbpm package, declared
-  in the manifest under `runtime`.
-- **Runtime prefix**: the host directory a runtime component installs into,
-  such as `/opt/job_control`. Analogous to an installation prefix, and often
-  exposed to programs as a home environment variable such as
-  `JOB_CONTROL_HOME`.
-- **Receipt**: the installed-state record dbpm writes inside the runtime
-  prefix. The host-side analog of Core's application registry.
-- **Contribution**: files one package installs into a runtime prefix owned by
-  a different package, such as an application's EXE task scripts landing in
-  `job_control`'s `bin/` directory.
+- **Root application**: the package explicitly selected for installation. It
+  is the root of the resolved dependency graph and the identity of the
+  application runtime.
+- **Application runtime**: the host-side materialization of a root application
+  and its runtime-bearing dependency graph.
+- **Application runtime prefix**: the operator-selected root directory for an
+  application runtime, such as `/opt/warehouse_app`.
+- **Package payload**: one package version's isolated runtime installation
+  beneath the application runtime prefix.
+- **Export**: a package-local resource that dbpm exposes at the application
+  level. Commands are the first export type.
+- **Activation**: the atomic publication of a validated runtime graph and its
+  application-level export links.
+- **Runtime receipt**: dbpm-owned installed state describing the activated
+  application graph, payload locations, artifact identities, and exports.
 
-## Manifest Extension
+## Filesystem Layout
 
-A package that owns a runtime declares it alongside (or instead of) its
-database component:
+The logical layout is:
 
-```yaml
-package:
-  name: job_control
-  version: "1.1.0"
-
-database:
-  platform: oracle
-
-core:
-  minimum_version: "3.0.0"
-
-scripts:
-  install: deployment_manifests/deploy.jc.full.sql
-  upgrade: deployment_manifests/deploy.jc.full.sql
-
-runtime:
-  name: job_control
-  scripts:
-    install: os/dbpm/install.sh
-    upgrade: os/dbpm/upgrade.sh
-    validate: os/dbpm/health.sh
-    uninstall: os/dbpm/uninstall.sh
+```text
+<prefix>/
+  bin/
+    warehouse-run -> ../packages/warehouse_app/2.0.0/bin/warehouse-run
+    job-control   -> ../packages/job_control/1.1.0/bin/job-control
+  packages/
+    warehouse_app/
+      2.0.0/
+        bin/
+        lib/
+    job_control/
+      1.1.0/
+        bin/
+        lib/
+  etc/
+  var/
+  .dbpm/
+    receipt.json
+    lock
+    staging/
 ```
 
-A package that contributes files into another package's runtime declares a
-contribution instead:
+The names in this example are illustrative, but the ownership boundaries are
+normative:
+
+- `<prefix>/packages/<package>/<version>/` is package-owned during its runtime
+  script and dbpm-owned for lifecycle management.
+- `<prefix>/bin/` is dbpm-owned and contains only activated command links.
+- `<prefix>/.dbpm/` is dbpm-owned metadata and staging space.
+- `<prefix>/etc/` and `<prefix>/var/` are application/operator-owned mutable
+  areas. Packages may document expected content but must not overwrite it
+  implicitly.
+
+Package and version path segments must be derived from validated manifest
+values and must not permit path traversal. dbpm should use relative symlinks
+for application-level links so an application runtime can be relocated as a
+unit when the underlying platform supports it.
+
+The prefix must exist and be writable by the invoking user. Creating OS users,
+root-owned directories, systemd units, or other privileged host resources
+remains an operator prerequisite. dbpm must not require privilege elevation.
+
+## Root Application And Dependency Graph
+
+The normal package manifest remains the source of application identity and
+dependencies:
 
 ```yaml
 package:
-  name: warehouse_loads
-  version: "2.4.0"
+  name: warehouse_app
+  version: "2.0.0"
 
 dependencies:
   - name: job_control
     version: "^1.1.0"
-
-runtime:
-  into: job_control
-  scripts:
-    install: os/dbpm/install.sh
-    uninstall: os/dbpm/uninstall.sh
+  - name: warehouse_loads
+    version: "^2.4.0"
 ```
 
-### Fields
+The package explicitly selected by `dbpm install` is the root application.
+Dependencies are never inferred from runtime exports or filesystem content.
+dbpm resolves the ordinary package dependency graph, lockfile, artifact
+identity, environment policy, and Core requirements before composing runtime
+payloads.
 
-- `runtime.name`: declares this package as the owner of a runtime prefix.
-  Defaults the home environment variable to the upper-cased name plus
-  `_HOME`, for example `JOB_CONTROL_HOME`.
-- `runtime.home_env`: optional override for the home environment variable
-  name.
-- `runtime.into`: declares a contribution into the named runtime. Mutually
-  exclusive with `runtime.name`. The named runtime's owning package must
-  also appear in `dependencies` with a version constraint; that constraint is
-  how the contribution states which runtime contract it supports.
-- `runtime.scripts`: executable entry points relative to the package root.
-  `install` is required; the rest are optional. When `upgrade` is not
-  declared, upgrades run the `install` script (which must be idempotent);
-  when `validate` is not declared, validate skips the runtime component.
-  Scripts follow the same philosophy as SQL entry points: dbpm does not infer
-  behavior from directory names, it executes what the manifest declares.
+Installing a dependency as a root package is valid when an operator
+deliberately selects it, but that produces a distinct application runtime. It
+does not make that package the implicit owner of every runtime in which it
+appears.
 
-Database-only packages omit `runtime` entirely and behave exactly as before.
-Runtime-only packages (no database objects) may omit `database` and
-`scripts`; dbpm should skip Core registration for them, though Core remains a
-substrate prerequisite when the package declares `core.minimum_version`.
+## Proposed Package Manifest
 
-### Future: Typed Component Kinds
-
-The MVP supports only script entry points (`kind: scripts`, the implicit
-default). Later versions may add declarative kinds so common shapes need no
-hand-written install script, for example:
+A package with host-side content declares package-local runtime scripts and
+exports:
 
 ```yaml
 runtime:
-  name: job_control
-  kind: python-venv
-  wheel: os/dist/job_control_runner-*.whl
-  entrypoint: job-control-runner
+  scripts:
+    install: os/dbpm/install.sh
+    upgrade: os/dbpm/upgrade.sh
+    validate: os/dbpm/validate.sh
+    uninstall: os/dbpm/uninstall.sh
+  exports:
+    commands:
+      job-control: bin/job-control
 ```
 
-Typed kinds are sugar over the same contract: they must produce the same
-receipt entries and honor the same prefix and mode rules as script-based
-components.
+The root application may declare its own payload and exports in exactly the
+same form:
 
-## Execution Contract
+```yaml
+runtime:
+  scripts:
+    install: os/dbpm/install.sh
+    validate: os/dbpm/validate.sh
+  exports:
+    commands:
+      warehouse-run: bin/warehouse-run
+```
 
-dbpm owns resolution, artifact verification, dependency planning, Core
-checks, deployment-lock policy evaluation, and provenance — exactly as it
-does for database deployments. Only after those steps does it invoke the
-runtime script, symmetric to how it invokes the SQL runner.
+Proposed field semantics:
 
-Runtime scripts are executed:
+- `runtime.scripts`: executable entry points relative to the package artifact
+  root. `install` is required when a package needs to construct or copy a
+  payload. A future manifest revision may permit export-only packages whose
+  payload is copied declaratively.
+- `runtime.scripts.upgrade`: optional migration entry point. If absent,
+  upgrade uses the idempotent `install` entry point against a newly staged
+  package directory.
+- `runtime.scripts.validate`: optional read-only validation entry point.
+- `runtime.scripts.uninstall`: optional cleanup entry point scoped to the
+  package payload. It must not remove shared application state.
+- `runtime.exports.commands`: mapping from a requested application-level
+  command name to a relative executable path within the installed package
+  payload.
 
-- with the extracted package artifact root as the working directory
-- as the invoking OS user, never with elevated privileges
-- with dbpm-injected environment variables:
+`runtime.name`, `runtime.home_env`, and `runtime.into` do not belong in the
+new manifest contract. Package identity already comes from `package.name`;
+the application prefix belongs to the root deployment; and every dependency
+contributes through isolation plus exports rather than by writing into another
+package's directory.
+
+Future export types may include libraries, templates, plugin descriptors, or
+other explicitly composable resources. Each type requires defined activation,
+collision, and ownership semantics before it is added. Arbitrary overlay of
+package directory trees is not an export type.
+
+## Application-Level Runtime Configuration
+
+The default activated name of a command is the key declared by the exporting
+package. The root application may resolve conflicts or present application-
+specific names through explicit configuration:
+
+```yaml
+runtime:
+  commands:
+    aliases:
+      job_control.job-control: warehouse-jobs
+```
+
+The canonical identity of an export is `<package-name>.<export-name>`, such as
+`job_control.job-control`. Canonical identities are stable references within
+plans, lockfiles, receipts, and application configuration.
+
+The exact location of application-level configuration remains an
+implementation design decision. It may be part of the root package manifest
+or a separate deployment manifest if operator choices must remain outside the
+published package artifact. Before implementation, the schema must define:
+
+- aliases from canonical command identities to activated names
+- explicit selection when more than one package requests the same name
+- optional suppression of an otherwise exported command
+- whether environment-specific overrides may change command presentation
+  without changing dependency resolution
+
+Aliases affect presentation only. They must not change package resolution or
+artifact identity.
+
+## Export Validation And Collision Policy
+
+For every command export, dbpm must verify before activation that:
+
+- the target path is relative and remains inside the exporting package payload
+- the target exists after the package install script succeeds
+- the target is a regular executable file, or a symlink whose fully resolved
+  target remains within the same package payload
+- the activated command name is valid for the target platform
+
+Two exports requesting the same application-level name are a hard planning
+error unless the root application explicitly selects, aliases, or suppresses
+one of them. Installation order must never decide the winner, and dbpm must
+never silently replace an unrelated command.
+
+An activated name must also not overwrite a non-dbpm-managed file already
+present in `<prefix>/bin`. dbpm may replace a link only when the current
+receipt proves that dbpm owns that link for the same application runtime.
+
+## Prefix Resolution
+
+The application runtime prefix is resolved once for the entire root
+application graph:
+
+1. an explicit `--runtime-prefix` command-line option
+2. an application-level environment variable, if the future manifest schema
+   provides one
+
+dbpm must not resolve a separate prefix for each dependency. It must not use a
+dependency-specific variable such as `JOB_CONTROL_HOME` to choose the
+application deployment boundary.
+
+If the graph contains runtime components and no prefix is available, execution
+fails with a clear message. dbpm must not guess `/opt/<name>`.
+
+One prefix represents one root application installation. If its receipt names
+a different root application, installation must fail unless the operator uses
+a separately designed replacement or adoption workflow. Merely sharing a
+dependency does not permit two applications to share a prefix.
+
+## Runtime Script Contract
+
+Runtime scripts execute:
+
+- with the extracted immutable package artifact as the working directory
+- as the invoking OS user
+- against a staged, package-specific payload directory
+- only after artifact verification, dependency solving, Core checks, and
+  environment policy evaluation
+
+The proposed environment is:
 
 | Variable | Meaning |
 |---|---|
-| `DBPM_RUNTIME_PREFIX` | absolute path of the target runtime prefix |
+| `DBPM_RUNTIME_PREFIX` | absolute application runtime prefix |
+| `DBPM_RUNTIME_PACKAGE_PREFIX` | absolute staged payload directory for this package version |
 | `DBPM_RUNTIME_MODE` | `install`, `upgrade`, `reinstall`, `resume`, `validate`, or `uninstall` |
-| `DBPM_PACKAGE_NAME` | manifest package name |
-| `DBPM_PACKAGE_VERSION` | package version being deployed |
-| `DBPM_INSTALLED_VERSION` | previously installed version from the receipt, empty on first install |
-| `DBPM_COMMIT_HASH` | resolved 40-character commit hash from artifact provenance |
+| `DBPM_ROOT_PACKAGE_NAME` | root application package name |
+| `DBPM_ROOT_PACKAGE_VERSION` | root application version being deployed |
+| `DBPM_PACKAGE_NAME` | current package name |
+| `DBPM_PACKAGE_VERSION` | current package version |
+| `DBPM_INSTALLED_VERSION` | previously activated version of this package, empty when absent |
+| `DBPM_COMMIT_HASH` | resolved artifact commit provenance |
 | `DBPM_ARTIFACT_URL` | resolved artifact URL or coordinate |
-| `DBPM_ARTIFACT_SHA256` | verified artifact checksum; empty for local directory sources, whose checksum is TREE-SHA-256 |
+| `DBPM_ARTIFACT_SHA256` | verified artifact checksum, or the defined local-tree identity |
 
-Environment variables are used instead of positional arguments because
-runtime scripts are ordinary executables, not SQL*Plus scripts; the
-positional-argument convention in `manifest.md` remains specific to SQL entry
-points.
+`DBPM_RUNTIME_PACKAGE_PREFIX` is the only installation target for the package
+script. The application prefix is supplied for read-only context and for
+locating documented application-owned state. A script must not mutate
+application-level links, another package payload, `.dbpm` metadata, or shared
+mutable state.
 
-Scripts must be idempotent. `resume` re-runs the runtime script from the
-beginning, matching the database upgrade contract in `deployment-modes.md`.
+Scripts must be idempotent within their assigned staged directory. A non-zero
+exit fails the package runtime step. dbpm captures stdout and stderr in the
+normal execution logs.
 
-A non-zero exit status fails the deployment step. dbpm should capture stdout
-and stderr into the execution log directory alongside SQL runner output.
+Secrets are never injected as artifact content or rendered by dbpm. Service
+start, stop, supervision, OS account management, and privileged host
+configuration remain outside dbpm.
 
-## Runtime Prefix Resolution
+## Planning, Staging, And Activation
 
-dbpm resolves the target prefix in this order:
+Runtime composition is a graph-level operation:
 
-1. an explicit `--runtime-prefix` command-line flag
-2. the runtime's home environment variable (`JOB_CONTROL_HOME` by default
-   for a runtime named `job_control`)
+1. Resolve the root application and complete dependency graph.
+2. Verify lockfile identities, checksums, signatures, Core requirements, and
+   deployment policy.
+3. Determine which packages have runtime payloads and collect all exports.
+4. Resolve aliases and reject export conflicts before running scripts.
+5. Acquire `<prefix>/.dbpm/lock`.
+6. Stage each changed package payload without modifying the activated graph.
+7. Run package validation against the staged graph.
+8. Build the next receipt and application-level links in staging.
+9. Atomically activate the new links and receipt.
+10. Retain or garbage-collect superseded payloads according to explicit
+    policy.
 
-If neither is set, deployment of the runtime component fails with a clear
-message. dbpm must not guess a default such as `/opt/<name>` because prefix
-choice is an operator decision.
+Dependency order applies while constructing payloads. The owner/contributor
+ordering from the former `runtime.into` design is unnecessary because no
+package writes into another package's payload.
 
-The prefix must exist and be writable by the invoking user before dbpm runs.
-Creating it — including any privileged `useradd`/`mkdir`/`chown` steps — is a
-documented prerequisite, as in job_control's OS deployment guide. dbpm may
-create subdirectories inside the prefix but must not attempt to create or
-chown the prefix itself.
+Activation must be transactional from the application's perspective. Before
+activation, the old graph remains usable. If staging or validation fails, dbpm
+records diagnostic state without publishing partial command links. If
+activation itself cannot be fully atomic on a supported platform, the
+implementation specification must define recovery markers and deterministic
+resume behavior.
 
-For a contribution (`runtime.into`), dbpm resolves the prefix the same way
-using the *owning* runtime's home variable, then requires that the receipt
-shows the owning package installed at a version satisfying the contributor's
-declared dependency constraint. A contribution into a prefix with no receipt,
-or with an incompatible owner version, must fail loudly rather than install
-into an unmanaged directory.
+Service quiescence remains an operator responsibility. Plan output must show
+all runtime payload and activated-command changes so the operator can decide
+whether a running process needs to be stopped.
 
-## Installed-State Receipt
+## Runtime Receipt
 
-Core is the source of truth for what is deployed in a schema. It cannot play
-that role for host state: runtime installs are per-host and per-prefix, and a
-single database may be served by several runtime homes (or none). The
-host-side source of truth is a receipt file inside the prefix:
+The receipt is authoritative for host-side application runtime state:
 
 ```text
 <prefix>/.dbpm/receipt.json
 ```
 
-Schema version `dbpm.receipt.v0`. The receipt records one entry per package
-that has installed into the prefix — the owner and any contributors:
+A new schema version is required because the existing
+`dbpm.receipt.v0` owner/contributor model has different semantics. An
+illustrative shape is:
 
 ```json
 {
-  "schema": "dbpm.receipt.v0",
-  "runtime": "job_control",
+  "schema": "dbpm.application-runtime.v1",
+  "application": {
+    "name": "warehouse_app",
+    "version": "2.0.0"
+  },
   "packages": {
-    "job_control": {
-      "role": "owner",
-      "version": "1.1.0",
+    "warehouse_app": {
+      "version": "2.0.0",
+      "path": "packages/warehouse_app/2.0.0",
       "commit": "<40-char hash>",
       "artifact_url": "https://...",
       "artifact_sha256": "<hex>",
-      "installed_at": "2026-07-13T18:04:00Z",
-      "mode": "install",
       "status": "complete"
     },
-    "warehouse_loads": {
-      "role": "contributor",
-      "version": "2.4.0",
+    "job_control": {
+      "version": "1.1.0",
+      "path": "packages/job_control/1.1.0",
       "commit": "<40-char hash>",
       "artifact_url": "https://...",
       "artifact_sha256": "<hex>",
-      "installed_at": "2026-07-13T18:09:00Z",
-      "mode": "install",
       "status": "complete"
     }
-  }
+  },
+  "commands": {
+    "warehouse-run": {
+      "package": "warehouse_app",
+      "export": "warehouse-run",
+      "target": "packages/warehouse_app/2.0.0/bin/warehouse-run"
+    },
+    "job-control": {
+      "package": "job_control",
+      "export": "job-control",
+      "target": "packages/job_control/1.1.0/bin/job-control"
+    }
+  },
+  "activated_at": "2026-07-25T18:04:00Z"
 }
 ```
 
-Receipt entries mirror the lockfile artifact-identity fields in
-`lockfile.md` so a locked deployment can be verified against host state the
-same way `--check-db` verifies Core state today.
+The final schema should also record:
 
-Rules:
+- root artifact identity and the lockfile identity used for resolution
+- every runtime-bearing package's artifact provenance and installed path
+- the canonical identity and activated name of each export
+- deployment mode and activation generation
+- enough prior-generation state for deterministic resume or rollback
+- platform information needed to interpret links
 
-- dbpm writes the receipt only after the runtime script exits: a successful
-  exit records `"status": "complete"`, a failure records `"status": "failed"`.
-- A failed entry replaces the prior entry rather than leaving it intact, so
-  `resume` has accurate state. Failed entries carry a `previous_version`
-  field with the last completed version (or null), which feeds
-  `DBPM_INSTALLED_VERSION` on the next attempt. `validate` never writes the
-  receipt.
-- dbpm must take a simple exclusive lock (for example
-  `<prefix>/.dbpm/lock`) while mutating the receipt to guard against
-  concurrent deployments into the same prefix.
-- Uninstalling a contributor removes only that contributor's entry;
-  uninstalling the owner while contributor entries remain must fail unless
-  the operator forces it.
-- The receipt is dbpm-owned metadata. Runtime programs may read it but must
-  not write it.
+The receipt is dbpm-owned. Runtime programs may read it but must not modify it.
+The receipt describes host state and does not replace Core's database
+deployment records. Optional database-side runtime reporting remains
+observability, not authority.
 
-### Optional Database Reporting
+## Deployment Modes
 
-Packages may additionally report their deployed runtime version into
-database tables for observability, as job_control's scheduler already
-registers itself in `jc_scheduler`. That reporting is a package concern, not
-a dbpm requirement, and it never substitutes for the receipt. A future Core
-version may add a host-deployment provenance API; if it does, dbpm may
-mirror receipt entries into it, with the receipt remaining authoritative for
-the host.
+- **install**: stage the complete runtime graph and activate it only after all
+  required payloads and exports validate.
+- **upgrade**: resolve the new graph, stage changed package versions beside the
+  active versions, validate, and atomically switch activation.
+- **reinstall**: reconstruct package payloads with explicit destructive intent,
+  but never implicitly delete application-owned `etc` or `var` content.
+- **resume**: continue or repeat staging based on receipt and recovery state;
+  it must not treat a partially staged graph as active.
+- **validate**: verify receipt identity, package payloads, export targets, and
+  package-declared read-only health checks without mutating activation.
+- **uninstall**: remove the root application's activated links and receipt,
+  then remove package payloads according to policy. It operates on the
+  application runtime as a whole, not by uninstalling a dependency from an
+  otherwise unresolved graph.
 
-## Deployment Modes And Ordering
+Removing or changing a dependency is an application upgrade driven by the new
+resolved graph. A package payload becomes eligible for garbage collection only
+when no activated or retained generation references it.
 
-Runtime components participate in the modes defined in
-`deployment-modes.md`:
+## Upgrade And Rollback
 
-- **install / upgrade**: within a single package, the database component
-  deploys first, then the runtime component. The runtime typically depends
-  on the schema contract, never the reverse. If the database step succeeds
-  and the runtime step fails, the package deployment as a whole is failed;
-  `resume` re-runs from the failed component using receipt and Core state.
-- **reinstall**: destructive intent extends to the runtime. The runtime
-  script receives `DBPM_RUNTIME_MODE=reinstall` and may clear
-  package-managed files under the prefix. dbpm must never delete operator
-  data directories (`var/`, `etc/`) itself; only the package's script knows
-  what is safe to remove. Deployment-lock policy applies before the database
-  step as usual.
-- **resume**: re-runs the runtime script; idempotency is required.
-- **validate**: runs the runtime `validate` script (a read-only health
-  check) after the database validate script, when both exist.
-- **uninstall**: runs the runtime `uninstall` script and removes the receipt
-  entry. Contributor ordering: contributors should be uninstalled before the
-  owner.
+Versioned package paths allow a new graph to be prepared without overwriting
+the active graph. This is the preferred upgrade mechanism even when policy
+normally retains only one active version.
 
-Across packages, the existing dependency-ordered multi-package plan applies
-unchanged; a contribution's dependency on the runtime owner guarantees the
-owner deploys first.
+Rollback should mean reactivating a previously retained, fully verified graph,
+not running downgrade scripts in place. A future implementation design must
+specify:
 
-Stopping and restarting services around an upgrade is the operator's job.
-dbpm should state in the plan output that a runtime component will be
-modified so the operator can quiesce the service first; a future version may
-add optional pre/post hooks, but process management stays out of scope.
+- how many inactive generations or payload versions are retained
+- whether rollback is a distinct command or an install of an older lockfile
+- how database compatibility is checked before host runtime rollback
+- when package uninstall scripts run relative to garbage collection
 
-## Version Coupling
-
-The runtime component is part of the package: same artifact, same version,
-same commit provenance. There is no separate runtime version in the
-manifest. When a runtime embeds a separately versioned program — such as a
-wheel with its own `pyproject.toml` version — that inner version is an
-implementation detail; the package version is authoritative for dbpm
-resolution, locking, and receipts.
-
-This is the point of the model: the compatibility contract between a
-runtime and its database package (`x$get_next` signatures, run-status
-semantics) is expressed by shipping them in one versioned artifact, and the
-contract between a contributor and the runtime it targets is expressed as an
-ordinary dependency constraint. Both reuse dbpm's existing semver machinery.
+dbpm must not promise host-only rollback when the database schema has already
+advanced incompatibly.
 
 ## Artifact And Lockfile Interaction
 
-The runtime payload lives inside the normal package ZIP artifact, so the
-existing SHA-256 checksum, GPG signature verification, content-addressed
-cache, and lockfile identity in `lockfile.md` cover it with no new artifact
-types. Built runtime programs (wheels) should be placed into the artifact at
-build time, for example under `os/dist/`, so consumer installs need no
-language-ecosystem registry access and remain reproducible offline from the
-locked artifact.
+Runtime payloads remain inside normal immutable dbpm package artifacts. The
+existing artifact URL, checksum, signature, cache, and lockfile mechanisms
+therefore cover both database and host-side content.
 
-`.dbpmignore` continues to exclude producer-side files from the artifact;
-runtime source trees that build into a bundled wheel are natural candidates
-for exclusion when only the built wheel should ship.
+The dependency lockfile defines the desired package graph. The runtime receipt
+records how that graph was materialized and activated on a host. Validation
+should reconcile the receipt with the lockfile in the same spirit that
+database validation reconciles Core state.
 
-A future version may allow a runtime component to reference an external
-locked artifact (for example a wheel fetched from a registry) instead of a
-bundled file. If added, that reference must carry the same immutable
-identity guarantees: exact URL, checksum, and failure — never substitution —
-when the locked artifact is unavailable.
+Built programs such as wheels should normally be bundled into the package
+artifact so installation remains reproducible and offline-capable. dbpm does
+not resolve PyPI, npm, or other language dependency graphs during deployment.
+A future typed runtime kind may install a bundled artifact while preserving
+the same package isolation, receipt, and activation contracts.
 
-## Alternatives Considered
+## Security And Integrity
 
-### Git Submodules
+Before activation, dbpm must defend the application boundary:
 
-Splitting the database package and the runtime into separate repositories
-joined by git submodules was considered and rejected.
+- reject absolute export targets and path traversal
+- reject package scripts that produce exports escaping their payload through
+  symlinks
+- do not follow untrusted links when replacing or removing managed paths
+- never overwrite unowned application-level files
+- hold an exclusive application runtime lock during mutation
+- write receipts and link sets using safe staging and replacement operations
+- preserve verified artifact provenance for every activated payload
 
-Submodules answer a source-organization question, not a deployment
-question: dbpm consumes artifacts, not checkouts, so a submodule split would
-still require either this component model or a two-package model on top of
-it. Where the two overlap, submodules conflict with stated dbpm principles:
+Package scripts execute as trusted code from a verified package artifact, but
+dbpm should still constrain their documented write contract to the assigned
+payload directory.
 
-- A submodule pins a commit in source, which is exactly the
-  mutable-checkout coupling that `manifest.md` excludes from packages and
-  that lockfiles exist to replace. The coupling point becomes a commit
-  pointer on a mutable branch instead of a released, checksummed,
-  semver-addressed artifact.
-- The strongest property of the single-artifact model is lost: one version
-  naming one tested database-plus-runtime contract. A split reintroduces a
-  runner-to-schema compatibility matrix.
-- Operationally, submodules add contributor friction (recursive clones,
-  detached-HEAD state, accidental pointer bumps) and break GitHub source
-  tarballs, which complicates release automation.
+## Alternatives Rejected
 
-Provenance alone would survive a submodule split, because a parent commit
-deterministically pins its submodule commits. That is not sufficient reason
-to adopt them.
+### Dependencies own runtime prefixes
 
-### Split Repositories With Artifact Coupling
+The transitional `runtime.name` model makes a reusable dependency appear to
+own the deployment boundary. This works for a standalone program but does not
+represent the normal dbpm case in which an application composes several
+packages.
 
-If repository separation is needed — separate ownership, independent CI, a
-heavy language-ecosystem test matrix — the supported path is to couple
-through published artifacts rather than source:
+### Packages contribute into another package
 
-1. The runtime repository publishes a versioned, checksummed wheel (or
-   equivalent built program) to an artifact repository.
-2. The database package's build fetches that exact wheel by version and
-   checksum and bundles it into the package artifact under `os/dist/`.
+The former `runtime.into` design lets one package write files into a runtime
+owned by another dependency. That couples reusable packages to a particular
+host layout, makes file ownership and collisions ambiguous, and makes upgrade
+and uninstall depend on script ordering. Isolated payloads plus declarative
+exports provide the desired composition without shared-directory mutation.
 
-Consumers still see one immutable artifact and one package version; only the
-producer-side build crosses repositories, and it crosses at a released
-artifact identity. This requires no change to this spec.
+### One prefix per dependency
 
-### Separate Runtime Package
+Resolving a separate operator prefix for every dependency shifts dependency
+composition back to deployment documentation and environment variables.
+The application graph should be deployable through one application-level
+prefix choice.
 
-Promoting the runtime to its own runtime-only dbpm package, with the
-database contract expressed as an ordinary dependency constraint, remains
-open for the case where one runtime genuinely serves multiple database
-packages or needs an independent release cadence. The receipt and execution
-contract defined here apply unchanged to that shape, so it can be adopted
-later without rework. Until that need is real, the single-package component
-model is preferred for its one-version-one-contract property.
+### Flattened payload overlay
 
-### Monorepo Workspace (Status Quo)
+Copying every dependency into one shared directory makes provenance,
+collisions, rollback, and safe removal difficult. Only explicitly declared
+exports should be flattened into an application-level namespace.
 
-Keeping database and runtime trees side by side in one repository under a
-workspace manifest — the current `job_control` layout — remains the default
-recommendation. Separation of ownership is handled with directory ownership
-and CI path filters, and it is the cheapest layout to operate until it
-visibly hurts.
+### Workspace-owned runtime
 
-## Relationship To Existing Specs
+A source workspace can contain several independently deployable applications
+or reusable packages. Making it the runtime owner would confuse repository
+organization with deployment identity.
 
-- `manifest.md`: `runtime` is a new top-level manifest mapping; all existing
-  fields are unchanged.
-- `package-layout.md`: the workspace example already places an `os/` tree
-  next to `database/` package roots; this spec gives that tree a declared
-  deployment path. Runtime entry points follow the same
-  manifest-declared-not-inferred rule as SQL scripts.
-- `deployment-modes.md`: modes gain a runtime step; operator intent
-  semantics are unchanged.
-- `lockfile.md`: no schema change required for the MVP because runtime
-  payloads ship inside existing package artifacts.
-- `provenance.md`: runtime scripts receive the same resolved provenance the
-  SQL entry points receive, via environment variables instead of positional
-  arguments.
+## Compatibility And Migration
 
-## MVP Scope
+The implemented `runtime.name` behavior cannot be silently reinterpreted
+because existing scripts may write throughout `DBPM_RUNTIME_PREFIX` and
+existing receipts use owner semantics.
 
-1. Parse and validate the `runtime` manifest mapping (`name` form only).
-2. Prefix resolution via home environment variable and `--runtime-prefix`.
-3. Script execution with the injected environment contract and log capture.
-4. Receipt read/write with locking, and receipt-aware `install`, `upgrade`,
-   `resume`, `validate`, and `reinstall`.
-5. Plan output that shows the runtime step explicitly.
+Implementation requires an explicit compatibility plan:
 
-Deferred beyond MVP:
+1. Introduce the new manifest and receipt schema behind a version or
+   capability boundary.
+2. Continue reading legacy manifests and receipts with their original
+   semantics for a documented transition period.
+3. Provide a dry-run migration report that identifies legacy files, proposed
+   package payload locations, exports, and unmanaged conflicts.
+4. Require explicit operator action to adopt an existing prefix; never infer
+   ownership from directory names.
+5. Do not create `runtime.into` as an intermediate migration mechanism.
 
-- `runtime.into` contributions
-- `uninstall` orchestration
-- typed component kinds such as `python-venv`
-- external locked runtime artifacts
-- Core-side host-deployment reporting
+Whether the new manifest retains the top-level name `runtime` or uses an
+explicit manifest schema version must be settled before implementation.
+
+## Relationship To Existing Specifications
+
+- `manifest.md`: the selected root package and its normal dependencies define
+  the application graph; this specification extends package manifests with
+  package-local runtime payloads and exports.
+- `package-layout.md`: a workspace remains source discovery only and does not
+  own a deployed runtime.
+- `deployment-modes.md`: modes apply to graph staging and activation in
+  addition to database execution.
+- `lockfile.md`: the lockfile is desired graph identity; the runtime receipt
+  is host materialization state.
+- `provenance.md`: runtime scripts receive the same resolved artifact
+  provenance as database scripts.
+
+## Implementation Decisions Still Required
+
+The design intentionally precedes implementation. The following must be
+specified and tested before code changes:
+
+1. Final manifest schema for exports and application-level aliases.
+2. Manifest-version negotiation and legacy `runtime.name` migration.
+3. Exact payload path encoding, including build metadata and non-semver local
+   versions.
+4. Receipt schema, activation generations, and crash-recovery protocol.
+5. Cross-platform link strategy, including systems without symlink support.
+6. Collision handling for aliases and pre-existing unmanaged files.
+7. Upgrade script semantics when old and new payload directories are isolated.
+8. Retention, garbage-collection, uninstall, and rollback policy.
+9. Interaction between runtime activation and database deployment failure.
+10. Dry-run and plan output for payload, export, link, and removal changes.
+
+## Proposed Delivery Sequence
+
+1. Finalize manifest and receipt schemas with examples and validation rules.
+2. Add read-only planning for application runtime graphs and export conflicts.
+3. Implement isolated staging and package-local script execution.
+4. Implement command export validation and atomic activation.
+5. Add graph-aware validation and deterministic resume.
+6. Add upgrade retention and garbage collection.
+7. Add explicit legacy-prefix migration tooling.
+8. Design uninstall and rollback only after activation recovery is proven.
