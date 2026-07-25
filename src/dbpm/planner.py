@@ -128,6 +128,8 @@ def _script_for_mode(mode: str, manifest: PackageManifest) -> str | None:
         return manifest.scripts.upgrade
     if mode == "validate":
         return manifest.scripts.validate
+    if mode == "uninstall":
+        return manifest.scripts.uninstall
     return None
 
 

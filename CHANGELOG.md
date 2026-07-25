@@ -46,6 +46,10 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   immediately prior generation are retained; unreachable payload versions,
   expired receipts, command backups, and reinstall backups are removed under
   the application runtime lock.
+- Added destructive `dbpm uninstall` planning and execution. Runtime cleanup
+  scripts run in reverse dependency order before managed links, payloads,
+  retained generations, and the active receipt are removed; `etc`, `var`, and
+  unmanaged files are preserved.
 
 ### Deprecated
 

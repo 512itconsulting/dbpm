@@ -256,6 +256,31 @@ def test_planner_includes_read_only_application_runtime_graph(
             runner="sqlplus",
             runtime_prefix=str(prefix),
         )
+    (prefix / "bin/demo").unlink()
+    (prefix / "bin/demo").symlink_to("../packages/demo/1.1.0/bin/demo")
+    (prefix / "etc").mkdir()
+    (prefix / "etc/operator.conf").write_text("keep")
+    (prefix / "var").mkdir()
+    (prefix / "var/data").write_text("keep")
+    uninstall_plan = create_plan(
+        mode="uninstall",
+        source=upgraded_source,
+        provenance=resolve_provenance(upgraded_source),
+        environment=resolve_deployment_policy(None),
+        allow_destructive=True,
+    )
+    execute_plan(
+        uninstall_plan,
+        connect=None,
+        runner="sqlplus",
+        runtime_prefix=str(prefix),
+    )
+    assert not (prefix / "bin").exists()
+    assert not (prefix / "packages").exists()
+    assert not (prefix / ".dbpm/receipt.json").exists()
+    assert (prefix / ".dbpm/uninstalled-receipt.json").is_file()
+    assert (prefix / "etc/operator.conf").read_text() == "keep"
+    assert (prefix / "var/data").read_text() == "keep"
 
 
 def test_application_runtime_graph_uses_root_aliases_and_disabled_exports():
@@ -333,6 +358,7 @@ runtime:
   scripts:
     install: install.sh
     validate: validate.sh
+    uninstall: uninstall.sh
   exports:
     commands:
       {command}: bin/{command}
@@ -356,6 +382,9 @@ runtime:
         encoding="utf-8",
     )
     validate.chmod(0o755)
+    uninstall = path / "uninstall.sh"
+    uninstall.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    uninstall.chmod(0o755)
     return path
 
 

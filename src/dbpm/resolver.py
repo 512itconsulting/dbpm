@@ -26,6 +26,8 @@ def create_multi_package_plan(
         dependency_sources,
         installed_states,
     )
+    if mode == "uninstall":
+        ordered_sources = list(reversed(ordered_sources))
 
     package_plans: list[dict[str, object]] = []
     for item in ordered_sources:
@@ -169,7 +171,7 @@ def _registry_dependency_source(
 
 
 def _dependency_mode(mode: str) -> str:
-    if mode in {"upgrade", "validate"}:
+    if mode in {"upgrade", "validate", "uninstall"}:
         return mode
     return "install"
 

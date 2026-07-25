@@ -20,8 +20,9 @@ interrupted staging generation. Upgrade retains prior versioned payloads while
 activating the new graph; reinstall reconstructs same-version payloads while
 retaining recoverable backups. The active and immediately prior generation
 are retained; receipt-reachability garbage collection removes older,
-unreferenced payloads and recovery data. Uninstall remains incomplete. The
-removed `runtime.name`,
+unreferenced payloads and recovery data. Uninstall runs cleanup in reverse
+dependency order while preserving operator-owned state. The removed
+`runtime.name`,
 `runtime.home_env`, `runtime.into`, and `runtime.layout` fields are rejected.
 
 ## Purpose
@@ -489,10 +490,10 @@ observability, not authority.
 - **validate**: implemented; verifies receipt identity, package payload and
   artifact identity, the exact managed command-link set, executable targets,
   and package-declared read-only health checks without mutating activation.
-- **uninstall**: remove the root application's activated links and receipt,
-  then remove package payloads according to policy. It operates on the
-  application runtime as a whole, not by uninstalling a dependency from an
-  otherwise unresolved graph.
+- **uninstall**: implemented; validates the active graph, runs optional package
+  cleanup scripts in reverse dependency order, removes dbpm-managed links,
+  payloads, retained generations, and the active receipt, archives the final
+  receipt, and preserves application/operator-owned `etc` and `var` content.
 
 Removing or changing a dependency is an application upgrade driven by the new
 resolved graph. A package payload becomes eligible for garbage collection only

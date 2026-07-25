@@ -38,8 +38,8 @@ class DeploymentPolicy:
         warnings: list[str] = []
 
         if self.deployment_locked:
-            if mode == "reinstall":
-                blocked.append("`reinstall` is blocked when DEPLOY_LOCKED=Y")
+            if mode in {"reinstall", "uninstall"}:
+                blocked.append(f"`{mode}` is blocked when DEPLOY_LOCKED=Y")
             elif mode == "resume" and not approve:
                 approvals.append("`resume` requires approval when DEPLOY_LOCKED=Y")
 
@@ -49,8 +49,8 @@ class DeploymentPolicy:
             if dirty is True:
                 warnings.append("Dirty source/artifact will be deployed")
 
-        if mode == "reinstall" and not allow_destructive:
-            approvals.append("`reinstall` requires --allow-destructive")
+        if mode in {"reinstall", "uninstall"} and not allow_destructive:
+            approvals.append(f"`{mode}` requires --allow-destructive")
 
         return {
             "policy_context": self.as_dict(),

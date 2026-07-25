@@ -137,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(result.stdout.strip())
             return 0
-        if args.command in {"bootstrap-core", "install", "upgrade", "reinstall", "resume", "validate"}:
+        if args.command in {"bootstrap-core", "install", "upgrade", "reinstall", "resume", "validate", "uninstall"}:
             if args.command == "install" and args.lockfile:
                 plan = _build_plan_from_lockfile(args, include_installed_state=not args.dry_run)
             else:
@@ -356,7 +356,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_common_args(plan)
     plan.add_argument(
         "--mode",
-        choices=("bootstrap-core", "install", "upgrade", "reinstall", "resume", "validate"),
+        choices=("bootstrap-core", "install", "upgrade", "reinstall", "resume", "validate", "uninstall"),
         default="install",
         help="Deployment mode to plan",
     )
@@ -426,6 +426,16 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_common_args(validate)
     _add_execution_args(validate)
     _add_dependency_source_args(validate)
+
+    uninstall = subparsers.add_parser("uninstall", help="Uninstall an application package")
+    _add_common_args(uninstall)
+    _add_execution_args(uninstall)
+    _add_dependency_source_args(uninstall)
+    uninstall.add_argument(
+        "--allow-destructive",
+        action="store_true",
+        help="Allow application uninstall planning/execution",
+    )
 
     workspace = subparsers.add_parser("workspace", help="Inspect a dbpm workspace")
     workspace_subparsers = workspace.add_subparsers(dest="workspace_command", required=True)
@@ -644,7 +654,7 @@ def _build_plan(
         if not source.manifest.is_core:
             reverse_dependencies = _get_reverse_dependencies(args, source.manifest.application_name)
 
-    if args.command in {"plan", "install", "lock", "upgrade", "validate"} and (
+    if args.command in {"plan", "install", "lock", "upgrade", "validate", "uninstall"} and (
         dependency_sources or source.manifest.dependencies
     ):
         installed_states = {source.manifest.application_name: installed_state}

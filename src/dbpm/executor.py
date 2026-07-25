@@ -17,6 +17,7 @@ from .application_runtime import (
     validate_application_runtime_graph,
     resume_application_runtime_graph,
     garbage_collect_application_runtime,
+    uninstall_application_runtime_graph,
 )
 
 
@@ -121,6 +122,13 @@ def _execute_application_runtime(
     prefix = Path(runtime_prefix).expanduser().resolve()
     if mode == "validate":
         validate_application_runtime_graph(
+            graph,
+            prefix=prefix,
+            log_dir=context.log_dir,
+        )
+        return
+    if mode == "uninstall":
+        uninstall_application_runtime_graph(
             graph,
             prefix=prefix,
             log_dir=context.log_dir,

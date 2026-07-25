@@ -764,6 +764,73 @@ def _garbage_collect_application_runtime_unlocked(
     return tuple(removed)
 
 
+def uninstall_application_runtime_graph(
+    graph: dict[str, object],
+    *,
+    prefix: Path,
+    log_dir: Path,
+) -> None:
+    root_name = _package_name(graph.get("root_package"), "runtime root package")
+    payloads = graph.get("payloads")
+    if not isinstance(payloads, list):
+        raise ExecutionError("Application runtime graph payloads must be a list")
+    receipt = validate_application_runtime_graph(graph, prefix=prefix, log_dir=log_dir)
+    installed = {package.name: package for package in receipt.packages}
+    for sequence, raw_payload in enumerate(payloads, start=1):
+        payload = _mapping(raw_payload, "application runtime payload")
+        name = _package_name(payload.get("package"), "runtime payload package")
+        scripts = _mapping(payload.get("scripts"), f"runtime payload {name} scripts")
+        script = scripts.get("uninstall")
+        if not isinstance(script, dict) or script.get("ref") is None:
+            continue
+        package = installed[name]
+        environment = dict(os.environ)
+        environment.update(
+            {
+                "DBPM_RUNTIME_PREFIX": str(prefix.resolve()),
+                "DBPM_RUNTIME_PACKAGE_PREFIX": str((prefix / package.path).resolve()),
+                "DBPM_RUNTIME_MODE": "uninstall",
+                "DBPM_ROOT_PACKAGE_NAME": root_name,
+                "DBPM_ROOT_PACKAGE_VERSION": receipt.application_version,
+                "DBPM_PACKAGE_NAME": name,
+                "DBPM_PACKAGE_VERSION": package.version,
+                "DBPM_INSTALLED_VERSION": package.version,
+            }
+        )
+        log_file = log_dir / f"{sequence:03d}-{name}-runtime-uninstall.log"
+        returncode = _run_runtime_script(
+            Path(_nonempty_string(script.get("ref"), f"runtime payload {name} uninstall script")),
+            cwd=Path(_nonempty_string(payload.get("package_root"), f"runtime payload {name} package_root")),
+            environment=environment,
+            log_file=log_file,
+        )
+        if returncode != 0:
+            raise ExecutionError(
+                f"Runtime uninstall script for {name} failed with exit code "
+                f"{returncode}; see {log_file}"
+            )
+    with application_runtime_lock(prefix):
+        bin_path = prefix / "bin"
+        if bin_path.exists():
+            shutil.rmtree(bin_path)
+        packages_root = prefix / "packages"
+        if packages_root.exists():
+            shutil.rmtree(packages_root)
+        for managed_name in ("generations", "payload-backups", "staging"):
+            managed_path = prefix / APPLICATION_RECEIPT_DIR_NAME / managed_name
+            if managed_path.exists():
+                shutil.rmtree(managed_path)
+        for backup in (prefix / APPLICATION_RECEIPT_DIR_NAME).glob("bin-generation-*"):
+            if backup.is_dir():
+                shutil.rmtree(backup)
+        archived = prefix / APPLICATION_RECEIPT_DIR_NAME / "uninstalled-receipt.json"
+        archived.write_text(
+            json.dumps(receipt.as_dict(), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        application_receipt_path(prefix).unlink()
+
+
 def parse_application_runtime_receipt(
     value: object,
     *,
