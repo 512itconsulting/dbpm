@@ -36,6 +36,10 @@ from .db import (
 from .environment import DeploymentPolicy, policy_from_core_values, resolve_deployment_policy
 from .errors import DbpmError
 from .executor import execute_plan
+from .application_runtime import (
+    load_retained_application_runtime_receipt,
+    rollback_application_runtime,
+)
 from .lockfile import (
     LOCKFILE_NAME,
     assert_database_matches_lockfile,
@@ -136,6 +140,24 @@ def main(argv: list[str] | None = None) -> int:
                 minimum_version=args.minimum_version,
             )
             print(result.stdout.strip())
+            return 0
+        if args.command == "rollback":
+            prefix = Path(args.runtime_prefix).expanduser().resolve()
+            target = load_retained_application_runtime_receipt(
+                prefix,
+                target_generation=args.target_generation,
+            )
+            database_versions: dict[str, str] = {}
+            for package in target.packages:
+                state = _get_installed_state(args, _application_name(package.name))
+                if isinstance(state, dict) and isinstance(state.get("version"), str):
+                    database_versions[package.name] = state["version"]
+            receipt = rollback_application_runtime(
+                prefix,
+                database_versions=database_versions,
+                target_generation=args.target_generation,
+            )
+            print(f"ROLLED_BACK_RUNTIME_GENERATION={receipt.generation}")
             return 0
         if args.command in {"bootstrap-core", "install", "upgrade", "reinstall", "resume", "validate", "uninstall"}:
             if args.command == "install" and args.lockfile:
@@ -436,6 +458,14 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Allow application uninstall planning/execution",
     )
+
+    rollback = subparsers.add_parser(
+        "rollback",
+        help="Reactivate a retained application runtime generation",
+    )
+    rollback.add_argument("--runtime-prefix", required=True)
+    rollback.add_argument("--target-generation", type=int)
+    _add_database_args(rollback)
 
     workspace = subparsers.add_parser("workspace", help="Inspect a dbpm workspace")
     workspace_subparsers = workspace.add_subparsers(dest="workspace_command", required=True)

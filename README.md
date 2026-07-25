@@ -158,6 +158,7 @@ export DBPM_SQL_RUNNER=sql
 | [`dbpm resume`](docs/commands/resume.md) | Resume a running or failed deployment |
 | [`dbpm validate`](docs/commands/validate.md) | Run a package's validation script |
 | [`dbpm uninstall`](docs/commands/uninstall.md) | Remove an application and its managed runtime |
+| [`dbpm rollback`](docs/commands/rollback.md) | Reactivate a database-compatible retained runtime generation |
 | [`dbpm generate-scripts`](docs/commands/generate-scripts.md) | Generate standalone Oracle install and upgrade scripts from Git changes |
 | [`dbpm publish`](docs/commands/publish.md) | Build and publish a package to a Maven repository with GPG signing |
 | [`dbpm registry index`](docs/commands/registry-index.md) | Index a published immutable artifact in a dbpm registry |

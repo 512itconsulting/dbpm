@@ -14,6 +14,7 @@ from dbpm.application_runtime import (
     load_application_runtime_receipt,
     parse_application_runtime_receipt,
     resume_application_runtime_graph,
+    rollback_application_runtime,
     stage_application_runtime_graph,
     write_application_runtime_receipt,
 )
@@ -328,6 +329,52 @@ def test_garbage_collection_rejects_negative_retention(tmp_path: Path):
         garbage_collect_application_runtime(tmp_path, retain_generations=-1)
 
 
+def test_rollback_reactivates_retained_graph_as_new_generation(tmp_path: Path):
+    prefix = tmp_path / "app"
+    prefix.mkdir()
+    active = _generation_receipt(2, "2.0.0")
+    target = _generation_receipt(1, "1.0.0")
+    write_application_runtime_receipt(prefix, active)
+    target_dir = prefix / ".dbpm/generations/1"
+    target_dir.mkdir(parents=True)
+    (target_dir / "receipt.json").write_text(json.dumps(target.as_dict()))
+    for version in ("1.0.0", "2.0.0"):
+        executable = prefix / f"packages/demo/{version}/bin/demo"
+        executable.parent.mkdir(parents=True)
+        executable.write_text("#!/bin/sh\n")
+        executable.chmod(0o755)
+    (prefix / "bin").mkdir()
+    (prefix / "bin/demo").symlink_to("../packages/demo/2.0.0/bin/demo")
+
+    rolled_back = rollback_application_runtime(
+        prefix,
+        database_versions={"demo": "1.0.0"},
+    )
+
+    assert rolled_back.generation == 3
+    assert rolled_back.application_version == "1.0.0"
+    assert (prefix / "bin/demo").resolve() == (
+        prefix / "packages/demo/1.0.0/bin/demo"
+    ).resolve()
+
+
+def test_rollback_rejects_incompatible_database_versions(tmp_path: Path):
+    prefix = tmp_path / "app"
+    prefix.mkdir()
+    write_application_runtime_receipt(prefix, _generation_receipt(2, "2.0.0"))
+    target_dir = prefix / ".dbpm/generations/1"
+    target_dir.mkdir(parents=True)
+    (target_dir / "receipt.json").write_text(
+        json.dumps(_generation_receipt(1, "1.0.0").as_dict())
+    )
+
+    with pytest.raises(ExecutionError, match="Database versions are incompatible"):
+        rollback_application_runtime(
+            prefix,
+            database_versions={"demo": "2.0.0"},
+        )
+
+
 def _generation_receipt(generation: int, version: str) -> ApplicationRuntimeReceipt:
     return ApplicationRuntimeReceipt(
         application_name="demo",
@@ -347,7 +394,14 @@ def _generation_receipt(generation: int, version: str) -> ApplicationRuntimeRece
                 artifact_checksum_alg=None,
             ),
         ),
-        commands=(),
+        commands=(
+            ActivatedRuntimeCommand(
+                name="demo",
+                package="demo",
+                export="demo",
+                target=f"packages/demo/{version}/bin/demo",
+            ),
+        ),
     )
 
 

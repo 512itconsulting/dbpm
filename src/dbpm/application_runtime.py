@@ -831,6 +831,94 @@ def uninstall_application_runtime_graph(
         application_receipt_path(prefix).unlink()
 
 
+def rollback_application_runtime(
+    prefix: Path,
+    *,
+    database_versions: dict[str, str],
+    target_generation: int | None = None,
+) -> ApplicationRuntimeReceipt:
+    active = load_application_runtime_receipt(prefix)
+    target = load_retained_application_runtime_receipt(
+        prefix,
+        target_generation=target_generation,
+    )
+    generations_root = prefix / APPLICATION_RECEIPT_DIR_NAME / "generations"
+    mismatches = [
+        f"{package.name}: database={database_versions.get(package.name)!r}, runtime={package.version!r}"
+        for package in target.packages
+        if database_versions.get(package.name) != package.version
+    ]
+    if mismatches:
+        raise ExecutionError(
+            "Database versions are incompatible with rollback target: " + "; ".join(mismatches)
+        )
+    for package in target.packages:
+        if not (prefix / package.path).is_dir():
+            raise ExecutionError(f"Retained rollback payload is missing: {prefix / package.path}")
+    with application_runtime_lock(prefix):
+        next_generation = active.generation + 1
+        staged_bin = prefix / APPLICATION_RECEIPT_DIR_NAME / f"bin-rollback-{next_generation}"
+        staged_bin.mkdir()
+        for command in target.commands:
+            executable = (prefix / command.target).resolve(strict=True)
+            if not executable.is_file() or not os.access(executable, os.X_OK):
+                raise ExecutionError(
+                    f"Rollback command target is not executable: {command.target}"
+                )
+            os.symlink(f"../{command.target}", staged_bin / command.name)
+        active_archive = generations_root / str(active.generation)
+        active_archive.mkdir(parents=True, exist_ok=True)
+        (active_archive / APPLICATION_RECEIPT_FILE_NAME).write_text(
+            json.dumps(active.as_dict(), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        current_bin = prefix / "bin"
+        bin_backup = prefix / APPLICATION_RECEIPT_DIR_NAME / f"bin-generation-{active.generation}"
+        if bin_backup.exists():
+            shutil.rmtree(bin_backup)
+        current_bin.replace(bin_backup)
+        staged_bin.replace(current_bin)
+        rolled_back = ApplicationRuntimeReceipt(
+            application_name=target.application_name,
+            application_version=target.application_version,
+            generation=next_generation,
+            activated_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            lock_schema=target.lock_schema,
+            lock_checksum=target.lock_checksum,
+            packages=target.packages,
+            commands=target.commands,
+        )
+        write_application_runtime_receipt(prefix, rolled_back)
+    garbage_collect_application_runtime(prefix, retain_generations=1)
+    return rolled_back
+
+
+def load_retained_application_runtime_receipt(
+    prefix: Path,
+    *,
+    target_generation: int | None = None,
+) -> ApplicationRuntimeReceipt:
+    generations_root = prefix / APPLICATION_RECEIPT_DIR_NAME / "generations"
+    candidates = sorted(
+        (
+            item
+            for item in generations_root.iterdir()
+            if item.is_dir() and item.name.isdigit()
+        ),
+        key=lambda item: int(item.name),
+        reverse=True,
+    ) if generations_root.is_dir() else []
+    if target_generation is not None:
+        candidates = [item for item in candidates if int(item.name) == target_generation]
+    if not candidates:
+        raise ExecutionError("No retained application runtime generation is available")
+    target_dir = candidates[0]
+    return parse_application_runtime_receipt(
+        json.loads((target_dir / APPLICATION_RECEIPT_FILE_NAME).read_text(encoding="utf-8")),
+        source=str(target_dir),
+    )
+
+
 def parse_application_runtime_receipt(
     value: object,
     *,

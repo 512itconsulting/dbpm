@@ -506,17 +506,12 @@ Versioned package paths allow a new graph to be prepared without overwriting
 the active graph. This is the preferred upgrade mechanism even when policy
 normally retains only one active version.
 
-Rollback should mean reactivating a previously retained, fully verified graph,
-not running downgrade scripts in place. A future implementation design must
-specify:
-
-- how many inactive generations or payload versions are retained
-- whether rollback is a distinct command or an install of an older lockfile
-- how database compatibility is checked before host runtime rollback
-- when package uninstall scripts run relative to garbage collection
-
-dbpm must not promise host-only rollback when the database schema has already
-advanced incompatibly.
+Rollback reactivates a retained, verified graph as a new generation rather
+than running downgrade scripts or decrementing generation history. The
+`dbpm rollback` command reads installed Core state for every retained package
+and refuses activation unless database versions exactly match the target
+runtime graph. The active generation is retained before the command links and
+receipt switch.
 
 ## Artifact And Lockfile Interaction
 

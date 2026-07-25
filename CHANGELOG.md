@@ -50,6 +50,9 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   scripts run in reverse dependency order before managed links, payloads,
   retained generations, and the active receipt are removed; `etc`, `var`, and
   unmanaged files are preserved.
+- Added `dbpm rollback` for retained application runtime generations.
+  Rollback requires exact Core database-version compatibility for every target
+  package and records the reactivation as a new generation.
 
 ### Deprecated
 
