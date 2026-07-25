@@ -13,8 +13,10 @@ application level.
 The manifest parser and planner compose isolated payload paths and resolved
 command names. Install execution stages package payloads, runs package-local
 scripts, validates exports, promotes payloads, activates command links, and
-writes the application receipt. Upgrade, resume, reinstall, validation, and
-uninstall orchestration remain incomplete. The removed `runtime.name`,
+writes the application receipt. Validate reconciles that receipt with the
+planned graph, payload identities, managed command links, and package-declared
+health scripts. Upgrade, resume, reinstall, and uninstall orchestration remain
+incomplete. The removed `runtime.name`,
 `runtime.home_env`, `runtime.into`, and `runtime.layout` fields are rejected.
 
 ## Purpose
@@ -475,8 +477,9 @@ observability, not authority.
   but never implicitly delete application-owned `etc` or `var` content.
 - **resume**: continue or repeat staging based on receipt and recovery state;
   it must not treat a partially staged graph as active.
-- **validate**: verify receipt identity, package payloads, export targets, and
-  package-declared read-only health checks without mutating activation.
+- **validate**: implemented; verifies receipt identity, package payload and
+  artifact identity, the exact managed command-link set, executable targets,
+  and package-declared read-only health checks without mutating activation.
 - **uninstall**: remove the root application's activated links and receipt,
   then remove package payloads according to policy. It operates on the
   application runtime as a whole, not by uninstalling a dependency from an
@@ -604,6 +607,6 @@ specified and tested before code changes:
 
 ## Proposed Delivery Sequence
 
-1. Add graph-aware validation and deterministic resume.
+1. Add deterministic resume.
 2. Add upgrade retention and garbage collection.
 3. Design uninstall and rollback only after activation recovery is proven.

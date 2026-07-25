@@ -202,6 +202,30 @@ def test_planner_includes_read_only_application_runtime_graph(
     assert (prefix / "bin/demo").resolve().is_file()
     assert (prefix / ".dbpm/receipt.json").is_file()
 
+    validate_plan = create_plan(
+        mode="validate",
+        source=source,
+        provenance=resolve_provenance(source),
+        environment=resolve_deployment_policy(None),
+    )
+    execute_plan(
+        validate_plan,
+        connect=None,
+        runner="sqlplus",
+        runtime_prefix=str(prefix),
+    )
+    assert (tmp_path / "logs/001-demo-runtime-validate.log").read_text() == "demo\n1.0.0\n"
+
+    (prefix / "bin/demo").unlink()
+    (prefix / "bin/demo").symlink_to("/bin/sh")
+    with pytest.raises(ExecutionError, match="target is invalid"):
+        execute_plan(
+            validate_plan,
+            connect=None,
+            runner="sqlplus",
+            runtime_prefix=str(prefix),
+        )
+
 
 def test_application_runtime_graph_uses_root_aliases_and_disabled_exports():
     dependency = _runtime_package_plan(
@@ -277,6 +301,7 @@ package:
 runtime:
   scripts:
     install: install.sh
+    validate: validate.sh
   exports:
     commands:
       {command}: bin/{command}
@@ -293,6 +318,13 @@ runtime:
         encoding="utf-8",
     )
     install.chmod(0o755)
+    validate = path / "validate.sh"
+    validate.write_text(
+        "#!/bin/sh\n"
+        "printf '%s\\n' \"$DBPM_PACKAGE_NAME\" \"$DBPM_INSTALLED_VERSION\"\n",
+        encoding="utf-8",
+    )
+    validate.chmod(0o755)
     return path
 
 

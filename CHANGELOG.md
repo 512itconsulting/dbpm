@@ -31,7 +31,10 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Added application runtime install activation: validated payloads are
   promoted into versioned package directories, command symlinks are published
   through a dbpm-managed `bin` directory, and the active graph receipt is
-  written atomically. Non-install runtime modes remain blocked.
+  written atomically.
+- Added graph-aware runtime validation for receipt/package provenance,
+  payload directories, the exact managed command-link set, executable target
+  integrity, and package-declared read-only validation scripts.
 
 ### Deprecated
 

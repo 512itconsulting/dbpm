@@ -14,6 +14,7 @@ from .errors import ExecutionError
 from .application_runtime import (
     activate_staged_application_runtime,
     stage_application_runtime_graph,
+    validate_application_runtime_graph,
 )
 
 
@@ -69,7 +70,7 @@ def execute_plan(
     script_ref = execution.get("script_ref")
     arguments = execution.get("arguments", [])
     input_text = execution.get("stdin")
-    if not script_ref and application_runtime is None:
+    if not script_ref and application_runtime is None and plan.get("runtime_package") is None:
         raise ExecutionError("Plan does not contain an executable script")
     if not isinstance(arguments, list):
         raise ExecutionError("Plan execution arguments must be a list")
@@ -115,11 +116,18 @@ def _execute_application_runtime(
 ) -> None:
     if not runtime_prefix:
         raise ExecutionError("Application runtime requires --runtime-prefix")
+    prefix = Path(runtime_prefix).expanduser().resolve()
+    if mode == "validate":
+        validate_application_runtime_graph(
+            graph,
+            prefix=prefix,
+            log_dir=context.log_dir,
+        )
+        return
     if mode != "install":
         raise ExecutionError(
             f"Application runtime activation currently supports install only, not `{mode}`"
         )
-    prefix = Path(runtime_prefix).expanduser().resolve()
     staged = stage_application_runtime_graph(
         graph,
         prefix=prefix,

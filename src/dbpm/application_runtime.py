@@ -93,6 +93,137 @@ class StagedApplicationRuntime:
     log_files: tuple[Path, ...]
 
 
+def validate_application_runtime_graph(
+    graph: dict[str, object],
+    *,
+    prefix: Path,
+    log_dir: Path,
+) -> ApplicationRuntimeReceipt:
+    root_name = _package_name(graph.get("root_package"), "runtime root package")
+    root_version = _nonempty_string(graph.get("root_version"), "runtime root version")
+    payloads = graph.get("payloads")
+    commands = graph.get("commands")
+    if not isinstance(payloads, list) or not isinstance(commands, list):
+        raise ExecutionError("Application runtime graph is incomplete")
+    _assert_runtime_prefix(prefix)
+    receipt = load_application_runtime_receipt(prefix, expected_application=root_name)
+    if receipt.application_version != root_version:
+        raise ExecutionError(
+            f"Application runtime version is {receipt.application_version}; "
+            f"expected {root_version}"
+        )
+
+    receipt_packages = {package.name: package for package in receipt.packages}
+    planned_packages: set[str] = set()
+    log_dir.mkdir(parents=True, exist_ok=True)
+    for sequence, raw_payload in enumerate(payloads, start=1):
+        payload = _mapping(raw_payload, "application runtime payload")
+        name = _package_name(payload.get("package"), "runtime payload package")
+        planned_packages.add(name)
+        installed = receipt_packages.get(name)
+        if installed is None:
+            raise ExecutionError(f"Application runtime receipt is missing package `{name}`")
+        version = _nonempty_string(payload.get("version"), f"runtime payload {name} version")
+        path = _safe_relative_path(payload.get("payload_path"), f"runtime payload {name} path")
+        artifact = _mapping(payload.get("artifact"), f"runtime payload {name} artifact")
+        expected = (
+            version,
+            path,
+            str(artifact.get("commit") or ""),
+            str(artifact.get("uri") or ""),
+            str(artifact.get("checksum")) if artifact.get("checksum") else None,
+            str(artifact.get("checksum_alg")) if artifact.get("checksum_alg") else None,
+        )
+        actual = (
+            installed.version,
+            installed.path,
+            installed.commit,
+            installed.artifact_uri,
+            installed.artifact_checksum,
+            installed.artifact_checksum_alg,
+        )
+        if actual != expected:
+            raise ExecutionError(f"Application runtime package `{name}` does not match the plan")
+        package_prefix = prefix / path
+        if not package_prefix.is_dir():
+            raise ExecutionError(f"Application runtime payload is missing: {package_prefix}")
+        script = _validation_script(payload)
+        if script is not None:
+            log_file = log_dir / f"{sequence:03d}-{name}-runtime-validate.log"
+            environment = dict(os.environ)
+            environment.update(
+                {
+                    "DBPM_RUNTIME_PREFIX": str(prefix.resolve()),
+                    "DBPM_RUNTIME_PACKAGE_PREFIX": str(package_prefix.resolve()),
+                    "DBPM_RUNTIME_MODE": "validate",
+                    "DBPM_ROOT_PACKAGE_NAME": root_name,
+                    "DBPM_ROOT_PACKAGE_VERSION": root_version,
+                    "DBPM_PACKAGE_NAME": name,
+                    "DBPM_PACKAGE_VERSION": version,
+                    "DBPM_INSTALLED_VERSION": installed.version,
+                    "DBPM_COMMIT_HASH": installed.commit,
+                    "DBPM_ARTIFACT_URL": installed.artifact_uri,
+                    "DBPM_ARTIFACT_SHA256": (
+                        installed.artifact_checksum or ""
+                        if installed.artifact_checksum_alg == "SHA-256"
+                        else ""
+                    ),
+                }
+            )
+            returncode = _run_runtime_script(
+                Path(_nonempty_string(script.get("ref"), f"runtime payload {name} validate script")),
+                cwd=Path(_nonempty_string(payload.get("package_root"), f"runtime payload {name} package_root")),
+                environment=environment,
+                log_file=log_file,
+            )
+            if returncode != 0:
+                raise ExecutionError(
+                    f"Runtime validation script for {name} failed with exit code "
+                    f"{returncode}; see {log_file}"
+                )
+    extra_packages = set(receipt_packages).difference(planned_packages)
+    if extra_packages:
+        raise ExecutionError(
+            "Application runtime receipt contains unplanned packages: "
+            + ", ".join(sorted(extra_packages))
+        )
+
+    expected_commands = {
+        _command_name(command.get("name"), "runtime command name"): (
+            _package_name(command.get("package"), "runtime command package"),
+            _command_name(command.get("export"), "runtime command export"),
+            _safe_relative_path(command.get("target"), "runtime command target"),
+        )
+        for command in (_mapping(raw, "application runtime command") for raw in commands)
+    }
+    receipt_commands = {
+        command.name: (command.package, command.export, command.target)
+        for command in receipt.commands
+    }
+    if receipt_commands != expected_commands:
+        raise ExecutionError("Application runtime commands do not match the plan")
+    bin_path = prefix / "bin"
+    actual_names = {item.name for item in bin_path.iterdir()} if bin_path.is_dir() else set()
+    if actual_names != set(expected_commands):
+        raise ExecutionError("Application runtime bin directory does not match the receipt")
+    for name, (_, _, target) in expected_commands.items():
+        link = bin_path / name
+        if not link.is_symlink():
+            raise ExecutionError(f"Application runtime command is not a managed symlink: {link}")
+        expected_target = (prefix / target).resolve(strict=True)
+        if link.resolve(strict=True) != expected_target or not os.access(expected_target, os.X_OK):
+            raise ExecutionError(f"Application runtime command target is invalid: {link}")
+    return receipt
+
+
+def _validation_script(payload: dict[str, Any]) -> dict[str, Any] | None:
+    scripts = _mapping(payload.get("scripts"), "application runtime payload scripts")
+    script = scripts.get("validate")
+    if not isinstance(script, dict) or script.get("ref") is None:
+        return None
+    return script
+
+
 def activate_staged_application_runtime(
     graph: dict[str, object],
     staged: StagedApplicationRuntime,

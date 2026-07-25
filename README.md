@@ -79,8 +79,10 @@ See the [changelog](CHANGELOG.md) for release contents and
 - Application-owned runtime composition, isolated dependency payloads, and
   declarative command exports support install execution with isolated staging,
   package-local scripts, export validation, payload promotion, command-link
-  activation, and an application receipt. Runtime upgrade, resume, reinstall,
-  validate, and uninstall orchestration are not implemented yet. The removed
+  activation, and an application receipt. Runtime validate reconciles the
+  receipt, payload identities, managed links, executable targets, and package
+  health scripts. Runtime upgrade, resume, reinstall, and uninstall
+  orchestration are not implemented yet. The removed
   package-owned fields `runtime.name`, `runtime.home_env`, `runtime.into`, and
   `runtime.layout` are rejected.
 - Lockfile database provenance reconciliation requires Core 3.3.0 or newer.
