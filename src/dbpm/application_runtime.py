@@ -18,6 +18,7 @@ from .manifest import PACKAGE_NAME_RE, RUNTIME_COMMAND_NAME_RE
 APPLICATION_RECEIPT_SCHEMA = "dbpm.application-runtime.v1"
 APPLICATION_RECEIPT_DIR_NAME = ".dbpm"
 APPLICATION_RECEIPT_FILE_NAME = "receipt.json"
+ACTIVATION_JOURNAL_FILE_NAME = "activation.json"
 
 
 @dataclass(frozen=True)
@@ -240,6 +241,7 @@ def activate_staged_application_runtime(
     root_version = _nonempty_string(graph.get("root_version"), "runtime root version")
 
     with application_runtime_lock(prefix):
+        _recover_application_runtime_activation_unlocked(prefix)
         receipt_file = application_receipt_path(prefix)
         prior = (
             load_application_runtime_receipt(prefix, expected_application=root_name)
@@ -255,6 +257,16 @@ def activate_staged_application_runtime(
         staged_bin = staged.path / "bin"
         staged_bin.mkdir()
         bin_activated = False
+        journal_path = prefix / APPLICATION_RECEIPT_DIR_NAME / ACTIVATION_JOURNAL_FILE_NAME
+        journal: dict[str, object] = {
+            "generation": generation,
+            "phase": "prepared",
+            "staged_path": str(staged.path),
+            "promoted": [],
+            "replaced": [],
+            "bin_backup": None,
+        }
+        _write_activation_journal(journal_path, journal)
 
         for raw_command in commands:
             command = _mapping(raw_command, "application runtime command")
@@ -318,6 +330,18 @@ def activate_staged_application_runtime(
                     promoted.append(destination)
                 packages.append(package_record)
 
+            journal["phase"] = "payloads-promoted"
+            journal["promoted"] = [
+                path.relative_to(prefix).as_posix() for path in promoted
+            ]
+            journal["replaced"] = [
+                {
+                    "destination": destination.relative_to(prefix).as_posix(),
+                    "backup": backup.relative_to(prefix).as_posix(),
+                }
+                for destination, backup in replaced
+            ]
+            _write_activation_journal(journal_path, journal)
             if bin_path.exists():
                 if prior is None:
                     raise ExecutionError(
@@ -326,8 +350,11 @@ def activate_staged_application_runtime(
                 if bin_backup.exists():
                     raise ExecutionError(f"Runtime activation backup already exists: {bin_backup}")
                 bin_path.replace(bin_backup)
+                journal["bin_backup"] = bin_backup.relative_to(prefix).as_posix()
             staged_bin.replace(bin_path)
             bin_activated = True
+            journal["phase"] = "bin-activated"
+            _write_activation_journal(journal_path, journal)
             receipt = ApplicationRuntimeReceipt(
                 application_name=root_name,
                 application_version=root_version,
@@ -359,6 +386,9 @@ def activate_staged_application_runtime(
                     encoding="utf-8",
                 )
             write_application_runtime_receipt(prefix, receipt)
+            journal["phase"] = "receipt-written"
+            _write_activation_journal(journal_path, journal)
+            journal_path.unlink()
             return receipt
         except Exception:
             if bin_activated and bin_path.exists():
@@ -372,7 +402,69 @@ def activate_staged_application_runtime(
             for destination, backup in reversed(replaced):
                 if backup.exists():
                     backup.replace(destination)
+            journal_path.unlink(missing_ok=True)
             raise
+
+
+def recover_application_runtime_activation(prefix: Path) -> None:
+    with application_runtime_lock(prefix):
+        _recover_application_runtime_activation_unlocked(prefix)
+
+
+def _recover_application_runtime_activation_unlocked(prefix: Path) -> None:
+    journal_path = prefix / APPLICATION_RECEIPT_DIR_NAME / ACTIVATION_JOURNAL_FILE_NAME
+    if not journal_path.exists():
+        return
+    try:
+        journal = json.loads(journal_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ExecutionError(f"Cannot recover invalid activation journal: {journal_path}") from exc
+    if journal.get("phase") == "receipt-written":
+        journal_path.unlink()
+        return
+    staged_path = Path(_nonempty_string(journal.get("staged_path"), "activation staged_path"))
+    if journal.get("phase") == "bin-activated":
+        current_bin = prefix / "bin"
+        if current_bin.exists():
+            recovery_bin = staged_path / "bin"
+            if recovery_bin.exists():
+                shutil.rmtree(recovery_bin)
+            current_bin.replace(recovery_bin)
+        backup_value = journal.get("bin_backup")
+        if isinstance(backup_value, str):
+            backup = prefix / _safe_relative_path(backup_value, "activation bin_backup")
+            if backup.exists():
+                backup.replace(prefix / "bin")
+    promoted = journal.get("promoted", [])
+    if not isinstance(promoted, list):
+        raise ExecutionError("Activation journal promoted paths must be a list")
+    for raw_relative in reversed(promoted):
+        relative = _safe_relative_path(raw_relative, "activation promoted path")
+        destination = prefix / relative
+        if destination.exists():
+            source = staged_path / relative
+            source.parent.mkdir(parents=True, exist_ok=True)
+            destination.replace(source)
+    replaced = journal.get("replaced", [])
+    if not isinstance(replaced, list):
+        raise ExecutionError("Activation journal replaced paths must be a list")
+    for raw_item in reversed(replaced):
+        item = _mapping(raw_item, "activation replaced path")
+        destination = prefix / _safe_relative_path(
+            item.get("destination"), "activation replacement destination"
+        )
+        backup = prefix / _safe_relative_path(
+            item.get("backup"), "activation replacement backup"
+        )
+        if backup.exists():
+            backup.replace(destination)
+    journal_path.unlink()
+
+
+def _write_activation_journal(path: Path, journal: dict[str, object]) -> None:
+    temp = path.with_suffix(".tmp")
+    temp.write_text(json.dumps(journal, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temp.replace(path)
 
 
 def stage_application_runtime_graph(

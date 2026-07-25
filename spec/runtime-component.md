@@ -375,9 +375,11 @@ package writes into another package's payload.
 Activation must be transactional from the application's perspective. Before
 activation, the old graph remains usable. If staging or validation fails, dbpm
 records diagnostic state without publishing partial command links. If
-activation itself cannot be fully atomic on a supported platform, the
-implementation specification must define recovery markers and deterministic
-resume behavior.
+activation spans multiple filesystem operations, dbpm records a durable
+activation journal before payload promotion and advances it after payload,
+command-directory, and receipt boundaries. A later activation automatically
+rolls back an incomplete journal under the runtime lock; a journal whose
+receipt was published is finalized without undoing the active generation.
 
 Service quiescence remains an operator responsibility. Plan output must show
 all runtime payload and activated-command changes so the operator can decide

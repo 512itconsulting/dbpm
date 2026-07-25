@@ -15,6 +15,7 @@ from dbpm.application_runtime import (
     parse_application_runtime_receipt,
     resume_application_runtime_graph,
     rollback_application_runtime,
+    recover_application_runtime_activation,
     stage_application_runtime_graph,
     write_application_runtime_receipt,
 )
@@ -373,6 +374,38 @@ def test_rollback_rejects_incompatible_database_versions(tmp_path: Path):
             prefix,
             database_versions={"demo": "2.0.0"},
         )
+
+
+def test_activation_journal_recovers_interrupted_bin_switch(tmp_path: Path):
+    prefix = tmp_path / "app"
+    prefix.mkdir()
+    staging = prefix / ".dbpm/staging/generation-test"
+    staging.mkdir(parents=True)
+    promoted = prefix / "packages/demo/2.0.0"
+    promoted.mkdir(parents=True)
+    (promoted / "new").write_text("new")
+    current_bin = prefix / "bin"
+    current_bin.mkdir()
+    (current_bin / "new").write_text("new")
+    backup = prefix / ".dbpm/bin-generation-1"
+    backup.mkdir()
+    (backup / "old").write_text("old")
+    journal = {
+        "generation": 2,
+        "phase": "bin-activated",
+        "staged_path": str(staging),
+        "promoted": ["packages/demo/2.0.0"],
+        "replaced": [],
+        "bin_backup": ".dbpm/bin-generation-1",
+    }
+    (prefix / ".dbpm/activation.json").write_text(json.dumps(journal))
+
+    recover_application_runtime_activation(prefix)
+
+    assert (prefix / "bin/old").read_text() == "old"
+    assert (staging / "bin/new").read_text() == "new"
+    assert (staging / "packages/demo/2.0.0/new").read_text() == "new"
+    assert not (prefix / ".dbpm/activation.json").exists()
 
 
 def _generation_receipt(generation: int, version: str) -> ApplicationRuntimeReceipt:

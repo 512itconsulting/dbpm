@@ -53,6 +53,8 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Added `dbpm rollback` for retained application runtime generations.
   Rollback requires exact Core database-version compatibility for every target
   package and records the reactivation as a new generation.
+- Added durable activation journaling and automatic crash recovery across
+  payload promotion, command-directory switching, and receipt publication.
 
 ### Deprecated
 
