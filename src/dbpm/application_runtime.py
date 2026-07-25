@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterator, TextIO
 
@@ -90,6 +91,115 @@ class StagedApplicationRuntime:
     path: Path
     payload_root: Path
     log_files: tuple[Path, ...]
+
+
+def activate_staged_application_runtime(
+    graph: dict[str, object],
+    staged: StagedApplicationRuntime,
+    *,
+    prefix: Path,
+) -> ApplicationRuntimeReceipt:
+    payloads = graph.get("payloads")
+    commands = graph.get("commands")
+    if not isinstance(payloads, list) or not isinstance(commands, list):
+        raise ExecutionError("Application runtime graph is incomplete")
+    root_name = _package_name(graph.get("root_package"), "runtime root package")
+    root_version = _nonempty_string(graph.get("root_version"), "runtime root version")
+
+    with application_runtime_lock(prefix):
+        receipt_file = application_receipt_path(prefix)
+        prior = (
+            load_application_runtime_receipt(prefix, expected_application=root_name)
+            if receipt_file.exists()
+            else None
+        )
+        generation = prior.generation + 1 if prior else 1
+        packages: list[ApplicationRuntimePackage] = []
+        promoted: list[Path] = []
+        bin_path = prefix / "bin"
+        bin_backup = prefix / APPLICATION_RECEIPT_DIR_NAME / f"bin-generation-{generation - 1}"
+        staged_bin = staged.path / "bin"
+        staged_bin.mkdir()
+        bin_activated = False
+
+        for raw_command in commands:
+            command = _mapping(raw_command, "application runtime command")
+            name = _command_name(command.get("name"), "runtime command name")
+            target = _safe_relative_path(command.get("target"), f"runtime command {name} target")
+            os.symlink(f"../{target}", staged_bin / name)
+
+        try:
+            for raw_payload in payloads:
+                payload = _mapping(raw_payload, "application runtime payload")
+                name = _package_name(payload.get("package"), "runtime payload package")
+                version = _nonempty_string(payload.get("version"), f"runtime payload {name} version")
+                relative = _safe_relative_path(payload.get("payload_path"), f"runtime payload {name} path")
+                source = staged.path / relative
+                destination = prefix / relative
+                if destination.exists():
+                    raise ExecutionError(f"Runtime payload already exists: {destination}")
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                source.replace(destination)
+                promoted.append(destination)
+                artifact = _mapping(payload.get("artifact"), f"runtime payload {name} artifact")
+                packages.append(
+                    ApplicationRuntimePackage(
+                        name=name,
+                        version=version,
+                        path=relative,
+                        commit=str(artifact.get("commit") or ""),
+                        artifact_uri=str(artifact.get("uri") or ""),
+                        artifact_checksum=(
+                            str(artifact.get("checksum")) if artifact.get("checksum") else None
+                        ),
+                        artifact_checksum_alg=(
+                            str(artifact.get("checksum_alg"))
+                            if artifact.get("checksum_alg")
+                            else None
+                        ),
+                    )
+                )
+
+            if bin_path.exists():
+                if prior is None:
+                    raise ExecutionError(
+                        f"Application runtime bin directory is not managed by dbpm: {bin_path}"
+                    )
+                if bin_backup.exists():
+                    raise ExecutionError(f"Runtime activation backup already exists: {bin_backup}")
+                bin_path.replace(bin_backup)
+            staged_bin.replace(bin_path)
+            bin_activated = True
+            receipt = ApplicationRuntimeReceipt(
+                application_name=root_name,
+                application_version=root_version,
+                generation=generation,
+                activated_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                lock_schema=None,
+                lock_checksum=None,
+                packages=tuple(packages),
+                commands=tuple(
+                    ActivatedRuntimeCommand(
+                        name=_command_name(item.get("name"), "runtime command name"),
+                        package=_package_name(item.get("package"), "runtime command package"),
+                        export=_command_name(item.get("export"), "runtime command export"),
+                        target=_safe_relative_path(item.get("target"), "runtime command target"),
+                    )
+                    for item in (_mapping(raw, "application runtime command") for raw in commands)
+                ),
+            )
+            write_application_runtime_receipt(prefix, receipt)
+            return receipt
+        except Exception:
+            if bin_activated and bin_path.exists():
+                bin_path.replace(staged_bin)
+            if bin_backup.exists():
+                bin_backup.replace(bin_path)
+            for destination in reversed(promoted):
+                source = staged.path / destination.relative_to(prefix)
+                source.parent.mkdir(parents=True, exist_ok=True)
+                destination.replace(source)
+            raise
 
 
 def stage_application_runtime_graph(

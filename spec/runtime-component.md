@@ -10,13 +10,12 @@ runtime. Runtime-bearing dependencies install into isolated package
 directories beneath it and declare exports that dbpm activates at the
 application level.
 
-The manifest parser recognizes the new `runtime` shape, and the planner
-produces a read-only graph with isolated payload paths and resolved command
-names. Isolated staging, package-local script execution, log capture, and
-staged export security validation are implemented as an internal execution
-layer. Normal deployment execution remains blocked until atomic activation is
-implemented. The removed `runtime.name`, `runtime.home_env`, `runtime.into`,
-and `runtime.layout` fields are rejected.
+The manifest parser and planner compose isolated payload paths and resolved
+command names. Install execution stages package payloads, runs package-local
+scripts, validates exports, promotes payloads, activates command links, and
+writes the application receipt. Upgrade, resume, reinstall, validation, and
+uninstall orchestration remain incomplete. The removed `runtime.name`,
+`runtime.home_env`, `runtime.into`, and `runtime.layout` fields are rejected.
 
 ## Purpose
 
@@ -376,10 +375,11 @@ Service quiescence remains an operator responsibility. Plan output must show
 all runtime payload and activated-command changes so the operator can decide
 whether a running process needs to be stopped.
 
-The current implementation completes staging and validation but deliberately
-does not call that layer from normal deployment execution. A staged generation
-remains beneath `<prefix>/.dbpm/staging/`; it does not modify
-`<prefix>/packages`, `<prefix>/bin`, or the active receipt.
+Install execution promotes a validated staged generation into
+`<prefix>/packages`, replaces the dbpm-managed command directory, and writes
+the active receipt. Failed staging remains beneath `<prefix>/.dbpm/staging/`
+for diagnostics. Activation refuses to overwrite an unmanaged `bin`
+directory.
 
 ## Runtime Receipt
 
@@ -604,7 +604,6 @@ specified and tested before code changes:
 
 ## Proposed Delivery Sequence
 
-1. Implement atomic activation of validated payloads and command exports.
-2. Add graph-aware validation and deterministic resume.
-3. Add upgrade retention and garbage collection.
-4. Design uninstall and rollback only after activation recovery is proven.
+1. Add graph-aware validation and deterministic resume.
+2. Add upgrade retention and garbage collection.
+3. Design uninstall and rollback only after activation recovery is proven.

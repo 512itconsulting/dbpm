@@ -11,6 +11,10 @@ from typing import TextIO
 from .connect import ConnectSpec, build_sql_command
 from .db import delete_application, delete_system, record_deployment_provenance, stage_deployment_provenance
 from .errors import ExecutionError
+from .application_runtime import (
+    activate_staged_application_runtime,
+    stage_application_runtime_graph,
+)
 
 
 FALLBACK_EXIT_COMMAND = "EXIT SUCCESS\n"
@@ -32,11 +36,9 @@ def execute_plan(
     context: _ExecutionContext | None = None,
 ) -> int:
     context = context or _new_execution_context()
-    if plan.get("application_runtime") is not None:
-        raise ExecutionError(
-            "Application runtime graph execution is not implemented yet; "
-            "the plan is read-only"
-        )
+    application_runtime = plan.get("application_runtime")
+    if application_runtime is not None and not isinstance(application_runtime, dict):
+        raise ExecutionError("Application runtime plan must be an object")
     packages = plan.get("packages")
     if packages is not None:
         if not isinstance(packages, list):
@@ -51,6 +53,13 @@ def execute_plan(
                 runtime_prefix=runtime_prefix,
                 context=context,
             )
+        if application_runtime is not None:
+            _execute_application_runtime(
+                application_runtime,
+                mode=str(plan.get("mode") or "install"),
+                runtime_prefix=runtime_prefix,
+                context=context,
+            )
         return 0
 
     execution = plan.get("execution")
@@ -60,7 +69,7 @@ def execute_plan(
     script_ref = execution.get("script_ref")
     arguments = execution.get("arguments", [])
     input_text = execution.get("stdin")
-    if not script_ref:
+    if not script_ref and application_runtime is None:
         raise ExecutionError("Plan does not contain an executable script")
     if not isinstance(arguments, list):
         raise ExecutionError("Plan execution arguments must be a list")
@@ -87,7 +96,37 @@ def execute_plan(
             raise ExecutionError(f"Deployment command failed with exit code {returncode}; see {log_file}")
         _execute_post_actions(plan, connect=connect, runner=runner)
 
+    if application_runtime is not None:
+        _execute_application_runtime(
+            application_runtime,
+            mode=str(plan.get("mode") or "install"),
+            runtime_prefix=runtime_prefix,
+            context=context,
+        )
     return 0
+
+
+def _execute_application_runtime(
+    graph: dict[str, object],
+    *,
+    mode: str,
+    runtime_prefix: str | None,
+    context: _ExecutionContext,
+) -> None:
+    if not runtime_prefix:
+        raise ExecutionError("Application runtime requires --runtime-prefix")
+    if mode != "install":
+        raise ExecutionError(
+            f"Application runtime activation currently supports install only, not `{mode}`"
+        )
+    prefix = Path(runtime_prefix).expanduser().resolve()
+    staged = stage_application_runtime_graph(
+        graph,
+        prefix=prefix,
+        mode=mode,
+        log_dir=context.log_dir,
+    )
+    activate_staged_application_runtime(graph, staged, prefix=prefix)
 
 
 def _new_execution_context() -> _ExecutionContext:

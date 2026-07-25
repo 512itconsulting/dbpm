@@ -158,7 +158,11 @@ runtime:
         )
 
 
-def test_planner_includes_read_only_application_runtime_graph(tmp_path: Path):
+def test_planner_includes_read_only_application_runtime_graph(
+    tmp_path: Path,
+    monkeypatch,
+):
+    monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
     package = _write_runtime_package(
         tmp_path / "pkg",
         package="demo",
@@ -186,8 +190,17 @@ def test_planner_includes_read_only_application_runtime_graph(tmp_path: Path):
         }
     ]
 
-    with pytest.raises(ExecutionError, match="plan is read-only"):
-        execute_plan(plan, connect=None, runner="sqlplus")
+    prefix = tmp_path / "runtime"
+    prefix.mkdir()
+    execute_plan(
+        plan,
+        connect=None,
+        runner="sqlplus",
+        runtime_prefix=str(prefix),
+    )
+    assert (prefix / "bin/demo").is_symlink()
+    assert (prefix / "bin/demo").resolve().is_file()
+    assert (prefix / ".dbpm/receipt.json").is_file()
 
 
 def test_application_runtime_graph_uses_root_aliases_and_disabled_exports():
@@ -271,7 +284,14 @@ runtime:
         encoding="utf-8",
     )
     install = path / "install.sh"
-    install.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    install.write_text(
+        "#!/bin/sh\n"
+        "mkdir -p \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin\"\n"
+        f"printf '#!/bin/sh\\nexit 0\\n' > "
+        f"\"$DBPM_RUNTIME_PACKAGE_PREFIX/bin/{command}\"\n"
+        f"chmod +x \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin/{command}\"\n",
+        encoding="utf-8",
+    )
     install.chmod(0o755)
     return path
 

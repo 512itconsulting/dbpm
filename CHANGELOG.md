@@ -27,8 +27,11 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Added locked application runtime staging, package-local script execution
   with the injected application environment contract, per-package log capture,
   and staged command validation that rejects missing, non-executable, or
-  payload-escaping targets. Activation remains intentionally disconnected from
-  normal deployment execution.
+  payload-escaping targets.
+- Added application runtime install activation: validated payloads are
+  promoted into versioned package directories, command symlinks are published
+  through a dbpm-managed `bin` directory, and the active graph receipt is
+  written atomically. Non-install runtime modes remain blocked.
 
 ### Deprecated
 
