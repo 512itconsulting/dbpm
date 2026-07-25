@@ -81,7 +81,7 @@ def create_plan(
         },
         "runtime_package": runtime_package,
     }
-    if runtime_package is not None:
+    if runtime_package is not None and not manifest.dependencies:
         plan["application_runtime"] = create_application_runtime_graph_plan(
             [plan],
             root_package_name=manifest.name,

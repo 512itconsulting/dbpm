@@ -358,6 +358,40 @@ def test_application_runtime_graph_rejects_unknown_activation_reference():
         )
 
 
+def test_root_dependency_activation_is_deferred_until_multi_package_planning(
+    tmp_path: Path,
+):
+    package = tmp_path / "root"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: root_app
+  version: "1.0.0"
+dependencies:
+  - name: tools
+    version: "^1.0.0"
+runtime:
+  activation:
+    commands:
+      aliases:
+        tools.run: app-run
+""",
+        encoding="utf-8",
+    )
+    source = load_package_source(str(package))
+
+    plan = create_plan(
+        mode="install",
+        source=source,
+        provenance=resolve_provenance(source),
+        environment=resolve_deployment_policy(None),
+    )
+
+    assert plan["runtime_package"] is not None
+    assert "application_runtime" not in plan
+
+
 def _write_runtime_package(
     path: Path,
     *,
