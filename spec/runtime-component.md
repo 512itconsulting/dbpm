@@ -16,8 +16,9 @@ scripts, validates exports, promotes payloads, activates command links, and
 writes the application receipt. Validate reconciles that receipt with the
 planned graph, payload identities, managed command links, and package-declared
 health scripts. Resume can deterministically retry a matching failed or
-interrupted staging generation. Upgrade, reinstall, and uninstall
-orchestration remain incomplete. The removed `runtime.name`,
+interrupted staging generation. Upgrade retains prior versioned payloads while
+activating the new graph; reinstall reconstructs same-version payloads while
+retaining recoverable backups. Uninstall remains incomplete. The removed `runtime.name`,
 `runtime.home_env`, `runtime.into`, and `runtime.layout` fields are rejected.
 
 ## Purpose
@@ -472,10 +473,12 @@ observability, not authority.
 
 - **install**: stage the complete runtime graph and activate it only after all
   required payloads and exports validate.
-- **upgrade**: resolve the new graph, stage changed package versions beside the
-  active versions, validate, and atomically switch activation.
-- **reinstall**: reconstruct package payloads with explicit destructive intent,
-  but never implicitly delete application-owned `etc` or `var` content.
+- **upgrade**: implemented; resolves and stages the new graph, reuses unchanged
+  payloads only when receipt identity matches, retains prior versions, and
+  switches command activation and receipt generation.
+- **reinstall**: implemented; reconstructs same-version package payloads with
+  explicit destructive intent and retains the replaced payloads as recovery
+  backups, without touching application-owned `etc` or `var` content.
 - **resume**: implemented for incomplete staging; selects only a generation
   whose recorded graph exactly matches the requested graph, reuses a ready
   stage or reconstructs a failed/interrupted payload set in the same staging

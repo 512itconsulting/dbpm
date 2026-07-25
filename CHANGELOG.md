@@ -38,6 +38,10 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Added deterministic runtime resume metadata. Failed, interrupted, and ready
   stages record their exact graph and status; resume selects only a matching
   incomplete generation and reconstructs failed payloads in place.
+- Added runtime upgrade and reinstall generation switching. Upgrade reuses
+  only identity-matching unchanged payloads and retains prior versions;
+  reinstall reconstructs same-version payloads while retaining recovery
+  backups.
 
 ### Deprecated
 

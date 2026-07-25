@@ -131,9 +131,9 @@ def _execute_application_runtime(
             prefix=prefix,
             log_dir=context.log_dir,
         )
-        activate_staged_application_runtime(graph, staged, prefix=prefix)
+        activate_staged_application_runtime(graph, staged, prefix=prefix, mode=mode)
         return
-    if mode != "install":
+    if mode not in {"install", "upgrade", "reinstall"}:
         raise ExecutionError(
             f"Application runtime activation currently supports install only, not `{mode}`"
         )
@@ -143,7 +143,7 @@ def _execute_application_runtime(
         mode=mode,
         log_dir=context.log_dir,
     )
-    activate_staged_application_runtime(graph, staged, prefix=prefix)
+    activate_staged_application_runtime(graph, staged, prefix=prefix, mode=mode)
 
 
 def _new_execution_context() -> _ExecutionContext:

@@ -230,6 +230,7 @@ def activate_staged_application_runtime(
     staged: StagedApplicationRuntime,
     *,
     prefix: Path,
+    mode: str = "install",
 ) -> ApplicationRuntimeReceipt:
     payloads = graph.get("payloads")
     commands = graph.get("commands")
@@ -248,6 +249,7 @@ def activate_staged_application_runtime(
         generation = prior.generation + 1 if prior else 1
         packages: list[ApplicationRuntimePackage] = []
         promoted: list[Path] = []
+        replaced: list[tuple[Path, Path]] = []
         bin_path = prefix / "bin"
         bin_backup = prefix / APPLICATION_RECEIPT_DIR_NAME / f"bin-generation-{generation - 1}"
         staged_bin = staged.path / "bin"
@@ -268,14 +270,8 @@ def activate_staged_application_runtime(
                 relative = _safe_relative_path(payload.get("payload_path"), f"runtime payload {name} path")
                 source = staged.path / relative
                 destination = prefix / relative
-                if destination.exists():
-                    raise ExecutionError(f"Runtime payload already exists: {destination}")
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                source.replace(destination)
-                promoted.append(destination)
                 artifact = _mapping(payload.get("artifact"), f"runtime payload {name} artifact")
-                packages.append(
-                    ApplicationRuntimePackage(
+                package_record = ApplicationRuntimePackage(
                         name=name,
                         version=version,
                         path=relative,
@@ -290,7 +286,37 @@ def activate_staged_application_runtime(
                             else None
                         ),
                     )
-                )
+                if destination.exists():
+                    if mode == "reinstall":
+                        backup = (
+                            prefix
+                            / APPLICATION_RECEIPT_DIR_NAME
+                            / "payload-backups"
+                            / f"generation-{generation - 1}"
+                            / relative
+                        )
+                        backup.parent.mkdir(parents=True, exist_ok=True)
+                        destination.replace(backup)
+                        replaced.append((destination, backup))
+                        source.replace(destination)
+                        promoted.append(destination)
+                        packages.append(package_record)
+                        continue
+                    prior_package = (
+                        next((item for item in prior.packages if item.name == name), None)
+                        if prior
+                        else None
+                    )
+                    if prior_package != package_record:
+                        raise ExecutionError(
+                            f"Runtime payload path exists with different identity: {destination}"
+                        )
+                    shutil.rmtree(source)
+                else:
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    source.replace(destination)
+                    promoted.append(destination)
+                packages.append(package_record)
 
             if bin_path.exists():
                 if prior is None:
@@ -331,6 +357,9 @@ def activate_staged_application_runtime(
                 source = staged.path / destination.relative_to(prefix)
                 source.parent.mkdir(parents=True, exist_ok=True)
                 destination.replace(source)
+            for destination, backup in reversed(replaced):
+                if backup.exists():
+                    backup.replace(destination)
             raise
 
 
@@ -359,6 +388,15 @@ def stage_application_runtime_graph(
     if mode not in {"install", "upgrade", "reinstall", "resume"}:
         raise ExecutionError(f"Application runtime staging does not support mode `{mode}`")
     _assert_runtime_prefix(prefix)
+    installed_versions: dict[str, str] = {}
+    if application_receipt_path(prefix).exists():
+        installed_versions = {
+            package.name: package.version
+            for package in load_application_runtime_receipt(
+                prefix,
+                expected_application=root_package,
+            ).packages
+        }
 
     log_dir.mkdir(parents=True, exist_ok=True)
     with application_runtime_lock(prefix):
@@ -424,7 +462,7 @@ def stage_application_runtime_graph(
                     "DBPM_ROOT_PACKAGE_VERSION": root_version,
                     "DBPM_PACKAGE_NAME": package_name,
                     "DBPM_PACKAGE_VERSION": package_version,
-                    "DBPM_INSTALLED_VERSION": "",
+                    "DBPM_INSTALLED_VERSION": installed_versions.get(package_name, ""),
                     "DBPM_COMMIT_HASH": str(artifact.get("commit") or ""),
                     "DBPM_ARTIFACT_URL": str(artifact.get("uri") or ""),
                     "DBPM_ARTIFACT_SHA256": (

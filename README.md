@@ -82,8 +82,9 @@ See the [changelog](CHANGELOG.md) for release contents and
   activation, and an application receipt. Runtime validate reconciles the
   receipt, payload identities, managed links, executable targets, and package
   health scripts. Runtime resume can retry a matching incomplete staged
-  generation. Runtime upgrade, reinstall, and uninstall orchestration are not
-  implemented yet. The removed
+  generation. Runtime upgrade retains prior versioned payloads, and reinstall
+  reconstructs same-version payloads with recovery backups. Uninstall
+  orchestration is not implemented yet. The removed
   package-owned fields `runtime.name`, `runtime.home_env`, `runtime.into`, and
   `runtime.layout` are rejected.
 - Lockfile database provenance reconciliation requires Core 3.3.0 or newer.

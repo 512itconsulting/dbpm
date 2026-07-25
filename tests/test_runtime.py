@@ -216,6 +216,37 @@ def test_planner_includes_read_only_application_runtime_graph(
     )
     assert (tmp_path / "logs/001-demo-runtime-validate.log").read_text() == "demo\n1.0.0\n"
 
+    upgraded_package = _write_runtime_package(
+        package,
+        package="demo",
+        version="1.1.0",
+        command="demo",
+    )
+    upgraded_source = load_package_source(str(upgraded_package))
+    upgrade_plan = create_plan(
+        mode="upgrade",
+        source=upgraded_source,
+        provenance=resolve_provenance(upgraded_source),
+        environment=resolve_deployment_policy(None),
+    )
+    execute_plan(
+        upgrade_plan,
+        connect=None,
+        runner="sqlplus",
+        runtime_prefix=str(prefix),
+    )
+    receipt = json.loads((prefix / ".dbpm/receipt.json").read_text())
+    assert receipt["application"]["version"] == "1.1.0"
+    assert receipt["generation"] == 2
+    assert (prefix / "packages/demo/1.0.0").is_dir()
+    assert (prefix / "packages/demo/1.1.0").is_dir()
+    validate_plan = create_plan(
+        mode="validate",
+        source=upgraded_source,
+        provenance=resolve_provenance(upgraded_source),
+        environment=resolve_deployment_policy(None),
+    )
+
     (prefix / "bin/demo").unlink()
     (prefix / "bin/demo").symlink_to("/bin/sh")
     with pytest.raises(ExecutionError, match="target is invalid"):
@@ -291,7 +322,7 @@ def _write_runtime_package(
     version: str,
     command: str,
 ) -> Path:
-    path.mkdir(parents=True)
+    path.mkdir(parents=True, exist_ok=True)
     (path / "dbpm.yaml").write_text(
         f"""
 package:
