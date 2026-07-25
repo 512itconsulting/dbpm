@@ -11,6 +11,7 @@ from dbpm.application_runtime import (
     ActivatedRuntimeCommand,
     ApplicationRuntimePackage,
     ApplicationRuntimeReceipt,
+    activate_staged_application_runtime,
     application_receipt_path,
     application_runtime_lock,
     garbage_collect_application_runtime,
@@ -182,6 +183,42 @@ def test_stage_application_runtime_executes_package_in_isolated_prefix(tmp_path:
     assert not (prefix / "packages").exists()
     assert staged.log_files[0].read_text(encoding="utf-8") == "demo\ndemo\n"
     assert not (prefix / ".dbpm" / "lock").exists()
+
+
+def test_staged_runtime_relocates_text_launchers_before_activation(tmp_path: Path):
+    prefix = tmp_path / "app"
+    prefix.mkdir()
+    package_root = tmp_path / "artifact"
+    package_root.mkdir()
+    script = package_root / "install.sh"
+    script.write_text(
+        "#!/bin/sh\n"
+        "mkdir -p \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin\"\n"
+        "cp /bin/sh \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin/python\"\n"
+        "printf '#!%s/bin/python\\necho relocated\\n' "
+        "\"$DBPM_RUNTIME_PACKAGE_PREFIX\" > "
+        "\"$DBPM_RUNTIME_PACKAGE_PREFIX/bin/demo\"\n"
+        "chmod +x \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin/demo\"\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    graph = _graph(package_root=package_root, script=script)
+
+    staged = stage_application_runtime_graph(
+        graph,
+        prefix=prefix,
+        mode="install",
+        log_dir=tmp_path / "logs",
+    )
+    launcher = staged.path / "packages/demo/1.0.0/bin/demo"
+    assert launcher.read_text().startswith(
+        f"#!{prefix.resolve()}/packages/demo/1.0.0/bin/python\n"
+    )
+
+    activate_staged_application_runtime(graph, staged, prefix=prefix)
+
+    result = os.popen(str(prefix / "bin/demo")).read()
+    assert result == "relocated\n"
 
 
 def test_stage_application_runtime_keeps_failed_payload_for_diagnostics(tmp_path: Path):

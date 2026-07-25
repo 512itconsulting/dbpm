@@ -621,6 +621,10 @@ def stage_application_runtime_graph(
                     f"Runtime script for {package_name} failed with exit code "
                     f"{returncode}; staged files remain in {staging_path}; see {log_file}"
                 )
+            _relocate_staged_text_files(
+                package_prefix,
+                destination=prefix / relative_payload,
+            )
 
         _validate_staged_commands(commands, staging_path, payloads)
         _write_stage_status(staging_path, "ready")
@@ -629,6 +633,30 @@ def stage_application_runtime_graph(
             payload_root=payload_root,
             log_files=tuple(log_files),
         )
+
+
+def _relocate_staged_text_files(source: Path, *, destination: Path) -> None:
+    source_bytes = str(source.resolve()).encode()
+    destination_bytes = str(destination.resolve()).encode()
+    if source_bytes == destination_bytes:
+        return
+    for path in source.rglob("*"):
+        if path.is_symlink() or not path.is_file():
+            continue
+        try:
+            content = path.read_bytes()
+        except OSError as exc:
+            raise ExecutionError(f"Unable to inspect staged runtime file {path}: {exc}") from exc
+        if source_bytes not in content or b"\0" in content:
+            continue
+        try:
+            content.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        try:
+            path.write_bytes(content.replace(source_bytes, destination_bytes))
+        except OSError as exc:
+            raise ExecutionError(f"Unable to relocate staged runtime file {path}: {exc}") from exc
 
 
 def resume_application_runtime_graph(
