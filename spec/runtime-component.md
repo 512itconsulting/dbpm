@@ -62,9 +62,14 @@ under several application prefixes at different versions.
 
 ### Packages own isolated payloads
 
-Each runtime-bearing package installs only within its assigned package
-directory. It must not write directly into another package directory or into
-application-level `bin`, `etc`, or `var` directories.
+Each runtime-bearing package installs executable code and immutable assets only
+within its assigned package directory. It must not write directly into another
+package directory or create application-level command links.
+
+A package may initialize its distinctly named durable files beneath the
+application-level `etc` and `var` directories. It must not overwrite
+operator-owned files, claim an entire shared directory, or remove durable
+content during upgrade or uninstall.
 
 dbpm, rather than package install order, owns application-level composition.
 
@@ -79,7 +84,10 @@ application-level links.
 
 Versioned package directories contain replaceable package payloads. Persistent
 configuration, secrets, logs, queues, and other operator or application data
-do not belong in those directories.
+do not belong in those directories. Durable files live directly beneath the
+application-level `etc` and `var` directories. A package-name directory is not
+required; packages use distinctive filenames or narrower subdirectories only
+where needed to avoid collisions.
 
 ### Workspace and runtime are different concepts
 
@@ -114,6 +122,14 @@ The logical layout is:
   bin/
     warehouse-run -> ../packages/warehouse_app/2.0.0/bin/warehouse-run
     job-control   -> ../packages/job_control/1.1.0/bin/job-control
+  etc/
+    job-control.toml
+    job-control.toml.template
+    emmt-el.env
+    sql/
+  var/
+    log/
+    spool/
   packages/
     warehouse_app/
       2.0.0/
@@ -123,8 +139,6 @@ The logical layout is:
       1.1.0/
         bin/
         lib/
-  etc/
-  var/
   .dbpm/
     receipt.json
     lock
@@ -139,8 +153,17 @@ normative:
 - `<prefix>/bin/` is dbpm-owned and contains only activated command links.
 - `<prefix>/.dbpm/` is dbpm-owned metadata and staging space.
 - `<prefix>/etc/` and `<prefix>/var/` are application/operator-owned mutable
-  areas. Packages may document expected content but must not overwrite it
-  implicitly.
+  areas shared by the composed application. Package installers may atomically
+  create distinctly named initial configuration and refresh distinctly named
+  templates, but must never overwrite operator-owned configuration.
+
+Flat durable directories are the default. Package-specific subdirectories are
+an organizational or collision-avoidance choice, not a lifecycle boundary.
+For example, `etc/job-control.toml`, `var/log/`, and `var/spool/` are valid
+application-level paths. Packages contributing collections with potentially
+generic names may use a narrower directory such as `etc/sql/emmt_el/`.
+Uninstall scripts must remove only explicitly package-maintained files and
+must not remove shared `etc` or `var` directories.
 
 Package and version path segments must be derived from validated manifest
 values and must not permit path traversal. dbpm prefers relative symlinks for
@@ -339,11 +362,12 @@ The proposed environment is:
 | `DBPM_ARTIFACT_URL` | resolved artifact URL or coordinate |
 | `DBPM_ARTIFACT_SHA256` | verified artifact checksum, or the defined local-tree identity |
 
-`DBPM_RUNTIME_PACKAGE_PREFIX` is the only installation target for the package
-script. The application prefix is supplied for read-only context and for
-locating documented application-owned state. A script must not mutate
-application-level links, another package payload, `.dbpm` metadata, or shared
-mutable state.
+`DBPM_RUNTIME_PACKAGE_PREFIX` is the only target for executable code and
+immutable package assets. The application prefix is also the root for durable
+application/operator state. A package script may initialize its distinctly
+named files beneath `etc` or `var` without replacing existing operator-owned
+content. It must not mutate application-level command links, another package
+payload, `.dbpm` metadata, or durable files owned by another contributor.
 
 The inherited process environment includes operator-provided variables such
 as `DBPM_ORACLE_USER`, `DBPM_ORACLE_PASSWORD`, and `DBPM_ORACLE_DSN` when they
@@ -367,6 +391,39 @@ normal execution logs.
 Secrets are never injected as artifact content or rendered by dbpm. Service
 start, stop, supervision, OS account management, and privileged host
 configuration remain outside dbpm.
+
+## Activated Runtime Command Contract
+
+`DBPM_RUNTIME_PREFIX` is required in the conditioned environment whenever an
+activated runtime command executes. DBPM supplies it to lifecycle scripts.
+Operators and service managers supply the same absolute application runtime
+prefix to interactive commands, services, and scheduled processes. A runtime
+process must propagate it unchanged to child runtime processes.
+
+Scheduled runtime tasks execute with this working directory:
+
+```text
+$DBPM_RUNTIME_PREFIX/bin
+```
+
+The working-directory convention permits `./command` invocation, but runtime
+packages should prefer the explicit application-level path:
+
+```sh
+"${DBPM_RUNTIME_PREFIX}/bin/command"
+```
+
+Runtime dependencies are consumed only through their activated application-
+level exports. A package must not resolve a command symlink to its physical
+target and navigate from its versioned package payload into a dependency
+payload. The payload layout and selected dependency versions are dbpm
+implementation details.
+
+Package-specific home variables such as `JOB_CONTROL_HOME` are not part of the
+composable runtime contract. Durable configuration is read beneath
+`$DBPM_RUNTIME_PREFIX/etc`, logs and spool data are written beneath
+`$DBPM_RUNTIME_PREFIX/var`, and executable dependencies are invoked beneath
+`$DBPM_RUNTIME_PREFIX/bin`.
 
 ## Planning, Staging, And Activation
 

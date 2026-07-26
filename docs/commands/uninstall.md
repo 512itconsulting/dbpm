@@ -20,7 +20,10 @@ the active receipt. The final receipt is archived as
 `.dbpm/uninstalled-receipt.json`.
 
 Application/operator-owned `etc` and `var` directories and unrelated files
-under the runtime prefix are preserved.
+under the runtime prefix are preserved. These durable directories are shared
+at the application level; package-specific directory layers are optional.
+Package uninstall scripts must not remove shared directories or
+operator-owned files.
 
 Database uninstall entry points are taken from `scripts.uninstall`. Packages
 should keep those scripts SQL*Plus/SQLcl-compatible and idempotent.
