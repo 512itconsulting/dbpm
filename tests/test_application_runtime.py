@@ -21,6 +21,8 @@ from dbpm.application_runtime import (
     rollback_application_runtime,
     recover_application_runtime_activation,
     stage_application_runtime_graph,
+    uninstall_application_runtime_graph,
+    validate_application_runtime_graph,
     write_application_runtime_receipt,
 )
 from dbpm.errors import ExecutionError
@@ -183,6 +185,121 @@ def test_stage_application_runtime_executes_package_in_isolated_prefix(tmp_path:
     assert not (prefix / "packages").exists()
     assert staged.log_files[0].read_text(encoding="utf-8") == "demo\ndemo\n"
     assert not (prefix / ".dbpm" / "lock").exists()
+
+
+@pytest.mark.parametrize("mode", ["install", "upgrade", "reinstall", "resume"])
+def test_runtime_staging_inherits_oracle_environment_without_persisting_secrets(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    mode: str,
+):
+    prefix = tmp_path / "app"
+    prefix.mkdir()
+    package_root = tmp_path / "artifact"
+    package_root.mkdir()
+    script = package_root / "install.sh"
+    script.write_text(
+        "#!/bin/sh\n"
+        "[ \"$DBPM_ORACLE_USER\" = runtime_user ] || exit 11\n"
+        "[ \"$DBPM_ORACLE_PASSWORD\" = runtime_password_sentinel ] || exit 12\n"
+        "[ \"$DBPM_ORACLE_DSN\" = db.example.invalid/service ] || exit 13\n"
+        "mkdir -p \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin\"\n"
+        "printf '#!/bin/sh\\nexit 0\\n' > \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin/demo\"\n"
+        "chmod +x \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin/demo\"\n"
+        "printf 'environment inherited\\n'\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    graph = _graph(package_root=package_root, script=script)
+    if mode == "upgrade":
+        graph["payloads"][0]["scripts"]["upgrade"] = {
+            "path": "install.sh",
+            "ref": str(script),
+        }
+    monkeypatch.setenv("DBPM_ORACLE_USER", "runtime_user")
+    monkeypatch.setenv("DBPM_ORACLE_PASSWORD", "runtime_password_sentinel")
+    monkeypatch.setenv("DBPM_ORACLE_DSN", "db.example.invalid/service")
+
+    staged = stage_application_runtime_graph(
+        graph,
+        prefix=prefix,
+        mode=mode,
+        log_dir=tmp_path / "logs",
+    )
+
+    assert staged.log_files[0].read_text(encoding="utf-8") == "environment inherited\n"
+    persisted = [
+        staged.path / "graph.json",
+        staged.path / "status.json",
+        *staged.log_files,
+    ]
+    for path in persisted:
+        assert "runtime_password_sentinel" not in path.read_text(encoding="utf-8")
+
+
+def test_runtime_validate_and_uninstall_inherit_oracle_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    prefix = tmp_path / "app"
+    prefix.mkdir()
+    package_root = tmp_path / "artifact"
+    package_root.mkdir()
+    install = package_root / "install.sh"
+    install.write_text(
+        "#!/bin/sh\n"
+        "mkdir -p \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin\"\n"
+        "printf '#!/bin/sh\\nexit 0\\n' > \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin/demo\"\n"
+        "chmod +x \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin/demo\"\n",
+        encoding="utf-8",
+    )
+    check = package_root / "check.sh"
+    check.write_text(
+        "#!/bin/sh\n"
+        "[ \"$DBPM_ORACLE_USER\" = runtime_user ] || exit 11\n"
+        "[ \"$DBPM_ORACLE_PASSWORD\" = runtime_password_sentinel ] || exit 12\n"
+        "[ \"$DBPM_ORACLE_DSN\" = db.example.invalid/service ] || exit 13\n"
+        "printf '%s environment inherited\\n' \"$DBPM_RUNTIME_MODE\"\n",
+        encoding="utf-8",
+    )
+    install.chmod(0o755)
+    check.chmod(0o755)
+    graph = _graph(package_root=package_root, script=install)
+    graph["payloads"][0]["scripts"]["validate"] = {
+        "path": "check.sh",
+        "ref": str(check),
+    }
+    graph["payloads"][0]["scripts"]["uninstall"] = {
+        "path": "check.sh",
+        "ref": str(check),
+    }
+    graph["payloads"][0]["artifact"]["checksum_alg"] = None
+    monkeypatch.setenv("DBPM_ORACLE_USER", "runtime_user")
+    monkeypatch.setenv("DBPM_ORACLE_PASSWORD", "runtime_password_sentinel")
+    monkeypatch.setenv("DBPM_ORACLE_DSN", "db.example.invalid/service")
+    logs = tmp_path / "logs"
+
+    staged = stage_application_runtime_graph(
+        graph,
+        prefix=prefix,
+        mode="install",
+        log_dir=logs,
+    )
+    activate_staged_application_runtime(graph, staged, prefix=prefix)
+    validate_application_runtime_graph(graph, prefix=prefix, log_dir=logs)
+    assert "runtime_password_sentinel" not in application_receipt_path(prefix).read_text(
+        encoding="utf-8"
+    )
+    uninstall_application_runtime_graph(graph, prefix=prefix, log_dir=logs)
+
+    assert (logs / "001-demo-runtime-validate.log").read_text() == (
+        "validate environment inherited\n"
+    )
+    assert (logs / "001-demo-runtime-uninstall.log").read_text() == (
+        "uninstall environment inherited\n"
+    )
+    for path in logs.iterdir():
+        assert "runtime_password_sentinel" not in path.read_text(encoding="utf-8")
 
 
 def test_staged_runtime_relocates_text_launchers_before_activation(tmp_path: Path):

@@ -318,6 +318,7 @@ Runtime scripts execute:
 
 - with the extracted immutable package artifact as the working directory
 - as the invoking OS user
+- with the invoking dbpm process environment inherited
 - against a staged, package-specific payload directory
 - only after artifact verification, dependency solving, Core checks, and
   environment policy evaluation
@@ -343,6 +344,21 @@ script. The application prefix is supplied for read-only context and for
 locating documented application-owned state. A script must not mutate
 application-level links, another package payload, `.dbpm` metadata, or shared
 mutable state.
+
+The inherited process environment includes operator-provided variables such
+as `DBPM_ORACLE_USER`, `DBPM_ORACLE_PASSWORD`, and `DBPM_ORACLE_DSN` when they
+are set for the dbpm process. Runtime packages may use these values to create
+an initial application configuration for an Oracle client library that cannot
+consume a SQLcl saved connection. Environment inheritance applies to install,
+upgrade, reinstall, resume, validate, and uninstall scripts.
+
+dbpm does not add inherited environment values to the runtime graph, staging
+status, application receipt, or its own log messages. A package script remains
+responsible for protecting inherited secrets: it must not print them, place
+them in a replaceable package payload, or write them with permissions that
+allow unintended access. Environment inheritance is limited to the script
+process; services or commands launched after deployment must obtain their
+runtime environment or durable configuration independently.
 
 Scripts must be idempotent within their assigned staged directory. A non-zero
 exit fails the package runtime step. dbpm captures stdout and stderr in the
