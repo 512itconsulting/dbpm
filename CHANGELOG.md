@@ -7,6 +7,24 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-07-26
+
+### Changed
+
+- Defined `DBPM_RUNTIME_PREFIX` as the required activated-command environment
+  contract and clarified that durable configuration, logs, and spool data
+  belong in the application-level `etc` and `var` directories.
+- Clarified that flat durable directories are the default and that package
+  uninstall scripts must preserve shared directories and operator-owned files.
+
+### Fixed
+
+- Verified a locked install against its complete database-independent source
+  resolution before omitting dependencies already satisfied in the target
+  database. This allows composed runtime installation to retain satisfied
+  runtime contributors without reporting a false lockfile execution-order
+  mismatch.
+
 ## [1.4.0] - 2026-07-25
 
 ### Changed
@@ -135,7 +153,8 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Set the intended Oracle schema explicitly in generated deployment scripts.
 
-[Unreleased]: https://github.com/512itconsulting/dbpm/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/512itconsulting/dbpm/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/512itconsulting/dbpm/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/512itconsulting/dbpm/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/512itconsulting/dbpm/compare/v1.2.2...v1.3.0
 [1.2.2]: https://github.com/512itconsulting/dbpm/compare/v1.2.0...v1.2.2
