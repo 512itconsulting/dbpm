@@ -790,6 +790,18 @@ def _build_plan_from_lockfile(
     ]
 
     environment = _resolve_policy_for_plan("install", args)
+    resolution_plan = create_multi_package_plan(
+        mode="install",
+        source=root_source,
+        dependency_sources=dep_sources,
+        environment=environment,
+        installed_states={},
+        reverse_dependencies={},
+        allow_destructive=False,
+        approve=args.approve,
+    )
+    assert_lockfile_matches_plan(lockfile, resolution_plan)
+
     installed_states: dict[str, dict[str, str] | None] = {}
     reverse_dependencies_by_app: dict[str, list[str]] = {}
 
@@ -810,7 +822,6 @@ def _build_plan_from_lockfile(
         allow_destructive=False,
         approve=args.approve,
     )
-    assert_lockfile_matches_plan(lockfile, plan)
     return plan
 
 

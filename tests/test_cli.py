@@ -942,6 +942,77 @@ def test_install_from_lockfile_executes_locked_plan(tmp_path: Path, monkeypatch)
     assert calls["plan"]["package"]["application_name"] == "DEMO"
 
 
+def test_install_from_lockfile_verifies_full_resolution_before_omitting_satisfied_dependency(
+    tmp_path: Path,
+    monkeypatch,
+):
+    dependency = tmp_path / "dependency"
+    consumer = tmp_path / "consumer"
+    lockfile = tmp_path / "dbpm-lock.json"
+    _write_workspace_package(dependency, "dependency", version="1.0.0")
+    _write_workspace_package(
+        consumer,
+        "consumer",
+        dependencies=(
+            "dependencies:\n"
+            "  - name: dependency\n"
+            '    version: "^1.0.0"\n'
+        ),
+    )
+
+    assert (
+        cli.main(
+            [
+                "lock",
+                str(consumer),
+                "--dependency-source",
+                str(dependency),
+                "--output",
+                str(lockfile),
+            ]
+        )
+        == 0
+    )
+
+    def application_state(*, application_name: str, **kwargs):
+        if application_name == "DEPENDENCY":
+            return ApplicationState(
+                application_name="DEPENDENCY",
+                version="1.0.0",
+                deploy_status="C",
+                deploy_commit_hash="a" * 40,
+            )
+        return None
+
+    calls: dict[str, object] = {}
+    monkeypatch.setattr(cli, "get_application_state", application_state)
+    monkeypatch.setattr(cli, "get_reverse_dependencies", lambda **kwargs: [])
+    monkeypatch.setattr(
+        cli,
+        "execute_plan",
+        lambda plan, **kwargs: calls.setdefault("plan", plan),
+    )
+
+    assert (
+        cli.main(
+            [
+                "install",
+                "--lockfile",
+                str(lockfile),
+                "--connect",
+                "user/pass@db",
+            ]
+        )
+        == 0
+    )
+
+    plan = calls["plan"]
+    assert plan["execution_order"] == ["CONSUMER"]
+    assert [item["application_name"] for item in plan["satisfied_dependencies"]] == [
+        "DEPENDENCY"
+    ]
+
+
 def test_install_from_default_lockfile_path(tmp_path: Path, monkeypatch):
     package = tmp_path / "package"
     _write_package(package)
