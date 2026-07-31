@@ -4,6 +4,8 @@ This guide walks through installing the dbpm CLI, configuring a Linux environmen
 
 dbpm is an Oracle database package manager. It resolves package artifacts, plans dependency order, executes package manifests through SQL*Plus or SQLcl, and records deployment state in Core. Core is the in-database substrate for dbpm-managed deployments; ordinary packages depend on Core being present, but they should not list Core as a normal package dependency.
 
+Before you can deploy ordinary packages into a database, [bootstrap Core](https://dbpm.io/core/) into that target schema once. The bootstrap step is required before `dbpm` can install packages into that Oracle environment.
+
 ## Prerequisites
 
 You need:
@@ -26,22 +28,23 @@ If you use SQL*Plus instead of SQLcl, confirm `sqlplus` is on your `PATH` or set
 
 ## Install dbpm
 
-Install dbpm as a user-level CLI tool:
+Published releases are available on [PyPI](https://pypi.org/project/dbpm/). Install dbpm as a user-level CLI tool with your preferred Python package manager:
 
 ```sh
-# Stable released CLI version.
-python3 -m pip install --user git+https://github.com/512itconsulting/dbpm.git@v1.1.1
+# pipx
+pipx install dbpm
 
-# Latest development version from the default branch.
-python3 -m pip install --user git+https://github.com/512itconsulting/dbpm.git
+# uv
+uv tool install dbpm
 
-dbpm --help
+# pip
+python3 -m pip install --user dbpm
 ```
 
-If you use `pipx`, the equivalent install is:
+Verify the CLI is available:
 
 ```sh
-pipx install git+https://github.com/512itconsulting/dbpm.git@v1.1.1
+dbpm --help
 ```
 
 For development from a local checkout, use a virtual environment:
@@ -53,6 +56,12 @@ python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install -e '.[dev]'
 dbpm --help
+```
+
+If you want to install directly from the GitHub repository instead of PyPI, use:
+
+```sh
+python3 -m pip install --user git+https://github.com/512itconsulting/dbpm.git@v1.4.1
 ```
 
 The examples below use `dbpm` directly. Contributors who prefer `uv` may use

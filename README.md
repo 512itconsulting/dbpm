@@ -12,22 +12,32 @@ Visit the [dbpm website](https://dbpm.io/) for product documentation and the
 
 ## Installation
 
-dbpm requires Python 3.11 or newer. Install the command in an isolated
-environment with [`pipx`](https://pipx.pypa.io/):
+dbpm requires Python 3.11 or newer. Published releases are available on
+PyPI, and the CLI can be installed with your preferred Python tool:
 
 ```sh
+# pipx
 pipx install dbpm
+
+# uv
+uv tool install dbpm
+
+# pip
+python3 -m pip install --user dbpm
+```
+
+For a quick sanity check after installation:
+
+```sh
 dbpm --version
 ```
 
-[`uv`](https://docs.astral.sh/uv/) users can install the same PyPI package with:
+If you want to install directly from the GitHub repository instead of PyPI,
+use:
 
 ```sh
-uv tool install dbpm
+python3 -m pip install --user git+https://github.com/512itconsulting/dbpm.git@v1.4.1
 ```
-
-Installing into an existing Python environment with `python -m pip install
-dbpm` is also supported.
 
 Database deployment commands require access to an Oracle database and an
 Oracle-compatible command-line runner. Set `DBPM_SQL_RUNNER` to
@@ -96,30 +106,18 @@ See the [changelog](CHANGELOG.md) for release contents and
 - Core provenance staging through `pkg_application.stage_deployment_provenance_p`
 - Core `DEPLOY_LOCKED`-aware deployment policy
 - Install, upgrade, reinstall, resume, and validate workflows
-- Read-only planning for manifest-declared composable runtimes (`runtime:` in
-  `dbpm.yaml`), including isolated dependency payload paths and command exports
-  beneath a root-application prefix. Filesystem staging and activation remain
-  in progress (see [spec/runtime-component.md](spec/runtime-component.md)).
+- Application-owned runtime composition for manifest-declared runtimes
+  (`runtime:` in `dbpm.yaml`), including isolated dependency payloads,
+  package-local scripts, command exports, staged activation, validation,
+  resume, upgrade, reinstall, uninstall, and rollback. See
+  [spec/runtime-component.md](spec/runtime-component.md) for the behavioral
+  contract.
 - ZIP artifact publishing to GitHub Packages and generic Maven repositories
 - GPG artifact signing and lockfile-driven signature verification
 - dbpm registry source resolution and artifact metadata indexing
 
 ## Known Limitations
 - Multi-package dependency execution does not support `reinstall`.
-- Application-owned runtime composition, isolated dependency payloads, and
-  declarative command exports support install execution with isolated staging,
-  package-local scripts, export validation, payload promotion, command-link
-  activation, and an application receipt. Runtime validate reconciles the
-  receipt, payload identities, managed links, executable targets, and package
-  health scripts. Runtime resume can retry a matching incomplete staged
-  generation. Runtime upgrade retains prior versioned payloads, and reinstall
-  reconstructs same-version payloads with recovery backups. The active and
-  immediately prior generation are retained; unreachable older payloads and
-  recovery metadata are garbage-collected after activation. Uninstall removes
-  dbpm-owned runtime state while preserving operator data, and rollback
-  reactivates only database-compatible retained generations. The removed
-  package-owned fields `runtime.name`, `runtime.home_env`, `runtime.into`, and
-  `runtime.layout` are rejected.
 - Lockfile database provenance reconciliation requires Core 3.3.0 or newer.
 - Non-lockfile installs use the coordinate-based cache without checksum verification; the lockfile path has full SHA-256 verification.
 
