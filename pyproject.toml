@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,10 +8,44 @@ version = "1.4.1"
 description = "Oracle database package manager and deployment orchestrator."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+    { name = "512 IT Consulting" },
+]
+keywords = [
+    "oracle",
+    "plsql",
+    "database",
+    "package-manager",
+    "deployment",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Database",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: System :: Installation/Setup",
+]
 dependencies = [
     "PyYAML>=6.0",
 ]
+
+[project.urls]
+Homepage = "https://dbpm.io/"
+Documentation = "https://dbpm.io/docs/"
+Changelog = "https://github.com/512itconsulting/dbpm/blob/main/CHANGELOG.md"
+Issues = "https://github.com/512itconsulting/dbpm/issues"
+Source = "https://github.com/512itconsulting/dbpm"
+Registry = "https://registry.dbpm.io/"
 
 [project.optional-dependencies]
 dev = [

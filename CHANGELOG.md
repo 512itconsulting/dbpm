@@ -7,10 +7,21 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [1.4.1] - 2026-07-26
+## [1.4.1] - 2026-07-31
+
+### Added
+
+- Added PyPI package metadata, installation guidance, and official links for
+  dbpm.io, the source repository, and the dbpm package registry.
+- Added a GitHub Release workflow that verifies, builds, and publishes Python
+  distributions to PyPI through Trusted Publishing and attaches the same
+  artifacts to the GitHub release.
 
 ### Changed
 
+- Updated package license metadata to use the SPDX `Apache-2.0` expression.
+- Isolated unit tests from local registry configuration so release validation
+  does not inherit publisher credentials or metadata overrides.
 - Defined `DBPM_RUNTIME_PREFIX` as the required activated-command environment
   contract and clarified that durable configuration, logs, and spool data
   belong in the application-level `etc` and `var` directories.

@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and verify distributions
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8
+        with:
+          python-version: "3.12"
+
+      - name: Verify tag and package versions
+        shell: bash
+        run: |
+          package_version="$(uv version --short)"
+          test "${GITHUB_REF_NAME}" = "v${package_version}"
+          test "${package_version}" = "$(uv run --frozen python -c 'import dbpm; print(dbpm.__version__)')"
+
+      - name: Run unit tests
+        run: scripts/test-unit.sh
+
+      - name: Build distributions
+        run: uv build --no-sources
+
+      - name: Check PyPI metadata and README rendering
+        run: uvx twine check --strict dist/*
+
+      - name: Verify the built wheel
+        shell: bash
+        run: |
+          wheel="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
+          test -n "${wheel}"
+          uv run --isolated --no-project --with "${wheel}" dbpm --version
+          test "${GITHUB_REF_NAME#v}" = \
+            "$(uv run --isolated --no-project --with "${wheel}" python -c 'import dbpm; print(dbpm.__version__)')"
+
+      - name: Preserve distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-distributions
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/dbpm/
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Retrieve distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-distributions
+          path: dist/
+
+      - name: Publish distributions
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  attach-github-release:
+    name: Attach distributions to GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Retrieve distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-distributions
+          path: dist/
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${GITHUB_REF_NAME}" dist/* --clobber

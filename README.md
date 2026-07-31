@@ -7,6 +7,36 @@ generating standalone install and versioned upgrade scripts from Git changes.
 
 The goal is to bring modern dependency management, versioning, packaging, and deployment workflows to Oracle database development.
 
+Visit the [dbpm website](https://dbpm.io/) for product documentation and the
+[package registry](https://registry.dbpm.io/) for published package metadata.
+
+## Installation
+
+dbpm requires Python 3.11 or newer. Install the command in an isolated
+environment with [`pipx`](https://pipx.pypa.io/):
+
+```sh
+pipx install dbpm
+dbpm --version
+```
+
+[`uv`](https://docs.astral.sh/uv/) users can install the same PyPI package with:
+
+```sh
+uv tool install dbpm
+```
+
+Installing into an existing Python environment with `python -m pip install
+dbpm` is also supported.
+
+Database deployment commands require access to an Oracle database and an
+Oracle-compatible command-line runner. Set `DBPM_SQL_RUNNER` to
+[SQLcl](https://www.oracle.com/database/sqldeveloper/technologies/sqlcl/) (the
+`sql` executable) or SQL*Plus. Core is dbpm's in-database deployment substrate;
+run `dbpm check-core` before managed deployments, or use `dbpm bootstrap-core`
+for an empty schema. See [Getting Started](docs/getting-started.md) for database
+connection setup.
+
 ## Vision
 
 dbpm aims to make Oracle database development feel more like modern software engineering ecosystems such as:
@@ -166,10 +196,6 @@ export DBPM_SQL_RUNNER=sql
 | [`dbpm workspace list`](docs/commands/workspace.md) | List packages declared by a workspace manifest |
 
 Run `dbpm <command> --help` for a quick flag reference. See [docs/commands/source-types.md](docs/commands/source-types.md) for the full source and version constraint syntax.
-
-dbpm is a standard Python console script. Consumers can install it with normal
-Python tooling such as `pipx` or `pip`; `uv` is only a contributor convenience
-for creating a local development environment quickly.
 
 ## Related Projects
 - [core](https://github.com/512itconsulting/core)
