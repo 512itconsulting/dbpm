@@ -13,6 +13,13 @@ export DBPM_CONNECT="user/password@tns_alias_or_service"
 # unset DBPM_CONNECT
 # export DBPM_CONNECT_NAME="Development Database (APP_USER)"
 
+# Option C: structured database credentials. dbpm composes the Oracle connect
+# string from these values, and package runtime scripts inherit them.
+# unset DBPM_CONNECT
+# export DBPM_DB_USER="application_user"
+# export DBPM_DB_PASSWORD="application_password"
+# export DBPM_DB_DSN="tns_alias_or_host/service"
+
 # Required for private GitHub Packages.
 export DBPM_GITHUB_TOKEN="github_token_with_package_read_access"
 export DBPM_GITHUB_USER="github_username"

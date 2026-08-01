@@ -67,11 +67,12 @@ from .initializer import init_package, init_workspace, validate_package_name
 
 
 CONNECT_OPTIONS_CONFLICT_MESSAGE = (
-    "--connect/DBPM_CONNECT and --connect-name/DBPM_CONNECT_NAME are mutually exclusive. "
-    "Use --connect or DBPM_CONNECT for raw Oracle connect strings such as user/pass@service. "
-    "Use --connect-name or DBPM_CONNECT_NAME for SQLcl saved connections, and unset DBPM_CONNECT "
-    "when using DBPM_CONNECT_NAME."
+    "Database connection inputs are mutually exclusive. Use --connect/DBPM_CONNECT for a raw "
+    "Oracle connect string, DBPM_DB_USER/DBPM_DB_PASSWORD/DBPM_DB_DSN for structured database "
+    "credentials, or --connect-name/DBPM_CONNECT_NAME for a SQLcl saved connection."
 )
+
+DB_CONNECT_ENV_NAMES = ("DBPM_DB_USER", "DBPM_DB_PASSWORD", "DBPM_DB_DSN")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -109,8 +110,9 @@ def main(argv: list[str] | None = None) -> int:
                 if args.check_db:
                     if not _has_database_access(args):
                         raise DbpmError(
-                            "Database lockfile check requires --connect/DBPM_CONNECT "
-                            "or --connect-name/DBPM_CONNECT_NAME"
+                            "Database lockfile check requires --connect/DBPM_CONNECT, "
+                            "DBPM_DB_USER/DBPM_DB_PASSWORD/DBPM_DB_DSN, or "
+                            "--connect-name/DBPM_CONNECT_NAME"
                         )
                     states = {
                         app_name: _get_installed_state(args, app_name)
@@ -636,7 +638,10 @@ def _add_database_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--connect",
         default=os.environ.get("DBPM_CONNECT"),
-        help="Raw SQL*Plus/SQLcl connect string, default: DBPM_CONNECT",
+        help=(
+            "Raw SQL*Plus/SQLcl connect string; defaults to DBPM_CONNECT, then to a string "
+            "composed from DBPM_DB_USER, DBPM_DB_PASSWORD, and DBPM_DB_DSN"
+        ),
     )
     parser.add_argument(
         "--connect-name",
@@ -1183,20 +1188,41 @@ def _format_suggested_command(command: str, source: str, extra_args: list[str]) 
 
 
 def _has_database_access(args: argparse.Namespace) -> bool:
-    return bool(getattr(args, "connect", None) or getattr(args, "connect_name", None))
+    return bool(
+        getattr(args, "connect", None)
+        or getattr(args, "connect_name", None)
+        or any(os.environ.get(name) for name in DB_CONNECT_ENV_NAMES)
+    )
 
 
 def _connect_spec(args: argparse.Namespace) -> str | ConnectSpec:
     connect = getattr(args, "connect", None)
     connect_name = getattr(args, "connect_name", None)
-    if connect and connect_name:
+    database_values = {name: os.environ.get(name) for name in DB_CONNECT_ENV_NAMES}
+    supplied_database_values = {name: value for name, value in database_values.items() if value}
+    if supplied_database_values and len(supplied_database_values) != len(DB_CONNECT_ENV_NAMES):
+        missing = [name for name in DB_CONNECT_ENV_NAMES if not database_values[name]]
+        raise DbpmError(
+            "Structured database credentials are incomplete; set " + ", ".join(missing)
+        )
+    has_structured_connect = len(supplied_database_values) == len(DB_CONNECT_ENV_NAMES)
+    if sum(bool(value) for value in (connect, connect_name, has_structured_connect)) > 1:
         raise DbpmError(CONNECT_OPTIONS_CONFLICT_MESSAGE)
     if connect_name:
         spec = sqlcl_name(connect_name)
     elif connect:
         spec = connect_string(connect)
+    elif has_structured_connect:
+        spec = connect_string(
+            f"{database_values['DBPM_DB_USER']}/{database_values['DBPM_DB_PASSWORD']}"
+            f"@{database_values['DBPM_DB_DSN']}"
+        )
     else:
-        raise DbpmError("Database access requires --connect/DBPM_CONNECT or --connect-name/DBPM_CONNECT_NAME")
+        raise DbpmError(
+            "Database access requires --connect/DBPM_CONNECT, "
+            "DBPM_DB_USER/DBPM_DB_PASSWORD/DBPM_DB_DSN, or "
+            "--connect-name/DBPM_CONNECT_NAME"
+        )
     validate_connect_spec(connect=spec, runner=args.runner)
     return spec if spec.kind == "sqlcl-name" else spec.value
 

@@ -173,6 +173,9 @@ def _no_reverse_dependencies(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("DBPM_CACHE_DIR", str(tmp_path / "cache"))
     monkeypatch.delenv("DBPM_CONNECT", raising=False)
     monkeypatch.delenv("DBPM_CONNECT_NAME", raising=False)
+    monkeypatch.delenv("DBPM_DB_USER", raising=False)
+    monkeypatch.delenv("DBPM_DB_PASSWORD", raising=False)
+    monkeypatch.delenv("DBPM_DB_DSN", raising=False)
     monkeypatch.delenv("DBPM_SQL_RUNNER", raising=False)
     monkeypatch.setattr(cli, "get_reverse_dependencies", lambda **kwargs: [])
     monkeypatch.setattr(
@@ -1078,10 +1081,10 @@ def test_install_without_connect_fails(tmp_path: Path, capsys):
 
     assert cli.main(["install", str(package)]) == 2
 
-    assert (
-        "Database access requires --connect/DBPM_CONNECT or --connect-name/DBPM_CONNECT_NAME"
-        in capsys.readouterr().err
-    )
+    err = capsys.readouterr().err
+    assert "Database access requires --connect/DBPM_CONNECT" in err
+    assert "DBPM_DB_USER/DBPM_DB_PASSWORD/DBPM_DB_DSN" in err
+    assert "--connect-name/DBPM_CONNECT_NAME" in err
 
 
 def test_install_blocks_when_package_already_installed(tmp_path: Path, monkeypatch, capsys):
@@ -1875,6 +1878,45 @@ def test_check_core_uses_environment_connect_name(monkeypatch, capsys):
     assert calls["runner"] == "sql"
 
 
+def test_check_core_composes_environment_database_credentials(monkeypatch, capsys):
+    calls = {}
+
+    def fake_check_core(*, connect: str, runner: str, minimum_version: str | None):
+        calls["connect"] = connect
+        return SqlResult(returncode=0, stdout="CORE_VERSION=3.0.0\n", stderr="")
+
+    monkeypatch.setenv("DBPM_DB_USER", "app_user")
+    monkeypatch.setenv("DBPM_DB_PASSWORD", "app_password")
+    monkeypatch.setenv("DBPM_DB_DSN", "db/service")
+    monkeypatch.setattr(cli, "check_core", fake_check_core)
+
+    assert cli.main(["check-core"]) == 0
+
+    assert calls["connect"] == "app_user/app_password@db/service"
+
+
+def test_incomplete_environment_database_credentials_fail(monkeypatch, capsys):
+    monkeypatch.setenv("DBPM_DB_USER", "app_user")
+    monkeypatch.setenv("DBPM_DB_DSN", "db/service")
+
+    assert cli.main(["check-core"]) == 2
+
+    assert "set DBPM_DB_PASSWORD" in capsys.readouterr().err
+
+
+def test_raw_and_structured_environment_connections_are_mutually_exclusive(
+    monkeypatch, capsys
+):
+    monkeypatch.setenv("DBPM_CONNECT", "user/password@db")
+    monkeypatch.setenv("DBPM_DB_USER", "app_user")
+    monkeypatch.setenv("DBPM_DB_PASSWORD", "app_password")
+    monkeypatch.setenv("DBPM_DB_DSN", "db/service")
+
+    assert cli.main(["check-core"]) == 2
+
+    assert "Database connection inputs are mutually exclusive" in capsys.readouterr().err
+
+
 def test_connect_name_and_connect_are_mutually_exclusive(monkeypatch, capsys):
     monkeypatch.setenv("DBPM_CONNECT", "user/password@db")
     monkeypatch.setenv("DBPM_CONNECT_NAME", "Development Database (APP_USER)")
@@ -1883,10 +1925,10 @@ def test_connect_name_and_connect_are_mutually_exclusive(monkeypatch, capsys):
     assert cli.main(["check-core"]) == 2
 
     err = capsys.readouterr().err
-    assert "--connect/DBPM_CONNECT and --connect-name/DBPM_CONNECT_NAME are mutually exclusive" in err
-    assert "raw Oracle connect strings" in err
-    assert "SQLcl saved connections" in err
-    assert "unset DBPM_CONNECT" in err
+    assert "Database connection inputs are mutually exclusive" in err
+    assert "raw Oracle connect string" in err
+    assert "structured database credentials" in err
+    assert "SQLcl saved connection" in err
 
 
 def test_cli_connect_name_overrides_environment_connect_name(monkeypatch, capsys):

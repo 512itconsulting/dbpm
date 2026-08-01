@@ -12,6 +12,13 @@ $env:DBPM_CONNECT = "user/password@tns_alias_or_service"
 # Remove-Item Env:\DBPM_CONNECT
 # $env:DBPM_CONNECT_NAME = "Development Database (APP_USER)"
 
+# Option C: structured database credentials. dbpm composes the Oracle connect
+# string from these values, and package runtime scripts inherit them.
+# Remove-Item Env:\DBPM_CONNECT
+# $env:DBPM_DB_USER = "application_user"
+# $env:DBPM_DB_PASSWORD = "application_password"
+# $env:DBPM_DB_DSN = "tns_alias_or_host/service"
+
 # Required for private GitHub Packages.
 $env:DBPM_GITHUB_TOKEN = "github_token_with_package_read_access"
 $env:DBPM_GITHUB_USER = "github_username"

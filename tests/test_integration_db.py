@@ -23,7 +23,7 @@ def test_check_core_against_development_database():
     connect = _integration_connect_spec()
     runner = os.environ.get("DBPM_SQL_RUNNER", "sql")
     if not connect:
-        pytest.skip("DBPM_CONNECT or DBPM_CONNECT_NAME is not set")
+        pytest.skip("No dbpm database connection environment is set")
 
     result = check_core(connect=connect, runner=runner, minimum_version="3.0.0")
 
@@ -40,7 +40,7 @@ def test_core_deployment_metadata_against_development_database():
     connect = _integration_connect_spec()
     runner = os.environ.get("DBPM_SQL_RUNNER", "sql")
     if not connect:
-        pytest.skip("DBPM_CONNECT or DBPM_CONNECT_NAME is not set")
+        pytest.skip("No dbpm database connection environment is set")
 
     core = check_core(connect=connect, runner=runner, minimum_version="3.5.0")
     assert "CORE_VERSION=" in core.stdout
@@ -79,12 +79,22 @@ def test_integration_connect_spec_rejects_ambiguous_connection_env(monkeypatch):
 def _integration_connect_spec() -> str | ConnectSpec | None:
     connect = os.environ.get("DBPM_CONNECT")
     connect_name = os.environ.get("DBPM_CONNECT_NAME")
-    if connect and connect_name:
+    database_values = [
+        os.environ.get("DBPM_DB_USER"),
+        os.environ.get("DBPM_DB_PASSWORD"),
+        os.environ.get("DBPM_DB_DSN"),
+    ]
+    if any(database_values) and not all(database_values):
+        raise RuntimeError("DBPM_DB_USER, DBPM_DB_PASSWORD, and DBPM_DB_DSN must be set together")
+    if sum(bool(value) for value in (connect, connect_name, all(database_values))) > 1:
         raise RuntimeError(CONNECT_OPTIONS_CONFLICT_MESSAGE)
     if connect_name:
         return sqlcl_name(connect_name)
     if connect:
         return connect
+    if all(database_values):
+        user, password, dsn = database_values
+        return f"{user}/{password}@{dsn}"
     return None
 
 

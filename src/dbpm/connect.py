@@ -51,7 +51,11 @@ def build_sql_command(
 
 def validate_connect_spec(*, connect: ConnectSpec, runner: str) -> None:
     if not connect.value:
-        raise DbpmError("Database access requires --connect/DBPM_CONNECT or --connect-name/DBPM_CONNECT_NAME")
+        raise DbpmError(
+            "Database access requires --connect/DBPM_CONNECT, "
+            "DBPM_DB_USER/DBPM_DB_PASSWORD/DBPM_DB_DSN, or "
+            "--connect-name/DBPM_CONNECT_NAME"
+        )
     if connect.kind == "sqlcl-name" and _is_clearly_sqlplus(runner):
         raise DbpmError("SQLcl saved connections require a SQLcl runner; use --runner sql or DBPM_SQL_RUNNER=sql")
 

@@ -89,6 +89,13 @@ export DBPM_CONNECT="user/password@service_name"
 # unset DBPM_CONNECT
 # export DBPM_CONNECT_NAME="Development Database (APP_USER)"
 
+# Option C: structured database credentials. dbpm composes the Oracle connect
+# string from these values, and package runtime scripts inherit them.
+# unset DBPM_CONNECT
+# export DBPM_DB_USER="application_user"
+# export DBPM_DB_PASSWORD="application_password"
+# export DBPM_DB_DSN="tns_alias_or_host/service"
+
 # Required for private GitHub Packages.
 export DBPM_GITHUB_TOKEN="github_token_with_package_read_access"
 export DBPM_GITHUB_USER="github_username"
@@ -117,6 +124,13 @@ connections from SQLcl's local connection store. It requires SQLcl
 (`DBPM_SQL_RUNNER=sql` or a SQLcl executable path) and cannot be set at the
 same time as `DBPM_CONNECT`. If your database is saved in SQLcl as
 `dev_database`, use `DBPM_CONNECT_NAME=dev_database` and unset `DBPM_CONNECT`.
+
+As an alternative to `DBPM_CONNECT`, set all of `DBPM_DB_USER`,
+`DBPM_DB_PASSWORD`, and `DBPM_DB_DSN`. dbpm composes the Oracle connect string
+from them, and package runtime scripts inherit the same structured values.
+The three variables must be supplied together and cannot be combined with
+`DBPM_CONNECT` or `DBPM_CONNECT_NAME`. dbpm does not persist them in runtime
+state.
 
 ## Start a New Package
 
