@@ -81,20 +81,21 @@ Edit `dbpm-env.sh`:
 export TNS_ADMIN="$HOME/.oracle/tns_admin"
 export DBPM_SQL_RUNNER="$HOME/opt/sqlcl/bin/sql"
 
-# Option A: raw Oracle connect string.
-export DBPM_CONNECT="user/password@service_name"
+# Option A: structured database credentials. dbpm composes the Oracle connect
+# string from these values, and package runtime scripts inherit them.
+export DBPM_DB_USER="application_user"
+export DBPM_DB_PASSWORD="application_password"
+export DBPM_DB_DSN="tns_alias_or_host/service"
 
-# Option B: SQLcl saved connection name local to this OS user.
-# Do not put a saved connection name in DBPM_CONNECT.
+# Option B: raw Oracle connect string. Keep the structured variables unset.
+# unset DBPM_DB_USER DBPM_DB_PASSWORD DBPM_DB_DSN
+# export DBPM_CONNECT="user/password@service_name"
+
+# Option C: SQLcl saved connection name local to this OS user. Keep the
+# structured variables and DBPM_CONNECT unset.
+# unset DBPM_DB_USER DBPM_DB_PASSWORD DBPM_DB_DSN
 # unset DBPM_CONNECT
 # export DBPM_CONNECT_NAME="Development Database (APP_USER)"
-
-# Option C: structured database credentials. dbpm composes the Oracle connect
-# string from these values, and package runtime scripts inherit them.
-# unset DBPM_CONNECT
-# export DBPM_DB_USER="application_user"
-# export DBPM_DB_PASSWORD="application_password"
-# export DBPM_DB_DSN="tns_alias_or_host/service"
 
 # Required for private GitHub Packages.
 export DBPM_GITHUB_TOKEN="github_token_with_package_read_access"
@@ -115,22 +116,21 @@ Check that dbpm can find the SQL runner and database connection setting:
 
 ```sh
 printf '%s\n' "$DBPM_SQL_RUNNER"
-printf '%s\n' "${DBPM_CONNECT:-$DBPM_CONNECT_NAME}"
+printf 'database user: %s\n' "${DBPM_DB_USER:-<raw-or-saved-connection>}"
+printf 'database DSN: %s\n' "${DBPM_DB_DSN:-<raw-or-saved-connection>}"
 ```
 
-`DBPM_CONNECT` is for raw Oracle connect strings, such as
-`user/password@service_name`. `DBPM_CONNECT_NAME` is for SQLcl saved
-connections from SQLcl's local connection store. It requires SQLcl
-(`DBPM_SQL_RUNNER=sql` or a SQLcl executable path) and cannot be set at the
-same time as `DBPM_CONNECT`. If your database is saved in SQLcl as
-`dev_database`, use `DBPM_CONNECT_NAME=dev_database` and unset `DBPM_CONNECT`.
+The preferred form sets all of `DBPM_DB_USER`, `DBPM_DB_PASSWORD`, and
+`DBPM_DB_DSN`. dbpm composes the Oracle connect string from them, and package
+runtime scripts inherit the same structured values. The three variables must
+be supplied together and cannot be combined with `DBPM_CONNECT` or
+`DBPM_CONNECT_NAME`. dbpm does not persist them in runtime state.
 
-As an alternative to `DBPM_CONNECT`, set all of `DBPM_DB_USER`,
-`DBPM_DB_PASSWORD`, and `DBPM_DB_DSN`. dbpm composes the Oracle connect string
-from them, and package runtime scripts inherit the same structured values.
-The three variables must be supplied together and cannot be combined with
-`DBPM_CONNECT` or `DBPM_CONNECT_NAME`. dbpm does not persist them in runtime
-state.
+`DBPM_CONNECT` remains available for raw Oracle connect strings such as
+`user/password@service_name`. `DBPM_CONNECT_NAME` selects a connection from
+SQLcl's local connection store and requires SQLcl (`DBPM_SQL_RUNNER=sql` or a
+SQLcl executable path). If your database is saved as `dev_database`, use
+`DBPM_CONNECT_NAME=dev_database` and keep both other connection forms unset.
 
 ## Start a New Package
 
