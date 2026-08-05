@@ -98,6 +98,7 @@ See the [changelog](CHANGELOG.md) for release contents and
 
 ## Features
 - Package manifests through `dbpm.yaml`, `dbpm.yml`, `dbpm.json`, or `package.dbpm.yaml`
+- Per-package minimum dbpm CLI version requirements
 - Workspace manifests through `dbpm-workspace.yaml` for repositories with multiple package roots
 - Local package directory sources
 - Local ZIP package sources

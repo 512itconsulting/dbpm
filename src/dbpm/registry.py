@@ -42,6 +42,7 @@ class RegistryResolution:
     publisher_key_fingerprint: str | None = None
     core_minimum_version: str | None = None
     oracle_minimum_version: str | None = None
+    dbpm_minimum_version: str | None = None
     warning: dict[str, Any] | None = None
     registry_url: str = DEFAULT_REGISTRY_URL
     source: RegistrySource | None = None
@@ -175,6 +176,7 @@ def create_registry_index_payload(
         "publisher_key_fingerprint": resolved_fingerprint,
         "core_minimum_version": manifest.core_minimum_version,
         "oracle_minimum_version": manifest.database_minimum_version,
+        "dbpm_minimum_version": manifest.dbpm_minimum_version,
         "published_at": _string(receipt.get("published_at")),
     }
     payload.update({key: value for key, value in optional.items() if value is not None})
@@ -310,6 +312,7 @@ def _resolution_from_payload(
         publisher_key_fingerprint=_optional_str(payload, "publisher_key_fingerprint"),
         core_minimum_version=_optional_str(payload, "core_minimum_version"),
         oracle_minimum_version=_optional_str(payload, "oracle_minimum_version"),
+        dbpm_minimum_version=_optional_str(payload, "dbpm_minimum_version"),
         warning=warning if isinstance(warning, dict) else None,
         registry_url=registry_url,
         source=source,

@@ -15,6 +15,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 from xml.etree import ElementTree
 
+from . import __version__ as DBPM_VERSION
 from .errors import SourceError
 from .manifest import MANIFEST_NAMES, PackageManifest, parse_manifest
 from .registry import RegistryResolution, resolve_registry_source
@@ -152,6 +153,7 @@ def _load_directory_source(path: Path) -> PackageSource:
 
     text = manifest_path.read_text(encoding="utf-8")
     manifest = parse_manifest(text, manifest_path.name)
+    _enforce_dbpm_minimum_version(manifest)
     metadata = _read_directory_metadata(path)
     artifact_checksum = _tree_sha256(path)
     return PackageSource(
@@ -184,6 +186,7 @@ def _load_zip_source(path: Path) -> PackageSource:
         else:
             text = archive.read(manifest_member).decode("utf-8")
             manifest = parse_manifest(text, Path(manifest_member).name)
+        _enforce_dbpm_minimum_version(manifest)
         metadata = _read_zip_metadata(archive)
         root = _zip_root(manifest_member)
         work_path = _extract_zip(archive, artifact_checksum, root)
@@ -199,6 +202,28 @@ def _load_zip_source(path: Path) -> PackageSource:
         artifact_checksum_alg="SHA-256",
         work_path=work_path,
     )
+
+
+def _enforce_dbpm_minimum_version(manifest: PackageManifest) -> None:
+    required = manifest.dbpm_minimum_version
+    if required is None:
+        return
+    try:
+        installed_version = _semantic_version(DBPM_VERSION)
+    except ValueError as exc:
+        raise SourceError(f"Installed dbpm version is not semantic: {DBPM_VERSION}") from exc
+    if installed_version < _semantic_version(required):
+        raise SourceError(
+            f"Package `{manifest.name}` requires dbpm {required} or newer; "
+            f"installed version is {DBPM_VERSION}"
+        )
+
+
+def _semantic_version(value: str) -> tuple[int, int, int]:
+    parts = value.split(".")
+    if len(parts) != 3 or not all(part.isdigit() for part in parts):
+        raise ValueError(value)
+    return int(parts[0]), int(parts[1]), int(parts[2])
 
 
 def _load_github_maven_source(

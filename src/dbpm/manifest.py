@@ -70,6 +70,7 @@ class PackageManifest:
     core_minimum_version: str | None
     dependencies: tuple[Dependency, ...]
     scripts: ScriptSet
+    dbpm_minimum_version: str | None = None
     publish: PublishConfig | None = None
     runtime: RuntimeComponent | None = None
 
@@ -91,6 +92,7 @@ def parse_manifest(text: str, source_name: str) -> PackageManifest:
     package = _required_mapping(data, "package", source_name)
     database = _optional_mapping(data, "database")
     core = _optional_mapping(data, "core")
+    dbpm = _optional_mapping(data, "dbpm")
     scripts = _optional_mapping(data, "scripts")
     publish_data = _optional_mapping(data, "publish")
     runtime_data = data.get("runtime")
@@ -99,6 +101,13 @@ def parse_manifest(text: str, source_name: str) -> PackageManifest:
     _validate_package_name(name, source_name)
     version = _required_string(package, "version", source_name)
     dependencies = _parse_dependencies(data.get("dependencies", []), source_name)
+    dbpm_minimum_version = _optional_string(dbpm, "minimum_version")
+    if dbpm_minimum_version is not None:
+        _validate_semantic_version(
+            dbpm_minimum_version,
+            field="dbpm.minimum_version",
+            source_name=source_name,
+        )
 
     return PackageManifest(
         name=name,
@@ -112,9 +121,16 @@ def parse_manifest(text: str, source_name: str) -> PackageManifest:
         core_minimum_version=_optional_string(core, "minimum_version"),
         dependencies=tuple(dependencies),
         scripts=_parse_scripts(scripts, source_name),
+        dbpm_minimum_version=dbpm_minimum_version,
         publish=_parse_publish_config(publish_data, source_name) if publish_data else None,
         runtime=_parse_runtime(runtime_data, source_name) if runtime_data is not None else None,
     )
+
+
+def _validate_semantic_version(value: str, *, field: str, source_name: str) -> None:
+    parts = value.split(".")
+    if len(parts) != 3 or not all(part.isdigit() for part in parts):
+        raise ManifestError(f"{field} in {source_name} must use major.minor.patch")
 
 
 def normalize_script_path(path: str) -> str:

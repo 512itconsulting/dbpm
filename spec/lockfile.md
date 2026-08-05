@@ -13,6 +13,7 @@ The manifest declares intent:
 - package identity
 - package version
 - supported database and Core requirements
+- the minimum dbpm CLI version declared by each package
 - dependency constraints beyond Core
 - deployment entry points
 

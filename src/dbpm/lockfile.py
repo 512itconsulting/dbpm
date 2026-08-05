@@ -258,6 +258,13 @@ def _compare_lockfiles(
                     f"{app_name} {field} mismatch: "
                     f"expected {expected_package.get(field)}, found {actual_package.get(field)}"
                 )
+        actual_dbpm_minimum = _dict(actual_package.get("dbpm")).get("minimum_version")
+        expected_dbpm_minimum = _dict(expected_package.get("dbpm")).get("minimum_version")
+        if actual_dbpm_minimum != expected_dbpm_minimum:
+            errors.append(
+                f"{app_name} dbpm requirement mismatch: "
+                f"expected {expected_dbpm_minimum}, found {actual_dbpm_minimum}"
+            )
         actual_artifact = _dict(actual_package.get("artifact"))
         expected_artifact = _dict(expected_package.get("artifact"))
         for field in ("uri", "checksum", "checksum_alg", "signature_url", "publisher_key_fingerprint", "coordinate"):
@@ -323,6 +330,7 @@ def _locked_package(package_plan: dict[str, object]) -> dict[str, object]:
         "name": package.get("name"),
         "application_name": package.get("application_name"),
         "version": package.get("version"),
+        "dbpm": package.get("dbpm", {"minimum_version": None}),
         "source": {
             "type": source.get("type"),
             "path": source.get("path"),
