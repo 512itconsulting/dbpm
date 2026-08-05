@@ -71,7 +71,7 @@ dbpm --help
 If you want to install directly from the GitHub repository instead of PyPI, use:
 
 ```sh
-python3 -m pip install --user git+https://github.com/512itconsulting/dbpm.git@v1.4.1
+python3 -m pip install --user git+https://github.com/512itconsulting/dbpm.git@v1.4.2
 ```
 
 The examples below use `dbpm` directly. Contributors who prefer `uv` may use

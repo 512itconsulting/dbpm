@@ -136,7 +136,7 @@ database:
 
 # Uncomment when the package requires features from a specific dbpm release.
 # dbpm:
-#   minimum_version: "1.4.1"
+#   minimum_version: "1.4.2"
 
 # Uncomment and set the minimum Core version this package requires.
 # core:
