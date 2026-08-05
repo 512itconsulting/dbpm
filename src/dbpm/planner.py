@@ -103,6 +103,7 @@ def _package_dict(manifest: PackageManifest) -> dict[str, object]:
             "platform": manifest.database_platform,
             "minimum_version": manifest.database_minimum_version,
         },
+        "dbpm": {"minimum_version": manifest.dbpm_minimum_version},
     }
 
 

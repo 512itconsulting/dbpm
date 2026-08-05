@@ -35,6 +35,9 @@ database:
 core:
   minimum_version: "3.0.0"
 
+dbpm:
+  minimum_version: "1.4.1"
+
 dependencies:
   - name: utl_interval
     version: "^1.2.0"
@@ -53,6 +56,9 @@ scripts:
 - `database.platform`: Initially `oracle`.
 - `database.minimum_version`: Minimum supported Oracle version.
 - `core.minimum_version`: Minimum Core version required before dbpm executes the package deployment.
+- `dbpm.minimum_version`: Minimum dbpm CLI version required to load, plan, or
+  deploy the package. The value must use `major.minor.patch` semantic version
+  syntax.
 - `dependencies`: Package dependencies beyond Core.
 - `scripts`: SQL*Plus/SQLcl-compatible entry points. Scripts should accept dbpm-injected provenance parameters instead of hard-coding commit hashes.
 - `runtime`: Optional non-database runtime scripts, exports, and root

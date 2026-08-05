@@ -31,6 +31,9 @@ package:
 core:
   minimum_version: "3.0.0"
 
+dbpm:
+  minimum_version: "1.4.1"
+
 scripts:
   install: deploy.sql
 """
@@ -61,6 +64,7 @@ def test_create_lockfile_records_artifact_checksum(tmp_path: Path, monkeypatch):
     assert lockfile["schema_version"] == "dbpm.lock.v0"
     assert lockfile["execution_order"] == ["DEMO"]
     assert package["application_name"] == "DEMO"
+    assert package["dbpm"]["minimum_version"] == "1.4.1"
     assert package["artifact"]["checksum_alg"] == "SHA-256"
     assert len(package["artifact"]["checksum"]) == 64
 

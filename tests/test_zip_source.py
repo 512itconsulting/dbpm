@@ -8,6 +8,53 @@ from dbpm.errors import SourceError
 from dbpm.source import load_package_source
 
 
+def test_directory_source_accepts_satisfied_dbpm_minimum_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: demo
+  version: "1.0.0"
+dbpm:
+  minimum_version: "1.5.0"
+scripts:
+  install: deploy.sql
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("dbpm.source.DBPM_VERSION", "1.5.0")
+
+    source = load_package_source(str(package))
+
+    assert source.manifest.dbpm_minimum_version == "1.5.0"
+
+
+def test_directory_source_rejects_unsatisfied_dbpm_minimum_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "dbpm.yaml").write_text(
+        """
+package:
+  name: demo
+  version: "1.0.0"
+dbpm:
+  minimum_version: "1.5.0"
+scripts:
+  install: deploy.sql
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("dbpm.source.DBPM_VERSION", "1.4.9")
+
+    with pytest.raises(SourceError, match="requires dbpm 1.5.0 or newer.*1.4.9"):
+        load_package_source(str(package))
+
+
 @pytest.fixture(autouse=True)
 def _cache_dir(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("DBPM_CACHE_DIR", str(tmp_path / "cache"))

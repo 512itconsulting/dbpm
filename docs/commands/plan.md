@@ -54,7 +54,7 @@ flowchart LR
 | `--package` | none | Package name or application name to select when `source` is a workspace root. |
 | `--dependency-source` | none | Additional source that may satisfy a dependency declared in the manifest. Repeatable. |
 | `--registry-url` | `DBPM_REGISTRY_URL` or `https://registry.dbpm.io` | Registry base URL for `registry:` sources. |
-| `--connect` | `DBPM_CONNECT` | Raw SQL*Plus/SQLcl connect string. Mutually exclusive with `--connect-name`. When provided, the plan includes the currently installed state from Core. |
+| `--connect` | `DBPM_CONNECT` or structured database variables | Raw SQL*Plus/SQLcl connect string. `DBPM_DB_USER`, `DBPM_DB_PASSWORD`, and `DBPM_DB_DSN` are composed when the raw value is unset. Mutually exclusive with `--connect-name`. When provided, the plan includes the currently installed state from Core. |
 | `--connect-name` | `DBPM_CONNECT_NAME` | SQLcl saved connection name. Requires SQLcl via `--runner` or `DBPM_SQL_RUNNER`. Also enables installed-state lookup. |
 | `--runner` | `DBPM_SQL_RUNNER` or `sqlplus` | SQL runner executable. |
 

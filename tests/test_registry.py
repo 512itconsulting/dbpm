@@ -118,6 +118,7 @@ def test_resolve_registry_source_success(monkeypatch):
                 "artifact_checksum": "sha256:" + "a" * 64,
                 "artifact_signature_url": "https://repo.example/utl_interval-1.2.3.zip.asc",
                 "publisher_key_fingerprint": "FINGERPRINT",
+                "dbpm_minimum_version": "1.4.1",
             }
         )
 
@@ -132,6 +133,7 @@ def test_resolve_registry_source_success(monkeypatch):
     assert resolved.artifact_checksum == "a" * 64
     assert resolved.artifact_signature_url == "https://repo.example/utl_interval-1.2.3.zip.asc"
     assert resolved.publisher_key_fingerprint == "FINGERPRINT"
+    assert resolved.dbpm_minimum_version == "1.4.1"
 
 
 def _index_manifest():
@@ -146,6 +148,8 @@ database:
   minimum_version: "19c"
 core:
   minimum_version: "3.4.0"
+dbpm:
+  minimum_version: "1.4.1"
 dependencies:
   - name: utl_interval
     version: "^1.0.0"
@@ -178,6 +182,7 @@ def test_create_registry_index_payload_uses_manifest_and_receipt():
     assert payload["status"] == "active"
     assert payload["core_minimum_version"] == "3.4.0"
     assert payload["oracle_minimum_version"] == "19c"
+    assert payload["dbpm_minimum_version"] == "1.4.1"
     assert payload["dependencies"] == [{"name": "utl_interval", "constraint": "^1.0.0"}]
 
 

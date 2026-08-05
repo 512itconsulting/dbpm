@@ -1,15 +1,32 @@
 #!/usr/bin/env sh
-# Copy this file to dbpm-env.sh and fill in local values.
-# Do not commit dbpm-env.sh; it may contain credentials.
+# Copy this file to ~/.config/dbpm/<application>/environments/<environment>.sh
+# (or the equivalent XDG_CONFIG_HOME path) and fill in local values. Keep live
+# profiles outside application repositories because they may contain
+# credentials and must not enter source artifacts.
+
+# Clear every connection form before selecting exactly one below. This makes
+# the profile safe to load after a different dbpm target was previously used.
+unset DBPM_CONNECT
+unset DBPM_CONNECT_NAME
+unset DBPM_DB_USER
+unset DBPM_DB_PASSWORD
+unset DBPM_DB_DSN
 
 export DBPM_SQL_RUNNER="sql"
 
-# Option A: raw Oracle connect string.
-export DBPM_CONNECT="user/password@tns_alias_or_service"
+# Option A: structured database credentials. dbpm composes the Oracle connect
+# string from these values, and package runtime scripts inherit them.
+export DBPM_DB_USER="application_user"
+export DBPM_DB_PASSWORD="application_password"
+export DBPM_DB_DSN="tns_alias_or_host/service"
 
-# Option B: SQLcl saved connection name local to this OS user.
-# Use this for names created with SQLcl's connection manager. Keep DBPM_CONNECT
-# unset so dbpm does not treat the saved connection name as a raw connect string.
+# Option B: raw Oracle connect string. Keep the structured variables unset.
+# unset DBPM_DB_USER DBPM_DB_PASSWORD DBPM_DB_DSN
+# export DBPM_CONNECT="user/password@tns_alias_or_service"
+
+# Option C: SQLcl saved connection name local to this OS user. Keep the
+# structured variables and DBPM_CONNECT unset.
+# unset DBPM_DB_USER DBPM_DB_PASSWORD DBPM_DB_DSN
 # unset DBPM_CONNECT
 # export DBPM_CONNECT_NAME="Development Database (APP_USER)"
 

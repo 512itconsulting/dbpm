@@ -370,8 +370,8 @@ content. It must not mutate application-level command links, another package
 payload, `.dbpm` metadata, or durable files owned by another contributor.
 
 The inherited process environment includes operator-provided variables such
-as `DBPM_ORACLE_USER`, `DBPM_ORACLE_PASSWORD`, and `DBPM_ORACLE_DSN` when they
-are set for the dbpm process. Runtime packages may use these values to create
+as `DBPM_DB_USER`, `DBPM_DB_PASSWORD`, and `DBPM_DB_DSN` when they are set for
+the dbpm process. Runtime packages may use these values to create
 an initial application configuration for an Oracle client library that cannot
 consume a SQLcl saved connection. Environment inheritance applies to install,
 upgrade, reinstall, resume, validate, and uninstall scripts.

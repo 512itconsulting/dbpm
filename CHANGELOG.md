@@ -7,6 +7,16 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Added manifest-level `dbpm.minimum_version` compatibility requirements.
+  dbpm rejects incompatible root packages and dependencies during source
+  loading and carries the requirement into plans, lockfiles, and registry
+  metadata.
+- Added `DBPM_DB_USER`, `DBPM_DB_PASSWORD`, and `DBPM_DB_DSN` as a structured
+  database connection alternative to `DBPM_CONNECT`. The values are composed
+  for Oracle CLI execution and inherited by package runtime scripts.
+
 ## [1.4.1] - 2026-07-31
 
 ### Added

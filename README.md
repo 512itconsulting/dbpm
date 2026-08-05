@@ -13,7 +13,8 @@ Visit the [dbpm website](https://dbpm.io/) for product documentation and the
 ## Installation
 
 dbpm requires Python 3.11 or newer. Published releases are available on
-PyPI, and the CLI can be installed with your preferred Python tool:
+PyPI. Install the CLI into an isolated, user-level environment with `pipx` or
+`uv`:
 
 ```sh
 # pipx
@@ -21,8 +22,18 @@ pipx install dbpm
 
 # uv
 uv tool install dbpm
+```
 
-# pip
+Installing dbpm makes the executable available to the current OS user. It does
+not select an Oracle database or create a system-wide dbpm deployment
+environment. Package manifests, lockfiles, connection settings, and runtime
+prefixes remain specific to an application and target environment. Avoid
+installing dbpm into the system Python with `sudo pip`.
+
+If isolated tool installation is unavailable, a user-site installation is
+also supported:
+
+```sh
 python3 -m pip install --user dbpm
 ```
 
@@ -87,6 +98,7 @@ See the [changelog](CHANGELOG.md) for release contents and
 
 ## Features
 - Package manifests through `dbpm.yaml`, `dbpm.yml`, `dbpm.json`, or `package.dbpm.yaml`
+- Per-package minimum dbpm CLI version requirements
 - Workspace manifests through `dbpm-workspace.yaml` for repositories with multiple package roots
 - Local package directory sources
 - Local ZIP package sources
@@ -134,22 +146,40 @@ Live-tested against GitHub Packages artifacts for:
 
 `simple_scheduler` depends on `utl_interval`; dbpm can install both from GitHub Packages in dependency order and record Core provenance with artifact URLs and SHA-256 checksums.
 
-## Environment
+## Target Environment Configuration
 
-Database and GitHub Packages access is configured through a local,
-uncommitted shell environment file. Start from the committed
-`dbpm-env.sh.example` template:
+Keep live dbpm profiles outside the application repository under the user's
+configuration directory. This prevents credentials from entering source
+artifacts. Start from the committed `dbpm-env.sh.example` template and name the
+copy for one application and target environment:
 
 ```sh
-cp dbpm-env.sh.example dbpm-env.sh
-chmod 600 dbpm-env.sh
+profile_dir="${XDG_CONFIG_HOME:-$HOME/.config}/dbpm/my_application/environments"
+mkdir -p "$profile_dir"
+cp dbpm-env.sh.example "$profile_dir/development.sh"
+chmod 600 "$profile_dir/development.sh"
 ```
+
+Only sanitized `*.example.sh` templates belong in an application repository.
+Run dbpm in a subshell so target-specific variables do not remain active
+afterward:
+
+```sh
+(
+  source "${XDG_CONFIG_HOME:-$HOME/.config}/dbpm/my_application/environments/development.sh"
+  dbpm check-core --minimum-version 3.0.0
+)
+```
+
+See [Environment Configuration](docs/environment-configuration.md) for profile
+layout, CI guidance, safe target switching, and CLI version pinning.
 
 Common variables:
 
 - `DBPM_SQL_RUNNER`: SQLcl or SQL*Plus executable, such as `sql`
 - `DBPM_CONNECT`: raw Oracle connect string, such as `user/password@service`
-- `DBPM_CONNECT_NAME`: SQLcl saved connection name local to the invoking OS user. Mutually exclusive with `DBPM_CONNECT`; requires SQLcl as the runner.
+- `DBPM_DB_USER`, `DBPM_DB_PASSWORD`, and `DBPM_DB_DSN`: structured database credentials used together when `DBPM_CONNECT` is unset; package runtime scripts inherit them
+- `DBPM_CONNECT_NAME`: SQLcl saved connection name local to the invoking OS user. Mutually exclusive with the raw and structured connection forms; requires SQLcl as the runner.
 - `DBPM_GITHUB_TOKEN`: GitHub token with package read access
 - `DBPM_GITHUB_USER`: optional GitHub username for package authentication
 - `DBPM_SIGNING_KEY`: optional default GPG key ID, fingerprint, or email for `dbpm publish`
@@ -170,6 +200,16 @@ For SQLcl saved connections, do not put the saved connection name in
 unset DBPM_CONNECT
 export DBPM_CONNECT_NAME="Development Database (APP_USER)"
 export DBPM_SQL_RUNNER=sql
+```
+
+Alternatively, use structured database credentials. dbpm composes the Oracle
+connect string, while runtime scripts inherit the individual values:
+
+```sh
+unset DBPM_CONNECT DBPM_CONNECT_NAME
+export DBPM_DB_USER="application_user"
+export DBPM_DB_PASSWORD="application_password"
+export DBPM_DB_DSN="tns_alias_or_host/service"
 ```
 
 ## Commands

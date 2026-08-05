@@ -23,6 +23,9 @@ database:
 core:
   minimum_version: "3.0.0"
 
+dbpm:
+  minimum_version: "1.4.1"
+
 dependencies:
   - name: utl_interval
     version: "^1.2.0"
@@ -38,8 +41,24 @@ scripts:
     assert manifest.application_name == "JOB_CONTROL"
     assert manifest.version == "1.0.0"
     assert manifest.core_minimum_version == "3.0.0"
+    assert manifest.dbpm_minimum_version == "1.4.1"
     assert manifest.dependencies[0].name == "utl_interval"
     assert manifest.scripts.install == "Deployment_Manifests/deploy.sql"
+
+
+@pytest.mark.parametrize("version", ["1.4", "v1.4.1", "latest", "1.4.1-beta"])
+def test_dbpm_minimum_version_requires_semantic_version(version: str):
+    with pytest.raises(ManifestError, match="dbpm.minimum_version.*major.minor.patch"):
+        parse_manifest(
+            f"""
+package:
+  name: demo
+  version: "0.1.0"
+dbpm:
+  minimum_version: "{version}"
+""",
+            "dbpm.yaml",
+        )
 
 
 def test_parse_json_manifest():

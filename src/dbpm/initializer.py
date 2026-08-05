@@ -134,6 +134,10 @@ database:
   platform: oracle
   # minimum_version: "19c"  # Minimum Oracle version required by this package
 
+# Uncomment when the package requires features from a specific dbpm release.
+# dbpm:
+#   minimum_version: "1.4.1"
+
 # Uncomment and set the minimum Core version this package requires.
 # core:
 #   minimum_version: "3.0.0"

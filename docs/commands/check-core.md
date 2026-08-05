@@ -30,7 +30,7 @@ flowchart LR
 | Argument | Default | Description |
 |---|---|---|
 | `--minimum-version` | none | Minimum acceptable Core version, such as `3.2.0`. If omitted, any installed Core version passes. |
-| `--connect` | `DBPM_CONNECT` | Raw SQL*Plus/SQLcl connect string, such as `user/pass@service`. Mutually exclusive with `--connect-name`. |
+| `--connect` | `DBPM_CONNECT` or `DBPM_DB_USER`/`DBPM_DB_PASSWORD`/`DBPM_DB_DSN` | Raw SQL*Plus/SQLcl connect string, such as `user/pass@service`. The structured variables are composed when the raw value is unset. Mutually exclusive with `--connect-name`. |
 | `--connect-name` | `DBPM_CONNECT_NAME` | SQLcl saved connection name. Requires SQLcl via `--runner` or `DBPM_SQL_RUNNER`. |
 | `--runner` | `DBPM_SQL_RUNNER` or `sqlplus` | SQL runner executable. |
 
@@ -59,6 +59,15 @@ Using environment variables:
 ```sh
 export DBPM_CONNECT=user/pass@db
 unset DBPM_CONNECT_NAME
+dbpm check-core --minimum-version 3.0.0
+```
+
+Using structured credentials shared with package runtime scripts:
+```sh
+unset DBPM_CONNECT DBPM_CONNECT_NAME
+export DBPM_DB_USER=app_user
+export DBPM_DB_PASSWORD=app_password
+export DBPM_DB_DSN=db/service
 dbpm check-core --minimum-version 3.0.0
 ```
 

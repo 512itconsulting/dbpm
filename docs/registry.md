@@ -103,6 +103,7 @@ Optional fields:
 - `publisher_key_fingerprint`
 - `core_minimum_version`
 - `oracle_minimum_version`
+- `dbpm_minimum_version`
 - `warning`
 - `warnings`
 

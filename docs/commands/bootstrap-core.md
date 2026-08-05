@@ -50,7 +50,7 @@ flowchart LR
 | `--package` | none | Package name or application name to select when `source` is a workspace root. |
 | `--registry-url` | `DBPM_REGISTRY_URL` or `https://registry.dbpm.io` | Registry base URL for `registry:` sources. |
 | `--dry-run` | false | Print the deployment plan as JSON without executing. |
-| `--connect` | `DBPM_CONNECT` | Raw SQL*Plus/SQLcl connect string. Mutually exclusive with `--connect-name`. |
+| `--connect` | `DBPM_CONNECT` or `DBPM_DB_USER`/`DBPM_DB_PASSWORD`/`DBPM_DB_DSN` | Raw SQL*Plus/SQLcl connect string. The structured variables are composed when the raw value is unset. Mutually exclusive with `--connect-name`. |
 | `--connect-name` | `DBPM_CONNECT_NAME` | SQLcl saved connection name. Requires SQLcl via `--runner` or `DBPM_SQL_RUNNER`. |
 | `--runner` | `DBPM_SQL_RUNNER` or `sqlplus` | SQL runner executable. |
 

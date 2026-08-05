@@ -3,12 +3,19 @@
 
 $env:DBPM_SQL_RUNNER = "sql"
 
-# Option A: raw Oracle connect string.
-$env:DBPM_CONNECT = "user/password@tns_alias_or_service"
+# Option A: structured database credentials. dbpm composes the Oracle connect
+# string from these values, and package runtime scripts inherit them.
+$env:DBPM_DB_USER = "application_user"
+$env:DBPM_DB_PASSWORD = "application_password"
+$env:DBPM_DB_DSN = "tns_alias_or_host/service"
 
-# Option B: SQLcl saved connection name local to this OS user.
-# Use this for names created with SQLcl's connection manager. Keep DBPM_CONNECT
-# unset so dbpm does not treat the saved connection name as a raw connect string.
+# Option B: raw Oracle connect string. Keep the structured variables unset.
+# Remove-Item Env:\DBPM_DB_USER, Env:\DBPM_DB_PASSWORD, Env:\DBPM_DB_DSN
+# $env:DBPM_CONNECT = "user/password@tns_alias_or_service"
+
+# Option C: SQLcl saved connection name local to this OS user. Keep the
+# structured variables and DBPM_CONNECT unset.
+# Remove-Item Env:\DBPM_DB_USER, Env:\DBPM_DB_PASSWORD, Env:\DBPM_DB_DSN
 # Remove-Item Env:\DBPM_CONNECT
 # $env:DBPM_CONNECT_NAME = "Development Database (APP_USER)"
 

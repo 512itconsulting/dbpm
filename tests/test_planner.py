@@ -25,6 +25,9 @@ database:
 core:
   minimum_version: "3.0.0"
 
+dbpm:
+  minimum_version: "1.4.1"
+
 scripts:
   install: Deployment_Manifests/deploy.sql
   validate: Tests/smoke_test.sql
@@ -64,6 +67,7 @@ scripts:
 
     assert plan["schema_version"] == "dbpm.plan.v0"
     assert plan["package"]["application_name"] == "UTL_INTERVAL"
+    assert plan["package"]["dbpm"]["minimum_version"] == "1.4.1"
     assert plan["core"]["required"] is True
     assert plan["provenance"]["source"] == "artifact-metadata"
     assert plan["installed_state"]["application_name"] == "UTL_INTERVAL"
