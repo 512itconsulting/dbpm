@@ -1,6 +1,16 @@
 #!/usr/bin/env sh
-# Copy this file to dbpm-env.sh and fill in local values.
-# Do not commit dbpm-env.sh; it may contain credentials.
+# Copy this file to ~/.config/dbpm/<application>/environments/<environment>.sh
+# (or the equivalent XDG_CONFIG_HOME path) and fill in local values. Keep live
+# profiles outside application repositories because they may contain
+# credentials and must not enter source artifacts.
+
+# Clear every connection form before selecting exactly one below. This makes
+# the profile safe to load after a different dbpm target was previously used.
+unset DBPM_CONNECT
+unset DBPM_CONNECT_NAME
+unset DBPM_DB_USER
+unset DBPM_DB_PASSWORD
+unset DBPM_DB_DSN
 
 export DBPM_SQL_RUNNER="sql"
 

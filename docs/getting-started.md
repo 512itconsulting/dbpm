@@ -28,7 +28,8 @@ If you use SQL*Plus instead of SQLcl, confirm `sqlplus` is on your `PATH` or set
 
 ## Install dbpm
 
-Published releases are available on [PyPI](https://pypi.org/project/dbpm/). Install dbpm as a user-level CLI tool with your preferred Python package manager:
+Published releases are available on [PyPI](https://pypi.org/project/dbpm/).
+Install dbpm into an isolated, user-level environment with `pipx` or `uv`:
 
 ```sh
 # pipx
@@ -36,8 +37,17 @@ pipx install dbpm
 
 # uv
 uv tool install dbpm
+```
 
-# pip
+This installs the CLI for the current OS user; it does not select an Oracle
+database or create a system-wide deployment environment. Application manifests,
+lockfiles, connection settings, and runtime prefixes remain target-specific.
+Do not install dbpm into the system Python with `sudo pip`.
+
+If isolated tool installation is unavailable, a user-site installation is
+also supported:
+
+```sh
 python3 -m pip install --user dbpm
 ```
 
@@ -67,15 +77,20 @@ python3 -m pip install --user git+https://github.com/512itconsulting/dbpm.git@v1
 The examples below use `dbpm` directly. Contributors who prefer `uv` may use
 `uv sync` and `uv run dbpm ...`, but uv is not required to run dbpm.
 
-## Configure Environment
+## Configure a Target Environment
 
-Create a local environment file. Do not commit this file; it can contain credentials.
+Create a local profile for one application/environment pair. Do not commit the
+local file; it can contain credentials.
 
 ```sh
-cp dbpm-env.sh.example dbpm-env.sh
+profile_dir="${XDG_CONFIG_HOME:-$HOME/.config}/dbpm/my_application/environments"
+mkdir -p "$profile_dir"
+cp dbpm-env.sh.example "$profile_dir/development.sh"
+chmod 600 "$profile_dir/development.sh"
 ```
 
-Edit `dbpm-env.sh`:
+Edit `~/.config/dbpm/my_application/environments/development.sh` (or the
+equivalent path below `XDG_CONFIG_HOME`):
 
 ```sh
 export TNS_ADMIN="$HOME/.oracle/tns_admin"
@@ -106,19 +121,27 @@ export DBPM_CACHE_DIR="$HOME/.local/cache/dbpm"
 export DBPM_LOG_DIR="$HOME/.local/state/dbpm_logs"
 ```
 
-Load it before running dbpm:
+Run dbpm in a subshell that loads the selected profile. The variables disappear
+when the subshell exits, which prevents a later command from accidentally
+reusing the target:
 
 ```sh
-source ./dbpm-env.sh
+(
+  source "${XDG_CONFIG_HOME:-$HOME/.config}/dbpm/my_application/environments/development.sh"
+  printf '%s\n' "$DBPM_SQL_RUNNER"
+  printf 'database user: %s\n' "${DBPM_DB_USER:-<raw-or-saved-connection>}"
+  printf 'database DSN: %s\n' "${DBPM_DB_DSN:-<raw-or-saved-connection>}"
+  dbpm check-core --minimum-version 3.0.0
+)
 ```
 
-Check that dbpm can find the SQL runner and database connection setting:
-
-```sh
-printf '%s\n' "$DBPM_SQL_RUNNER"
-printf 'database user: %s\n' "${DBPM_DB_USER:-<raw-or-saved-connection>}"
-printf 'database DSN: %s\n' "${DBPM_DB_DSN:-<raw-or-saved-connection>}"
-```
+Each profile should unset all three connection forms before exporting exactly
+one of them. The supplied template does this before its option examples.
+Only sanitized templates such as `development.example.sh`, `test.example.sh`,
+and `production.example.sh` belong in an application repository. Live profiles
+remain in the user configuration directory. See
+[Environment Configuration](environment-configuration.md) for the complete
+convention and CI guidance.
 
 The preferred form sets all of `DBPM_DB_USER`, `DBPM_DB_PASSWORD`, and
 `DBPM_DB_DSN`. dbpm composes the Oracle connect string from them, and package
@@ -385,15 +408,19 @@ See [dbpm registry index](commands/registry-index.md) for indexing details.
 If dbpm cannot connect to the database, confirm:
 
 ```sh
-source ./dbpm-env.sh
-"$DBPM_SQL_RUNNER" -L "$DBPM_CONNECT"
+(
+  source "${XDG_CONFIG_HOME:-$HOME/.config}/dbpm/my_application/environments/development.sh"
+  "$DBPM_SQL_RUNNER" -L "$DBPM_CONNECT"
+)
 ```
 
 For SQLcl saved connections, confirm with `-name` instead:
 
 ```sh
-source ./dbpm-env.sh
-"$DBPM_SQL_RUNNER" -S -L -name "$DBPM_CONNECT_NAME"
+(
+  source "${XDG_CONFIG_HOME:-$HOME/.config}/dbpm/my_application/environments/development.sh"
+  "$DBPM_SQL_RUNNER" -S -L -name "$DBPM_CONNECT_NAME"
+)
 ```
 
 If artifact downloads fail from GitHub Packages, confirm `DBPM_GITHUB_TOKEN` has package read access and `DBPM_GITHUB_USER` is set.
