@@ -302,6 +302,53 @@ def test_runtime_validate_and_uninstall_inherit_oracle_environment(
         assert "runtime_password_sentinel" not in path.read_text(encoding="utf-8")
 
 
+def test_runtime_cleanup_does_not_rerun_health_after_database_uninstall(tmp_path: Path):
+    prefix = tmp_path / "app"
+    prefix.mkdir()
+    package_root = tmp_path / "artifact"
+    package_root.mkdir()
+    database_marker = tmp_path / "database-objects-exist"
+    database_marker.touch()
+    install = package_root / "install.sh"
+    install.write_text(
+        "#!/bin/sh\n"
+        "mkdir -p \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin\"\n"
+        "printf '#!/bin/sh\\nexit 0\\n' > \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin/demo\"\n"
+        "chmod +x \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin/demo\"\n",
+        encoding="utf-8",
+    )
+    health = package_root / "health.sh"
+    health.write_text(
+        f"#!/bin/sh\ntest -f {database_marker}\n",
+        encoding="utf-8",
+    )
+    install.chmod(0o755)
+    health.chmod(0o755)
+    graph = _graph(package_root=package_root, script=install)
+    graph["payloads"][0]["scripts"]["validate"] = {
+        "path": "health.sh",
+        "ref": str(health),
+    }
+    graph["payloads"][0]["artifact"]["checksum_alg"] = None
+    logs = tmp_path / "logs"
+
+    staged = stage_application_runtime_graph(
+        graph,
+        prefix=prefix,
+        mode="install",
+        log_dir=logs,
+    )
+    activate_staged_application_runtime(graph, staged, prefix=prefix)
+    validate_application_runtime_graph(graph, prefix=prefix, log_dir=logs)
+
+    database_marker.unlink()
+    uninstall_application_runtime_graph(graph, prefix=prefix, log_dir=logs)
+
+    assert not application_receipt_path(prefix).exists()
+    assert (prefix / ".dbpm/uninstalled-receipt.json").is_file()
+    assert len(list(logs.glob("*-runtime-validate.log"))) == 1
+
+
 def test_staged_runtime_relocates_text_launchers_before_activation(tmp_path: Path):
     prefix = tmp_path / "app"
     prefix.mkdir()

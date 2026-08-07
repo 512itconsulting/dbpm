@@ -198,6 +198,98 @@ def test_execute_plan_runs_multi_package_children_in_order(tmp_path, monkeypatch
     assert logs[1].endswith("-002-CONSUMER-validate.log")
 
 
+def test_uninstall_health_preflight_runs_before_database_and_runtime_cleanup(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
+    prefix = tmp_path / "runtime"
+    graph = {"root_package": "demo"}
+    plan = {
+        "mode": "uninstall",
+        "package": {"application_name": "DEMO"},
+        "pre_actions": [],
+        "execution": {"script_ref": "uninstall.sql", "arguments": []},
+        "application_runtime": graph,
+    }
+    calls = []
+
+    with patch("dbpm.executor.validate_application_runtime_graph") as validate:
+        with patch("dbpm.executor.uninstall_application_runtime_graph") as uninstall:
+            with patch("dbpm.executor.subprocess.Popen") as popen:
+                validate.side_effect = lambda *args, **kwargs: calls.append("runtime-health")
+                uninstall.side_effect = lambda *args, **kwargs: calls.append("runtime-cleanup")
+                popen.side_effect = (
+                    lambda *args, **kwargs: calls.append("database-uninstall")
+                    or _FakeProcess(stdout="uninstalled\n")
+                )
+
+                execute_plan(
+                    plan,
+                    connect="user/pass@db",
+                    runner="sql",
+                    runtime_prefix=str(prefix),
+                )
+
+    assert calls == ["runtime-health", "database-uninstall", "runtime-cleanup"]
+    validate.assert_called_once_with(
+        graph,
+        prefix=prefix.resolve(),
+        log_dir=(tmp_path / "logs").resolve(),
+    )
+
+
+def test_multi_package_uninstall_health_preflight_runs_before_database_scripts(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
+    prefix = tmp_path / "runtime"
+    graph = {"root_package": "consumer"}
+    plan = {
+        "mode": "uninstall",
+        "application_runtime": graph,
+        "packages": [
+            {
+                "mode": "uninstall",
+                "package": {"application_name": "CONSUMER"},
+                "pre_actions": [],
+                "execution": {"script_ref": "consumer-uninstall.sql", "arguments": []},
+            },
+            {
+                "mode": "uninstall",
+                "package": {"application_name": "BASE"},
+                "pre_actions": [],
+                "execution": {"script_ref": "base-uninstall.sql", "arguments": []},
+            },
+        ],
+    }
+    calls = []
+
+    with patch("dbpm.executor.validate_application_runtime_graph") as validate:
+        with patch("dbpm.executor.uninstall_application_runtime_graph") as uninstall:
+            with patch("dbpm.executor.subprocess.Popen") as popen:
+                validate.side_effect = lambda *args, **kwargs: calls.append("runtime-health")
+                uninstall.side_effect = lambda *args, **kwargs: calls.append("runtime-cleanup")
+                popen.side_effect = (
+                    lambda command, **kwargs: calls.append(command[-1])
+                    or _FakeProcess(stdout="uninstalled\n")
+                )
+
+                execute_plan(
+                    plan,
+                    connect="user/pass@db",
+                    runner="sql",
+                    runtime_prefix=str(prefix),
+                )
+
+    assert calls == [
+        "runtime-health",
+        "@consumer-uninstall.sql",
+        "@base-uninstall.sql",
+        "runtime-cleanup",
+    ]
+    validate.assert_called_once()
+
+
 def test_execute_plan_uses_sqlcl_named_connection_as_single_argument(tmp_path, monkeypatch):
     monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
     plan = {

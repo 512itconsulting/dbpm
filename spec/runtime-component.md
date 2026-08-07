@@ -570,6 +570,10 @@ observability, not authority.
   cleanup scripts in reverse dependency order, removes dbpm-managed links,
   payloads, retained generations, and the active receipt, archives the final
   receipt, and preserves application/operator-owned `etc` and `var` content.
+  Full runtime validation, including package health scripts, runs before any
+  database uninstall scripts. After database removal, dbpm repeats structural
+  receipt, payload, and command validation without rerunning health scripts,
+  then performs runtime cleanup.
 
 Removing or changing a dependency is an application upgrade driven by the new
 resolved graph. A package payload becomes eligible for garbage collection only

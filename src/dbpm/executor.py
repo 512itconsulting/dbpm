@@ -47,6 +47,12 @@ def execute_plan(
     if packages is not None:
         if not isinstance(packages, list):
             raise ExecutionError("Multi-package plan packages must be a list")
+        _preflight_runtime_uninstall(
+            application_runtime,
+            mode=str(plan.get("mode") or "install"),
+            runtime_prefix=runtime_prefix,
+            context=context,
+        )
         for child_plan in packages:
             if not isinstance(child_plan, dict):
                 raise ExecutionError("Multi-package plan entries must be objects")
@@ -80,6 +86,13 @@ def execute_plan(
     if input_text is not None and not isinstance(input_text, str):
         raise ExecutionError("Plan execution stdin must be a string")
 
+    _preflight_runtime_uninstall(
+        application_runtime,
+        mode=str(plan.get("mode") or "install"),
+        runtime_prefix=runtime_prefix,
+        context=context,
+    )
+
     if script_ref:
         if connect is None:
             raise ExecutionError("Database deployment requires a connect specification")
@@ -108,6 +121,24 @@ def execute_plan(
             context=context,
         )
     return 0
+
+
+def _preflight_runtime_uninstall(
+    graph: dict[str, object] | None,
+    *,
+    mode: str,
+    runtime_prefix: str | None,
+    context: _ExecutionContext,
+) -> None:
+    if mode != "uninstall" or graph is None:
+        return
+    if not runtime_prefix:
+        raise ExecutionError("Application runtime requires --runtime-prefix")
+    validate_application_runtime_graph(
+        graph,
+        prefix=Path(runtime_prefix).expanduser().resolve(),
+        log_dir=context.log_dir,
+    )
 
 
 def _execute_application_runtime(

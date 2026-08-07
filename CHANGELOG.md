@@ -7,6 +7,13 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Run runtime health validation before database uninstall scripts, then use
+  structural-only runtime validation during cleanup. Database-dependent health
+  checks no longer fail after their package objects have already been removed
+  or prevent the old runtime receipt from being archived.
+
 ## [1.4.2] - 2026-08-05
 
 ### Added

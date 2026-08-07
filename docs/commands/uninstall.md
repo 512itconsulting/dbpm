@@ -12,11 +12,13 @@ dbpm uninstall <source> \
 Uninstall is destructive and requires `--allow-destructive`. In a
 deployment-locked environment it is blocked by policy.
 
-For the application runtime, dbpm first validates the active receipt,
-payloads, and command links. It then runs optional package runtime uninstall
-scripts in reverse dependency order and removes only dbpm-managed runtime
-state: `bin`, `packages`, retained generation metadata, staging content, and
-the active receipt. The final receipt is archived as
+Before running database uninstall scripts, dbpm validates the active runtime
+receipt, payloads, command links, and package health scripts. After database
+removal, it repeats the structural receipt, payload, and command validation
+without rerunning package health scripts. It then runs optional package
+runtime uninstall scripts in reverse dependency order and removes only
+dbpm-managed runtime state: `bin`, `packages`, retained generation metadata,
+staging content, and the active receipt. The final receipt is archived as
 `.dbpm/uninstalled-receipt.json`.
 
 Application/operator-owned `etc` and `var` directories and unrelated files
