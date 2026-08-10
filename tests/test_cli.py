@@ -2373,6 +2373,11 @@ def test_upgrade_chain_maven_with_satisfied_upgrade_from_is_direct(tmp_path: Pat
     out = capsys.readouterr()
     assert out.err == (
         "dbpm: Preparing upgrade plan...\n"
+        "dbpm: Loading root package source...\n"
+        "dbpm: Resolving package provenance...\n"
+        "dbpm: Reading Core deployment policy...\n"
+        "dbpm: Reading installed state for DEMO...\n"
+        "dbpm: Reading reverse dependencies for DEMO...\n"
         "dbpm: Checking demo 1.3.0...\n"
     )
 

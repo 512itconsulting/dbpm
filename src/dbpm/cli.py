@@ -166,14 +166,23 @@ def main(argv: list[str] | None = None) -> int:
             if not args.dry_run:
                 report_progress(f"Preparing {args.command} plan...")
             if args.command == "install" and args.lockfile:
-                plan = _build_plan_from_lockfile(args, include_installed_state=not args.dry_run)
+                plan = _build_plan_from_lockfile(
+                    args,
+                    include_installed_state=not args.dry_run,
+                    show_progress=not args.dry_run,
+                )
             else:
                 if args.command == "install" and args.source is None and not getattr(args, "package", None):
                     raise DbpmError("install requires a source or --lockfile")
                 include_installed = not args.dry_run or (
                     args.command == "upgrade" and _has_database_access(args)
                 )
-                plan = _build_plan(args.command, args, include_installed_state=include_installed)
+                plan = _build_plan(
+                    args.command,
+                    args,
+                    include_installed_state=include_installed,
+                    show_progress=not args.dry_run,
+                )
             if args.dry_run:
                 _print_json(plan)
                 return 0
@@ -663,7 +672,9 @@ def _build_plan(
     args: argparse.Namespace,
     *,
     include_installed_state: bool = False,
+    show_progress: bool = False,
 ) -> dict[str, object]:
+    _report_plan_progress(show_progress, "Loading root package source...")
     source_arg, workspace, selected_workspace_package = _resolve_workspace_source_arg(args.source, args)
     source = load_package_source(source_arg, registry_url=getattr(args, "registry_url", None))
     explicit_dependency_sources = list(getattr(args, "dependency_source", []))
@@ -673,11 +684,16 @@ def _build_plan(
         explicit_dependency_sources,
     )
     dependency_source_args = [*workspace_sources, *explicit_dependency_sources]
-    dependency_sources = [
-        load_package_source(raw_path, registry_url=getattr(args, "registry_url", None))
-        for raw_path in dependency_source_args
-    ]
+    dependency_sources = []
+    for raw_path in dependency_source_args:
+        _report_plan_progress(show_progress, f"Loading dependency source {raw_path}...")
+        dependency_sources.append(
+            load_package_source(raw_path, registry_url=getattr(args, "registry_url", None))
+        )
+    _report_plan_progress(show_progress, "Resolving package provenance...")
     provenance = resolve_provenance(source)
+    if _has_database_access(args) and mode != "bootstrap-core":
+        _report_plan_progress(show_progress, "Reading Core deployment policy...")
     environment = _resolve_policy_for_plan(mode, args)
     allow_destructive = bool(getattr(args, "allow_destructive", False))
     confirm_delete_system = getattr(args, "confirm_delete_system", None) == source.manifest.application_name
@@ -688,8 +704,16 @@ def _build_plan(
         and source.manifest.has_database_component
         and _should_read_installed_state(mode, source.manifest.is_core)
     ):
+        _report_plan_progress(
+            show_progress,
+            f"Reading installed state for {source.manifest.application_name}...",
+        )
         installed_state = _get_installed_state(args, source.manifest.application_name)
         if not source.manifest.is_core:
+            _report_plan_progress(
+                show_progress,
+                f"Reading reverse dependencies for {source.manifest.application_name}...",
+            )
             reverse_dependencies = _get_reverse_dependencies(args, source.manifest.application_name)
 
     if args.command in {"plan", "install", "lock", "upgrade", "validate", "uninstall"} and (
@@ -700,12 +724,17 @@ def _build_plan(
         if include_installed_state:
             for dependency in source.manifest.dependencies:
                 app_name = _application_name(dependency.name)
+                _report_plan_progress(show_progress, f"Reading installed state for {app_name}...")
                 installed_states[app_name] = _get_installed_state(args, app_name)
+                _report_plan_progress(show_progress, f"Reading reverse dependencies for {app_name}...")
                 reverse_dependencies_by_app[app_name] = _get_reverse_dependencies(args, app_name)
             for dependency_source in dependency_sources:
                 app_name = dependency_source.manifest.application_name
+                _report_plan_progress(show_progress, f"Reading installed state for {app_name}...")
                 installed_states[app_name] = _get_installed_state(args, app_name)
+                _report_plan_progress(show_progress, f"Reading reverse dependencies for {app_name}...")
                 reverse_dependencies_by_app[app_name] = _get_reverse_dependencies(args, app_name)
+        _report_plan_progress(show_progress, "Resolving dependency graph...")
         return create_multi_package_plan(
             mode=mode,
             source=source,
@@ -770,15 +799,18 @@ def _build_plan_from_lockfile(
     args: argparse.Namespace,
     *,
     include_installed_state: bool = False,
+    show_progress: bool = False,
 ) -> dict[str, object]:
     if args.source is not None or getattr(args, "dependency_source", []):
         raise DbpmError("--lockfile cannot be combined with source or --dependency-source")
 
+    _report_plan_progress(show_progress, "Loading dependency lockfile...")
     lockfile_path = Path(args.lockfile)
     lockfile = load_lockfile(lockfile_path)
     root_entry, dep_entries = lockfile_package_sources_with_checksums(lockfile)
 
     root_uri, root_checksum, root_alg, root_sig_url, root_publisher_key = root_entry
+    _report_plan_progress(show_progress, "Loading locked root package source...")
     root_source = load_package_source(
         root_uri,
         expected_checksum=root_checksum,
@@ -786,18 +818,21 @@ def _build_plan_from_lockfile(
         expected_signature_url=root_sig_url,
         expected_publisher_key_fingerprint=root_publisher_key,
     )
-    dep_sources = [
-        load_package_source(
+    dep_sources = []
+    for uri, checksum, alg, sig_url, publisher_key in dep_entries:
+        _report_plan_progress(show_progress, f"Loading locked dependency source {uri}...")
+        dep_sources.append(load_package_source(
             uri,
             expected_checksum=checksum,
             expected_checksum_alg=alg,
             expected_signature_url=sig_url,
             expected_publisher_key_fingerprint=publisher_key,
-        )
-        for uri, checksum, alg, sig_url, publisher_key in dep_entries
-    ]
+        ))
 
+    if _has_database_access(args):
+        _report_plan_progress(show_progress, "Reading Core deployment policy...")
     environment = _resolve_policy_for_plan("install", args)
+    _report_plan_progress(show_progress, "Validating locked dependency graph...")
     resolution_plan = create_multi_package_plan(
         mode="install",
         source=root_source,
@@ -817,9 +852,12 @@ def _build_plan_from_lockfile(
         for source in [root_source, *dep_sources]:
             app_name = source.manifest.application_name
             if _should_read_installed_state("install", source.manifest.is_core):
+                _report_plan_progress(show_progress, f"Reading installed state for {app_name}...")
                 installed_states[app_name] = _get_installed_state(args, app_name)
+                _report_plan_progress(show_progress, f"Reading reverse dependencies for {app_name}...")
                 reverse_dependencies_by_app[app_name] = _get_reverse_dependencies(args, app_name)
 
+    _report_plan_progress(show_progress, "Resolving dependency graph...")
     plan = create_multi_package_plan(
         mode="install",
         source=root_source,
@@ -831,6 +869,11 @@ def _build_plan_from_lockfile(
         approve=args.approve,
     )
     return plan
+
+
+def _report_plan_progress(enabled: bool, message: str) -> None:
+    if enabled:
+        report_progress(message)
 
 
 def _resolve_policy_for_plan(mode: str, args: argparse.Namespace) -> DeploymentPolicy:
