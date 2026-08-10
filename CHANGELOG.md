@@ -16,6 +16,10 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Allow runtime receipts for database-only root applications whose runtime is
+  supplied entirely by dependencies. Final runtime cleanup no longer rejects
+  a successfully activated receipt merely because the root has no payload in
+  the receipt's runtime-package map.
 - Check an existing runtime receipt's root-application ownership during
   runtime-prefix preflight. Installing an application into a prefix owned by a
   different root now fails before database provenance staging or deployment

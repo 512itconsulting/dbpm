@@ -35,8 +35,9 @@ scripts, templates, or other non-database assets.
 The runtime model must compose those assets with the same dependency graph
 that dbpm resolves for the database deployment. Given an application package
 that depends on packages such as `job_control`, dbpm should materialize one
-application runtime containing isolated payloads for the root application and
-each runtime-bearing dependency.
+application runtime containing isolated payloads for each runtime-bearing
+package. A database-only root still owns the runtime without requiring an
+otherwise empty root payload.
 
 This model provides:
 
@@ -534,7 +535,8 @@ The application runtime uses receipt schema
 
 The final schema should also record:
 
-- root artifact identity through the root entry in `packages`
+- root application identity and version through the top-level `application`
+  object, whether or not the root contributes a runtime payload
 - every runtime-bearing package's artifact provenance and installed path
 - the canonical identity and activated name of each command export
 - the activation generation
@@ -549,6 +551,11 @@ Each command target is application-prefix-relative and must resolve beneath
 the payload path recorded for its package. Each package artifact must provide
 both `checksum` and `checksum_alg`, or neither for a development source whose
 identity has not yet been captured.
+
+`packages` contains runtime-bearing packages only. The root application appears
+there when it contributes a runtime payload, but a database-only or
+activation-only root may be absent. Prefix ownership is determined by the
+top-level `application` identity, not by membership in `packages`.
 
 The receipt is dbpm-owned. Runtime programs may read it but must not modify it.
 The receipt describes host state and does not replace Core's database

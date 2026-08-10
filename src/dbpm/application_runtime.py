@@ -1165,11 +1165,6 @@ def parse_application_runtime_receipt(
                 artifact_checksum_alg=checksum_alg,
             )
         )
-    if application_name not in {package.name for package in packages}:
-        raise ExecutionError(
-            f"{source} packages do not contain root application `{application_name}`"
-        )
-
     packages_by_name = {package.name: package for package in packages}
     commands_value = _mapping(receipt.get("commands"), f"{source} commands")
     commands: list[ActivatedRuntimeCommand] = []

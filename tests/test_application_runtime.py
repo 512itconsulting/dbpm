@@ -93,12 +93,14 @@ def test_application_runtime_receipt_rejects_wrong_application(tmp_path: Path):
         )
 
 
-def test_application_runtime_receipt_requires_root_in_packages():
+def test_application_runtime_receipt_allows_database_only_root():
     value = _receipt().as_dict()
     value["packages"].pop("warehouse_app")
 
-    with pytest.raises(ExecutionError, match="do not contain root application"):
-        parse_application_runtime_receipt(value)
+    receipt = parse_application_runtime_receipt(value)
+
+    assert receipt.application_name == "warehouse_app"
+    assert [package.name for package in receipt.packages] == ["job_control"]
 
 
 def test_application_runtime_receipt_rejects_command_for_missing_package():
@@ -527,6 +529,31 @@ def test_garbage_collection_preserves_active_and_retained_payloads(tmp_path: Pat
     assert (prefix / ".dbpm/generations/2").is_dir()
     assert not (prefix / ".dbpm/bin-generation-1").exists()
     assert any(path.name == "1.0.0" for path in removed)
+
+
+def test_garbage_collection_accepts_database_only_root_receipt(tmp_path: Path):
+    prefix = tmp_path / "app"
+    prefix.mkdir()
+    base = _receipt()
+    receipt = ApplicationRuntimeReceipt(
+        application_name=base.application_name,
+        application_version=base.application_version,
+        generation=base.generation,
+        activated_at=base.activated_at,
+        lock_schema=base.lock_schema,
+        lock_checksum=base.lock_checksum,
+        packages=(base.packages[1],),
+        commands=base.commands,
+    )
+    write_application_runtime_receipt(prefix, receipt)
+    (prefix / "packages/job_control/1.1.0").mkdir(parents=True)
+    (prefix / "packages/job_control/orphan").mkdir(parents=True)
+
+    removed = garbage_collect_application_runtime(prefix)
+
+    assert (prefix / "packages/job_control/1.1.0").is_dir()
+    assert not (prefix / "packages/job_control/orphan").exists()
+    assert any(path.name == "orphan" for path in removed)
 
 
 def test_garbage_collection_rejects_negative_retention(tmp_path: Path):
