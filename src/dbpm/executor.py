@@ -135,8 +135,14 @@ def _preflight_application_runtime(
         return
     if not runtime_prefix:
         raise ExecutionError("Application runtime requires --runtime-prefix")
+    root_package = graph.get("root_package")
+    if not isinstance(root_package, str) or not root_package:
+        raise ExecutionError("Application runtime graph root_package must be a non-empty string")
     prefix = Path(runtime_prefix).expanduser().resolve()
-    validate_application_runtime_prefix(prefix)
+    validate_application_runtime_prefix(
+        prefix,
+        expected_application=root_package,
+    )
     if mode == "uninstall":
         validate_application_runtime_graph(
             graph,

@@ -81,6 +81,7 @@ dbpm fails before running any deployment script if:
 - A declared dependency version cannot be satisfied by the provided source.
 - A runtime-bearing plan has no `--runtime-prefix`, or the prefix does not
   exist as a writable directory.
+- The runtime prefix contains a receipt owned by a different root application.
 
 For `registry:` root sources, dbpm automatically resolves missing manifest dependencies from the same registry unless an explicit `--dependency-source` already satisfies them.
 

@@ -733,7 +733,11 @@ def application_runtime_lock(prefix: Path) -> Iterator[None]:
         lock_file.unlink(missing_ok=True)
 
 
-def validate_application_runtime_prefix(prefix: Path) -> None:
+def validate_application_runtime_prefix(
+    prefix: Path,
+    *,
+    expected_application: str | None = None,
+) -> None:
     if not prefix.is_dir():
         raise ExecutionError(
             f"Application runtime prefix does not exist or is not a directory: {prefix}"
@@ -741,6 +745,11 @@ def validate_application_runtime_prefix(prefix: Path) -> None:
     if not os.access(prefix, os.W_OK):
         raise ExecutionError(
             f"Application runtime prefix is not writable by the current user: {prefix}"
+        )
+    if expected_application is not None and application_receipt_path(prefix).exists():
+        load_application_runtime_receipt(
+            prefix,
+            expected_application=expected_application,
         )
 
 

@@ -1,4 +1,5 @@
 import io
+import json
 import subprocess
 from unittest.mock import patch
 
@@ -28,6 +29,36 @@ class _CapturingProcess(_FakeProcess):
     def __init__(self, *, returncode: int = 0, stdout: str = "ok\n"):
         super().__init__(returncode=returncode, stdout=stdout)
         self.stdin = _NonClosingStringIO()
+
+
+def _write_runtime_receipt(prefix, *, application: str) -> None:
+    metadata = prefix / ".dbpm"
+    metadata.mkdir(parents=True)
+    (metadata / "receipt.json").write_text(
+        json.dumps(
+            {
+                "schema": "dbpm.application-runtime.v1",
+                "application": {"name": application, "version": "1.0.0"},
+                "generation": 1,
+                "activated_at": "2026-08-10T00:00:00Z",
+                "resolution": {"lock_schema": None, "lock_checksum": None},
+                "packages": {
+                    application: {
+                        "version": "1.0.0",
+                        "path": f"packages/{application}/1.0.0",
+                        "commit": "",
+                        "artifact": {
+                            "uri": "",
+                            "checksum": None,
+                            "checksum_alg": None,
+                        },
+                    }
+                },
+                "commands": {},
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def test_execute_plan_runs_delete_pre_action_before_script(tmp_path, monkeypatch):
@@ -364,6 +395,84 @@ def test_multi_package_runtime_install_preflights_prefix_before_database_scripts
                 connect="user/pass@db",
                 runner="sql",
                 runtime_prefix=str(tmp_path / "missing-runtime"),
+            )
+
+    popen.assert_not_called()
+
+
+def test_runtime_install_rejects_foreign_prefix_before_database_actions(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
+    prefix = tmp_path / "app_x"
+    prefix.mkdir()
+    _write_runtime_receipt(prefix, application="universal_file_loader")
+    plan = {
+        "mode": "install",
+        "package": {"application_name": "APP_X"},
+        "pre_actions": [
+            {
+                "type": "stage_deployment_provenance",
+                "payload": {"application_name": "APP_X"},
+            }
+        ],
+        "execution": {"script_ref": "install.sql", "arguments": []},
+        "application_runtime": {"root_package": "app_x"},
+    }
+
+    with patch("dbpm.executor.stage_deployment_provenance") as stage:
+        with patch("dbpm.executor.subprocess.Popen") as popen:
+            with pytest.raises(
+                ExecutionError,
+                match=r"belongs to `universal_file_loader`, not `app_x`",
+            ):
+                execute_plan(
+                    plan,
+                    connect="user/pass@db",
+                    runner="sql",
+                    runtime_prefix=str(prefix),
+                )
+
+    stage.assert_not_called()
+    popen.assert_not_called()
+
+
+def test_multi_package_install_rejects_foreign_prefix_before_database_scripts(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
+    prefix = tmp_path / "app_x"
+    prefix.mkdir()
+    _write_runtime_receipt(prefix, application="universal_file_loader")
+    plan = {
+        "mode": "install",
+        "application_runtime": {"root_package": "app_x"},
+        "packages": [
+            {
+                "mode": "install",
+                "package": {"application_name": "UNIVERSAL_FILE_LOADER"},
+                "pre_actions": [],
+                "execution": {"script_ref": "ufl-install.sql", "arguments": []},
+            },
+            {
+                "mode": "install",
+                "package": {"application_name": "APP_X"},
+                "pre_actions": [],
+                "execution": {"script_ref": "app-x-install.sql", "arguments": []},
+            },
+        ],
+    }
+
+    with patch("dbpm.executor.subprocess.Popen") as popen:
+        with pytest.raises(
+            ExecutionError,
+            match=r"belongs to `universal_file_loader`, not `app_x`",
+        ):
+            execute_plan(
+                plan,
+                connect="user/pass@db",
+                runner="sql",
+                runtime_prefix=str(prefix),
             )
 
     popen.assert_not_called()

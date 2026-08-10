@@ -176,7 +176,10 @@ root-owned directories, systemd units, or other privileged host resources
 remains an operator prerequisite. dbpm must not require privilege elevation.
 dbpm validates the prefix before executing any database script in a runtime-
 bearing single- or multi-package plan, and repeats the check when runtime
-staging begins to detect intervening filesystem changes.
+staging begins to detect intervening filesystem changes. When the prefix
+already contains an active receipt, preflight also requires its root
+application identity to match the planned root before dbpm performs database
+provenance staging or executes deployment scripts.
 
 ## Root Application And Dependency Graph
 

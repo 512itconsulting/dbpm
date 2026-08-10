@@ -7,6 +7,13 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Check an existing runtime receipt's root-application ownership during
+  runtime-prefix preflight. Installing an application into a prefix owned by a
+  different root now fails before database provenance staging or deployment
+  scripts can leave a partial database installation.
+
 ## [1.4.3] - 2026-08-10
 
 ### Fixed
