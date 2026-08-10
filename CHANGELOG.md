@@ -7,6 +7,13 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Report concise deployment progress on stderr while preparing plans, checking
+  package state, executing database deployments, and staging and activating
+  application runtimes. Long-running installs now expose their current phase
+  without changing machine-readable stdout.
+
 ### Fixed
 
 - Check an existing runtime receipt's root-application ownership during

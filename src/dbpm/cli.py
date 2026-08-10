@@ -64,6 +64,7 @@ from .workspace import (
     workspace_dependency_sources,
 )
 from .initializer import init_package, init_workspace, validate_package_name
+from .progress import report_progress
 
 
 CONNECT_OPTIONS_CONFLICT_MESSAGE = (
@@ -162,6 +163,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"ROLLED_BACK_RUNTIME_GENERATION={receipt.generation}")
             return 0
         if args.command in {"bootstrap-core", "install", "upgrade", "reinstall", "resume", "validate", "uninstall"}:
+            if not args.dry_run:
+                report_progress(f"Preparing {args.command} plan...")
             if args.command == "install" and args.lockfile:
                 plan = _build_plan_from_lockfile(args, include_installed_state=not args.dry_run)
             else:
@@ -902,10 +905,12 @@ def _execute_or_explain(plan: dict[str, object], args: argparse.Namespace) -> No
     runtime_prefix = getattr(args, "runtime_prefix", None)
     packages = plan.get("packages")
     if isinstance(packages, list):
+        report_progress(f"Checking database and policy state for {len(packages)} packages...")
         allow_dependent_break = getattr(args, "allow_dependent_break", False)
         for child_plan in packages:
             if not isinstance(child_plan, dict):
                 raise DbpmError("Multi-package plan entries must be objects")
+            report_progress(f"Checking {_package_progress_identity(child_plan)}...")
             _execute_or_explain_policy(child_plan)
             _enforce_installed_state(child_plan)
             _enforce_core_minimum_version(child_plan, args)
@@ -913,11 +918,21 @@ def _execute_or_explain(plan: dict[str, object], args: argparse.Namespace) -> No
         execute_plan(plan, connect=connect, runner=args.runner, runtime_prefix=runtime_prefix)
         return
 
+    report_progress(f"Checking {_package_progress_identity(plan)}...")
     _execute_or_explain_policy(plan)
     _enforce_installed_state(plan)
     _enforce_core_minimum_version(plan, args)
     _enforce_major_upgrade_dependencies(plan, getattr(args, "allow_dependent_break", False))
     execute_plan(plan, connect=connect, runner=args.runner, runtime_prefix=runtime_prefix)
+
+
+def _package_progress_identity(plan: dict[str, object]) -> str:
+    package = plan.get("package")
+    if not isinstance(package, dict):
+        return "package"
+    name = package.get("name") or package.get("application_name") or "package"
+    version = package.get("version")
+    return f"{name} {version}" if isinstance(version, str) and version else str(name)
 
 
 def _plan_needs_database(plan: dict[str, object]) -> bool:

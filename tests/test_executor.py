@@ -61,7 +61,7 @@ def _write_runtime_receipt(prefix, *, application: str) -> None:
     )
 
 
-def test_execute_plan_runs_delete_pre_action_before_script(tmp_path, monkeypatch):
+def test_execute_plan_runs_delete_pre_action_before_script(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
     payload = {
         "application_name": "DEMO",
@@ -109,6 +109,34 @@ def test_execute_plan_runs_delete_pre_action_before_script(tmp_path, monkeypatch
     logs = list((tmp_path / "logs").glob("*-001-DEMO-install.log"))
     assert len(logs) == 1
     assert logs[0].read_text(encoding="utf-8") == "deployed\n"
+    assert "dbpm: Deploying DEMO..." in capsys.readouterr().err
+
+
+def test_execute_multi_package_plan_reports_package_progress(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
+    plan = {
+        "mode": "install",
+        "packages": [
+            {
+                "mode": "install",
+                "package": {"name": "first", "version": "1.0.0"},
+                "execution": {"script_ref": "first.sql", "arguments": []},
+            },
+            {
+                "mode": "install",
+                "package": {"name": "second", "version": "2.0.0"},
+                "execution": {"script_ref": "second.sql", "arguments": []},
+            },
+        ],
+    }
+
+    with patch("dbpm.executor.subprocess.Popen") as popen:
+        popen.side_effect = [_FakeProcess(), _FakeProcess()]
+        execute_plan(plan, connect="user/pass@db", runner="sql")
+
+    stderr = capsys.readouterr().err
+    assert "dbpm: Deploying first 1.0.0 (1/2)..." in stderr
+    assert "dbpm: Deploying second 2.0.0 (2/2)..." in stderr
 
 
 def test_execute_plan_sends_fallback_exit_success(tmp_path, monkeypatch):

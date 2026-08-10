@@ -11,6 +11,7 @@ from typing import TextIO
 from .connect import ConnectSpec, build_sql_command
 from .db import delete_application, delete_system, record_deployment_provenance, stage_deployment_provenance
 from .errors import ExecutionError
+from .progress import report_progress
 from .application_runtime import (
     activate_staged_application_runtime,
     stage_application_runtime_graph,
@@ -30,6 +31,8 @@ class _ExecutionContext:
     run_id: str
     log_dir: Path
     sequence: int = 0
+    package_index: int = 0
+    package_total: int = 0
 
 
 def execute_plan(
@@ -48,6 +51,9 @@ def execute_plan(
     if packages is not None:
         if not isinstance(packages, list):
             raise ExecutionError("Multi-package plan packages must be a list")
+        context.package_total = len(packages)
+        if application_runtime is not None:
+            report_progress("Validating application runtime prefix...")
         _preflight_application_runtime(
             application_runtime,
             mode=str(plan.get("mode") or "install"),
@@ -97,6 +103,14 @@ def execute_plan(
     if script_ref:
         if connect is None:
             raise ExecutionError("Database deployment requires a connect specification")
+        context.package_index += 1
+        identity = _package_progress_identity(plan)
+        position = (
+            f" ({context.package_index}/{context.package_total})"
+            if context.package_total
+            else ""
+        )
+        report_progress(f"Deploying {identity}{position}...")
         _execute_pre_actions(plan, connect=connect, runner=runner, context=context)
 
         command = build_sql_command(runner=runner, connect=connect, script_ref=script_ref, arguments=arguments)
@@ -162,6 +176,7 @@ def _execute_application_runtime(
         raise ExecutionError("Application runtime requires --runtime-prefix")
     prefix = Path(runtime_prefix).expanduser().resolve()
     if mode == "validate":
+        report_progress("Validating application runtime...")
         validate_application_runtime_graph(
             graph,
             prefix=prefix,
@@ -169,6 +184,7 @@ def _execute_application_runtime(
         )
         return
     if mode == "uninstall":
+        report_progress("Removing application runtime...")
         uninstall_application_runtime_graph(
             graph,
             prefix=prefix,
@@ -176,25 +192,31 @@ def _execute_application_runtime(
         )
         return
     if mode == "resume":
+        report_progress("Resuming application runtime staging...")
         staged = resume_application_runtime_graph(
             graph,
             prefix=prefix,
             log_dir=context.log_dir,
         )
+        report_progress("Activating application runtime...")
         activate_staged_application_runtime(graph, staged, prefix=prefix, mode=mode)
+        report_progress("Cleaning retained runtime generations...")
         garbage_collect_application_runtime(prefix, retain_generations=1)
         return
     if mode not in {"install", "upgrade", "reinstall"}:
         raise ExecutionError(
             f"Application runtime activation currently supports install only, not `{mode}`"
         )
+    report_progress("Staging application runtime packages...")
     staged = stage_application_runtime_graph(
         graph,
         prefix=prefix,
         mode=mode,
         log_dir=context.log_dir,
     )
+    report_progress("Activating application runtime...")
     activate_staged_application_runtime(graph, staged, prefix=prefix, mode=mode)
+    report_progress("Cleaning retained runtime generations...")
     garbage_collect_application_runtime(prefix, retain_generations=1)
 
 
@@ -220,6 +242,15 @@ def _next_log_file(context: _ExecutionContext, plan: dict[str, object], suffix: 
 
 def _safe_name(value: str) -> str:
     return "".join(char if char.isalnum() or char in {"_", "-"} else "_" for char in value)
+
+
+def _package_progress_identity(plan: dict[str, object]) -> str:
+    package = plan.get("package")
+    if not isinstance(package, dict):
+        return "package"
+    name = package.get("name") or package.get("application_name") or "package"
+    version = package.get("version")
+    return f"{name} {version}" if isinstance(version, str) and version else str(name)
 
 
 def _run_command(command: list[str], *, cwd: str | None, log_file: Path, input_text: str | None = None) -> int:

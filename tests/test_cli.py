@@ -2371,7 +2371,10 @@ def test_upgrade_chain_maven_with_satisfied_upgrade_from_is_direct(tmp_path: Pat
     assert cli.main(["upgrade", raw, "--connect", "user/pass@db"]) == 0
 
     out = capsys.readouterr()
-    assert out.err == ""
+    assert out.err == (
+        "dbpm: Preparing upgrade plan...\n"
+        "dbpm: Checking demo 1.3.0...\n"
+    )
 
 
 def test_upgrade_chain_executes_steps_in_order(tmp_path: Path, monkeypatch):

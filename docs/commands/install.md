@@ -70,6 +70,14 @@ flowchart LR
 | `--connect-name` | `DBPM_CONNECT_NAME` | SQLcl saved connection name. Requires SQLcl via `--runner` or `DBPM_SQL_RUNNER`. |
 | `--runner` | `DBPM_SQL_RUNNER` or `sqlplus` | SQL runner executable. |
 
+## Progress output
+
+During execution, dbpm writes concise progress milestones to stderr. These
+identify plan preparation, database and policy checks, individual database
+package deployments, and runtime staging and activation. Existing structured
+command results remain on stdout, so callers may redirect the two streams
+independently.
+
 ## Preflight checks
 
 dbpm fails before running any deployment script if:

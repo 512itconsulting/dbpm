@@ -13,6 +13,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterator, TextIO
 
 from .errors import ExecutionError
+from .progress import report_progress
 from .manifest import PACKAGE_NAME_RE, RUNTIME_COMMAND_NAME_RE
 
 
@@ -560,6 +561,10 @@ def stage_application_runtime_graph(
             package_version = _nonempty_string(
                 payload.get("version"),
                 f"application runtime payload {package_name} version",
+            )
+            report_progress(
+                f"Staging runtime for {package_name} {package_version} "
+                f"({sequence}/{len(payloads)})..."
             )
             relative_payload = _safe_relative_path(
                 payload.get("payload_path"),
