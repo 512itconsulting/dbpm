@@ -203,6 +203,7 @@ def test_uninstall_health_preflight_runs_before_database_and_runtime_cleanup(
 ):
     monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
     prefix = tmp_path / "runtime"
+    prefix.mkdir()
     graph = {"root_package": "demo"}
     plan = {
         "mode": "uninstall",
@@ -243,6 +244,7 @@ def test_multi_package_uninstall_health_preflight_runs_before_database_scripts(
 ):
     monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
     prefix = tmp_path / "runtime"
+    prefix.mkdir()
     graph = {"root_package": "consumer"}
     plan = {
         "mode": "uninstall",
@@ -288,6 +290,83 @@ def test_multi_package_uninstall_health_preflight_runs_before_database_scripts(
         "runtime-cleanup",
     ]
     validate.assert_called_once()
+
+
+def test_runtime_install_requires_prefix_before_database_script(tmp_path, monkeypatch):
+    monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
+    plan = {
+        "mode": "install",
+        "package": {"application_name": "DEMO"},
+        "pre_actions": [],
+        "execution": {"script_ref": "install.sql", "arguments": []},
+        "application_runtime": {"root_package": "demo"},
+    }
+
+    with patch("dbpm.executor.subprocess.Popen") as popen:
+        with pytest.raises(ExecutionError, match="requires --runtime-prefix"):
+            execute_plan(plan, connect="user/pass@db", runner="sql")
+
+    popen.assert_not_called()
+
+
+def test_runtime_install_requires_existing_prefix_before_database_script(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
+    missing_prefix = tmp_path / "missing-runtime"
+    plan = {
+        "mode": "install",
+        "package": {"application_name": "DEMO"},
+        "pre_actions": [],
+        "execution": {"script_ref": "install.sql", "arguments": []},
+        "application_runtime": {"root_package": "demo"},
+    }
+
+    with patch("dbpm.executor.subprocess.Popen") as popen:
+        with pytest.raises(ExecutionError, match="does not exist or is not a directory"):
+            execute_plan(
+                plan,
+                connect="user/pass@db",
+                runner="sql",
+                runtime_prefix=str(missing_prefix),
+            )
+
+    popen.assert_not_called()
+
+
+def test_multi_package_runtime_install_preflights_prefix_before_database_scripts(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
+    plan = {
+        "mode": "install",
+        "application_runtime": {"root_package": "consumer"},
+        "packages": [
+            {
+                "mode": "install",
+                "package": {"application_name": "BASE"},
+                "pre_actions": [],
+                "execution": {"script_ref": "base-install.sql", "arguments": []},
+            },
+            {
+                "mode": "install",
+                "package": {"application_name": "CONSUMER"},
+                "pre_actions": [],
+                "execution": {"script_ref": "consumer-install.sql", "arguments": []},
+            },
+        ],
+    }
+
+    with patch("dbpm.executor.subprocess.Popen") as popen:
+        with pytest.raises(ExecutionError, match="does not exist or is not a directory"):
+            execute_plan(
+                plan,
+                connect="user/pass@db",
+                runner="sql",
+                runtime_prefix=str(tmp_path / "missing-runtime"),
+            )
+
+    popen.assert_not_called()
 
 
 def test_execute_plan_uses_sqlcl_named_connection_as_single_argument(tmp_path, monkeypatch):

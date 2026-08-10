@@ -8,10 +8,12 @@ Install a package that is not yet registered in Core. Fails if the package is al
 dbpm install source [--approve] [--dry-run]
                    [--package NAME]
                    [--dependency-source SOURCE]...
+                   [--runtime-prefix PATH]
                    [--registry-url URL]
                    [--connect STRING | --connect-name NAME] [--runner EXEC]
 
 dbpm install --lockfile [PATH] [--approve] [--dry-run]
+                        [--runtime-prefix PATH]
                         [--connect STRING | --connect-name NAME] [--runner EXEC]
 ```
 
@@ -61,6 +63,7 @@ flowchart LR
 | `--dry-run` | false | Print the deployment plan as JSON without executing. |
 | `--package` | none | Package name or application name to select when `source` is a workspace root. |
 | `--dependency-source` | none | Additional source that may satisfy a dependency declared in the manifest. Repeatable. Cannot be combined with `--lockfile`. |
+| `--runtime-prefix` | none | Existing writable application-level target directory for the complete runtime graph. Required when any package contributes a runtime. |
 | `--registry-url` | `DBPM_REGISTRY_URL` or `https://registry.dbpm.io` | Registry base URL for `registry:` sources. |
 | `--lockfile` | `dbpm-lock.json` | Install from a resolved lockfile. If the flag is given without a value, defaults to `dbpm-lock.json`. Cannot be combined with `source` or `--dependency-source`. |
 | `--connect` | `DBPM_CONNECT` or structured database variables | Raw SQL*Plus/SQLcl connect string. `DBPM_DB_USER`, `DBPM_DB_PASSWORD`, and `DBPM_DB_DSN` are composed when the raw value is unset. Mutually exclusive with `--connect-name`. |
@@ -76,6 +79,8 @@ dbpm fails before running any deployment script if:
 - Core is not installed or does not meet the package's `core.minimum_version`.
 - A declared dependency is missing and no matching `--dependency-source` was provided.
 - A declared dependency version cannot be satisfied by the provided source.
+- A runtime-bearing plan has no `--runtime-prefix`, or the prefix does not
+  exist as a writable directory.
 
 For `registry:` root sources, dbpm automatically resolves missing manifest dependencies from the same registry unless an explicit `--dependency-source` already satisfies them.
 

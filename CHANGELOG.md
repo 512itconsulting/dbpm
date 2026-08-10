@@ -13,6 +13,10 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   structural-only runtime validation during cleanup. Database-dependent health
   checks no longer fail after their package objects have already been removed
   or prevent the old runtime receipt from being archived.
+- Validate that a runtime prefix was supplied and is an existing writable
+  directory before running database install scripts. Invalid runtime target
+  configuration no longer leaves the database component installed without its
+  runtime.
 
 ## [1.4.2] - 2026-08-05
 

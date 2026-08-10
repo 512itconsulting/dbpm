@@ -109,7 +109,7 @@ def validate_application_runtime_graph(
     commands = graph.get("commands")
     if not isinstance(payloads, list) or not isinstance(commands, list):
         raise ExecutionError("Application runtime graph is incomplete")
-    _assert_runtime_prefix(prefix)
+    validate_application_runtime_prefix(prefix)
     receipt = load_application_runtime_receipt(prefix, expected_application=root_name)
     if receipt.application_version != root_version:
         raise ExecutionError(
@@ -523,7 +523,7 @@ def stage_application_runtime_graph(
         raise ExecutionError("Application runtime graph commands must be a list")
     if mode not in {"install", "upgrade", "reinstall", "resume"}:
         raise ExecutionError(f"Application runtime staging does not support mode `{mode}`")
-    _assert_runtime_prefix(prefix)
+    validate_application_runtime_prefix(prefix)
     installed_versions: dict[str, str] = {}
     if application_receipt_path(prefix).exists():
         installed_versions = {
@@ -733,7 +733,7 @@ def application_runtime_lock(prefix: Path) -> Iterator[None]:
         lock_file.unlink(missing_ok=True)
 
 
-def _assert_runtime_prefix(prefix: Path) -> None:
+def validate_application_runtime_prefix(prefix: Path) -> None:
     if not prefix.is_dir():
         raise ExecutionError(
             f"Application runtime prefix does not exist or is not a directory: {prefix}"
