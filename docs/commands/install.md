@@ -5,14 +5,14 @@ Install a package that is not yet registered in Core. Fails if the package is al
 ## Syntax
 
 ```
-dbpm install source [--approve] [--dry-run]
+dbpm install source [--approve] [--dry-run] [--verbose]
                    [--package NAME]
                    [--dependency-source SOURCE]...
                    [--runtime-prefix PATH]
                    [--registry-url URL]
                    [--connect STRING | --connect-name NAME] [--runner EXEC]
 
-dbpm install --lockfile [PATH] [--approve] [--dry-run]
+dbpm install --lockfile [PATH] [--approve] [--dry-run] [--verbose]
                         [--runtime-prefix PATH]
                         [--connect STRING | --connect-name NAME] [--runner EXEC]
 ```
@@ -61,6 +61,7 @@ flowchart LR
 | `source` | required (unless `--lockfile`) | Package source. See [source types](source-types.md). |
 | `--approve` | false | Approve policy-gated actions. |
 | `--dry-run` | false | Print the deployment plan as JSON without executing. |
+| `--verbose` | false | Show detailed source-resolution and database-inspection progress on stderr. |
 | `--package` | none | Package name or application name to select when `source` is a workspace root. |
 | `--dependency-source` | none | Additional source that may satisfy a dependency declared in the manifest. Repeatable. Cannot be combined with `--lockfile`. |
 | `--runtime-prefix` | none | Existing writable application-level target directory for the complete runtime graph. Required when any package contributes a runtime. |
@@ -74,9 +75,11 @@ flowchart LR
 
 During execution, dbpm writes concise progress milestones to stderr. These
 identify plan preparation, database and policy checks, individual database
-package deployments, and runtime staging and activation. Existing structured
-command results remain on stdout, so callers may redirect the two streams
-independently.
+package deployments, and runtime staging and activation. Pass `--verbose` to
+also report source loading, provenance resolution, Core policy lookup, each
+installed-state and reverse-dependency query, lockfile validation, and detailed
+package checks. Existing structured command results remain on stdout, so
+callers may redirect the two streams independently.
 
 ## Preflight checks
 

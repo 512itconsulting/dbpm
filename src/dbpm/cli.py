@@ -169,7 +169,7 @@ def main(argv: list[str] | None = None) -> int:
                 plan = _build_plan_from_lockfile(
                     args,
                     include_installed_state=not args.dry_run,
-                    show_progress=not args.dry_run,
+                    show_progress=not args.dry_run and getattr(args, "verbose", False),
                 )
             else:
                 if args.command == "install" and args.source is None and not getattr(args, "package", None):
@@ -181,7 +181,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.command,
                     args,
                     include_installed_state=include_installed,
-                    show_progress=not args.dry_run,
+                    show_progress=not args.dry_run and getattr(args, "verbose", False),
                 )
             if args.dry_run:
                 _print_json(plan)
@@ -630,6 +630,11 @@ def _add_deploy_environment_arg(parser: argparse.ArgumentParser) -> None:
 def _add_execution_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--dry-run", action="store_true", help="Print the plan without executing")
     parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show detailed source resolution and database inspection progress",
+    )
+    parser.add_argument(
         "--runtime-prefix",
         default=None,
         help="Application-level target prefix for the complete runtime dependency graph",
@@ -953,7 +958,8 @@ def _execute_or_explain(plan: dict[str, object], args: argparse.Namespace) -> No
         for child_plan in packages:
             if not isinstance(child_plan, dict):
                 raise DbpmError("Multi-package plan entries must be objects")
-            report_progress(f"Checking {_package_progress_identity(child_plan)}...")
+            if getattr(args, "verbose", False):
+                report_progress(f"Checking {_package_progress_identity(child_plan)}...")
             _execute_or_explain_policy(child_plan)
             _enforce_installed_state(child_plan)
             _enforce_core_minimum_version(child_plan, args)
@@ -961,7 +967,10 @@ def _execute_or_explain(plan: dict[str, object], args: argparse.Namespace) -> No
         execute_plan(plan, connect=connect, runner=args.runner, runtime_prefix=runtime_prefix)
         return
 
-    report_progress(f"Checking {_package_progress_identity(plan)}...")
+    if getattr(args, "verbose", False):
+        report_progress(f"Checking {_package_progress_identity(plan)}...")
+    else:
+        report_progress("Checking database and policy state...")
     _execute_or_explain_policy(plan)
     _enforce_installed_state(plan)
     _enforce_core_minimum_version(plan, args)

@@ -871,7 +871,9 @@ def test_lock_check_db_requires_check(tmp_path: Path, capsys):
     assert "--check-db requires --check" in capsys.readouterr().err
 
 
-def test_install_with_dependency_source_executes_multi_package_plan(tmp_path: Path, monkeypatch):
+def test_install_with_dependency_source_executes_multi_package_plan(
+    tmp_path: Path, monkeypatch, capsys
+):
     base = tmp_path / "base"
     consumer = tmp_path / "consumer"
     _write_package(base)
@@ -920,6 +922,11 @@ scripts:
     assert calls["connect"] == "user/pass@db"
     assert calls["plan"]["schema_version"] == "dbpm.multi-plan.v0"
     assert calls["plan"]["execution_order"] == ["DEMO", "CONSUMER"]
+    stderr = capsys.readouterr().err
+    assert "dbpm: Preparing install plan..." in stderr
+    assert "dbpm: Checking database and policy state for 2 packages..." in stderr
+    assert "Loading root package source" not in stderr
+    assert "Reading installed state" not in stderr
 
 
 def test_install_from_lockfile_executes_locked_plan(tmp_path: Path, monkeypatch):
@@ -2368,7 +2375,7 @@ def test_upgrade_chain_maven_with_satisfied_upgrade_from_is_direct(tmp_path: Pat
     monkeypatch.setattr(cli, "execute_plan", lambda *a, **kw: 0)
 
     raw = "gh-maven:rsantmyer/demo:com.example:demo:1.3.0"
-    assert cli.main(["upgrade", raw, "--connect", "user/pass@db"]) == 0
+    assert cli.main(["upgrade", raw, "--connect", "user/pass@db", "--verbose"]) == 0
 
     out = capsys.readouterr()
     assert out.err == (
