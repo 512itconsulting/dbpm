@@ -7,6 +7,8 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-08-10
+
 ### Fixed
 
 - Run runtime health validation before database uninstall scripts, then use
@@ -187,7 +189,8 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Set the intended Oracle schema explicitly in generated deployment scripts.
 
-[Unreleased]: https://github.com/512itconsulting/dbpm/compare/v1.4.2...HEAD
+[Unreleased]: https://github.com/512itconsulting/dbpm/compare/v1.4.3...HEAD
+[1.4.3]: https://github.com/512itconsulting/dbpm/compare/v1.4.2...v1.4.3
 [1.4.2]: https://github.com/512itconsulting/dbpm/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/512itconsulting/dbpm/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/512itconsulting/dbpm/compare/v1.3.0...v1.4.0
