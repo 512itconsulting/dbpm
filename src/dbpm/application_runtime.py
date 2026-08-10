@@ -101,6 +101,7 @@ def validate_application_runtime_graph(
     *,
     prefix: Path,
     log_dir: Path,
+    run_health_checks: bool = True,
 ) -> ApplicationRuntimeReceipt:
     root_name = _package_name(graph.get("root_package"), "runtime root package")
     root_version = _nonempty_string(graph.get("root_version"), "runtime root version")
@@ -108,7 +109,7 @@ def validate_application_runtime_graph(
     commands = graph.get("commands")
     if not isinstance(payloads, list) or not isinstance(commands, list):
         raise ExecutionError("Application runtime graph is incomplete")
-    _assert_runtime_prefix(prefix)
+    validate_application_runtime_prefix(prefix)
     receipt = load_application_runtime_receipt(prefix, expected_application=root_name)
     if receipt.application_version != root_version:
         raise ExecutionError(
@@ -150,7 +151,7 @@ def validate_application_runtime_graph(
         package_prefix = prefix / path
         if not package_prefix.is_dir():
             raise ExecutionError(f"Application runtime payload is missing: {package_prefix}")
-        script = _validation_script(payload)
+        script = _validation_script(payload) if run_health_checks else None
         if script is not None:
             log_file = log_dir / f"{sequence:03d}-{name}-runtime-validate.log"
             environment = dict(os.environ)
@@ -522,7 +523,7 @@ def stage_application_runtime_graph(
         raise ExecutionError("Application runtime graph commands must be a list")
     if mode not in {"install", "upgrade", "reinstall", "resume"}:
         raise ExecutionError(f"Application runtime staging does not support mode `{mode}`")
-    _assert_runtime_prefix(prefix)
+    validate_application_runtime_prefix(prefix)
     installed_versions: dict[str, str] = {}
     if application_receipt_path(prefix).exists():
         installed_versions = {
@@ -732,7 +733,7 @@ def application_runtime_lock(prefix: Path) -> Iterator[None]:
         lock_file.unlink(missing_ok=True)
 
 
-def _assert_runtime_prefix(prefix: Path) -> None:
+def validate_application_runtime_prefix(prefix: Path) -> None:
     if not prefix.is_dir():
         raise ExecutionError(
             f"Application runtime prefix does not exist or is not a directory: {prefix}"
@@ -925,7 +926,12 @@ def uninstall_application_runtime_graph(
     payloads = graph.get("payloads")
     if not isinstance(payloads, list):
         raise ExecutionError("Application runtime graph payloads must be a list")
-    receipt = validate_application_runtime_graph(graph, prefix=prefix, log_dir=log_dir)
+    receipt = validate_application_runtime_graph(
+        graph,
+        prefix=prefix,
+        log_dir=log_dir,
+        run_health_checks=False,
+    )
     installed = {package.name: package for package in receipt.packages}
     for sequence, raw_payload in enumerate(payloads, start=1):
         payload = _mapping(raw_payload, "application runtime payload")
