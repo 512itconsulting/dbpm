@@ -161,6 +161,9 @@ def main(argv: list[str] | None = None) -> int:
                 target_generation=args.target_generation,
             )
             print(f"ROLLED_BACK_RUNTIME_GENERATION={receipt.generation}")
+            report_progress(
+                f"Runtime rollback completed successfully: generation {receipt.generation}"
+            )
             return 0
         if args.command in {"bootstrap-core", "install", "upgrade", "reinstall", "resume", "validate", "uninstall"}:
             if not args.dry_run:
@@ -187,6 +190,7 @@ def main(argv: list[str] | None = None) -> int:
                 _print_json(plan)
                 return 0
             _execute_or_explain(plan, args)
+            _report_execution_success(args.command, plan)
             return 0
     except DbpmError as exc:
         print(f"dbpm: {exc}", file=sys.stderr)
@@ -985,6 +989,13 @@ def _package_progress_identity(plan: dict[str, object]) -> str:
     name = package.get("name") or package.get("application_name") or "package"
     version = package.get("version")
     return f"{name} {version}" if isinstance(version, str) and version else str(name)
+
+
+def _report_execution_success(command: str, plan: dict[str, object]) -> None:
+    action = command.replace("-", " ").capitalize()
+    report_progress(
+        f"{action} completed successfully: {_package_progress_identity(plan)}"
+    )
 
 
 def _plan_needs_database(plan: dict[str, object]) -> bool:

@@ -13,6 +13,8 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   package state, executing database deployments, and staging and activating
   application runtimes. `--verbose` exposes detailed source resolution and
   individual database inspections without changing machine-readable stdout.
+- Emit a command-specific success line on stderr after deployment and runtime
+  work has fully completed. Dry runs do not emit a success claim.
 
 ### Fixed
 

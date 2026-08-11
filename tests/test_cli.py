@@ -925,6 +925,7 @@ scripts:
     stderr = capsys.readouterr().err
     assert "dbpm: Preparing install plan..." in stderr
     assert "dbpm: Checking database and policy state for 2 packages..." in stderr
+    assert "dbpm: Install completed successfully: consumer 0.1.0" in stderr
     assert "Loading root package source" not in stderr
     assert "Reading installed state" not in stderr
 
@@ -1067,8 +1068,10 @@ def test_install_dry_run_prints_plan(tmp_path: Path, capsys):
 
     assert cli.main(["install", str(package), "--dry-run"]) == 0
 
-    output = json.loads(capsys.readouterr().out)
+    captured = capsys.readouterr()
+    output = json.loads(captured.out)
     assert output["mode"] == "install"
+    assert "completed successfully" not in captured.err
 
 
 def test_reinstall_dry_run_shows_required_destructive_flag(tmp_path: Path, capsys):
@@ -2386,6 +2389,7 @@ def test_upgrade_chain_maven_with_satisfied_upgrade_from_is_direct(tmp_path: Pat
         "dbpm: Reading installed state for DEMO...\n"
         "dbpm: Reading reverse dependencies for DEMO...\n"
         "dbpm: Checking demo 1.3.0...\n"
+        "dbpm: Upgrade completed successfully: demo 1.3.0\n"
     )
 
 
@@ -2750,7 +2754,9 @@ def test_rollback_cli_checks_database_versions_and_reports_generation(
     assert result == 0
     assert captured["versions"] == {"demo": "1.0.0"}
     assert captured["target"] == 2
-    assert "ROLLED_BACK_RUNTIME_GENERATION=4" in capsys.readouterr().out
+    output = capsys.readouterr()
+    assert "ROLLED_BACK_RUNTIME_GENERATION=4" in output.out
+    assert "dbpm: Runtime rollback completed successfully: generation 4" in output.err
 
 
 def test_uninstall_cli_exposes_destructive_runtime_options():

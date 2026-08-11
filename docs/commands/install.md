@@ -81,6 +81,10 @@ installed-state and reverse-dependency query, lockfile validation, and detailed
 package checks. Existing structured command results remain on stdout, so
 callers may redirect the two streams independently.
 
+After execution, dbpm emits a final command-specific success line on stderr
+only after database deployment, runtime activation, receipt writing, and
+cleanup have all completed. Dry runs print the plan without a success claim.
+
 ## Preflight checks
 
 dbpm fails before running any deployment script if:
