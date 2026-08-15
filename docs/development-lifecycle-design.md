@@ -305,6 +305,83 @@ In a developer profile, `dbpm dev reset` can serve as that declaration without a
 second `--allow-destructive` flag. In automation, the environment capability and
 the selected command provide the same two-key protection.
 
+## Authority and trust hierarchy
+
+The sections above establish several independent sources of truth: Core policy,
+Core's registry, recorded provenance, installed receipts, the live runtime, and
+the operator's current source tree. This proposal only works if dbpm has one
+explicit answer for which source wins when they disagree — without it,
+"installed-state-driven" and "policy-gated" are aspirations, not rules an
+implementation can follow.
+
+### Precedence, highest to lowest
+
+1. **Protected Core policy.** Whether a target is locked, and whether it permits
+   mutable source, same-version replacement, destructive graph operations, or
+   environment reset, is decided by Core and by nothing else. Nothing lower in
+   this list can override `DEPLOY_LOCKED=Y` or an absent disposable capability —
+   not an operator flag, not a CLI environment profile, and not a match between
+   a local source checksum and what Core expects.
+2. **Verified immutable artifact and operation receipt.** Once a snapshot has
+   been taken and checksummed under the rules in Installed lifecycle receipts,
+   that artifact — and the operation record describing what was done with it —
+   is the authoritative description of what dbpm actually deployed. It outranks
+   the live filesystem and the current source because both of those can change
+   after the fact without dbpm's involvement.
+3. **Core's installed application and dependency state.** The registry of what
+   is installed, what depends on what, and why (`MANUAL` / `AUTO_DEPENDENCY` /
+   `APPLICATION_ROOT`) is authoritative for planning removal, cascade, and
+   ownership questions, even when a receipt is missing or a runtime host is
+   unreachable.
+4. **Verified runtime receipt.** The filesystem-side record of what is active at
+   a given prefix (version, path, commit, artifact URI, checksum) is
+   authoritative for runtime-specific operations — activation, staging,
+   generation promotion — but only once verified against its recorded checksum.
+   An unverified receipt is observed state, not ground truth.
+5. **Current local source — only when explicitly selected for replacement.** A
+   mutable checkout is never consulted to validate an existing installation; it
+   is only ever an input to a new replacement or install operation the operator
+   has explicitly requested, and only when Core policy for the target permits
+   mutable source.
+6. **Live runtime filesystem, as observed state only.** What is actually present
+   on disk is useful for collision detection, drift reporting, and
+   classification (missing / identical / replaceable / conflicting), but it is
+   never trusted as executable input. Runtime uninstall hooks in particular must
+   never be read from the live payload — the live filesystem can tell dbpm
+   *that* something changed, never *what to run* because of it.
+
+A CLI environment profile or connection selector sits outside this ranked list
+entirely: it may choose *which* target dbpm talks to, but it never supplies a
+fact used to decide *what that target is allowed to do*. If a local profile
+claims a capability that Core's policy does not confirm for the connected
+target, dbpm must reject the operation rather than reconcile the two — a
+mismatch here is treated as a misconfigured or spoofed profile, not as
+ambiguity to resolve in the operator's favor.
+
+### Applying the hierarchy to conflicts
+
+- **Receipt says X, live filesystem says Y (drift or tampering).** The verified
+  receipt wins for anything executable (hooks, entry points). The filesystem
+  difference is reported as drift; it does not by itself authorize an operation
+  the receipt doesn't describe.
+- **Source tree matches what's installed, but Core policy is locked.** Locked
+  wins. A dirty-but-matching checksum is not evidence of authorization.
+- **No receipt is recoverable, but Core still lists the application as
+  installed.** Core's registry (level 3) is sufficient to plan a structural
+  removal without hooks; a missing receipt blocks hook execution, not removal
+  entirely, per the fallback described in Option 2.
+- **A runtime host is offline and its receipt can't be confirmed.** Database
+  removal proceeds from Core's registry (level 3) with a tombstone recorded for
+  the unreachable runtime instance; the offline host is reconciled later against
+  levels 2 and 4 once it's reachable again, rather than blocking database
+  cleanup indefinitely.
+
+This hierarchy is binding on every command in this proposal, not background
+philosophy: any operation that would need a lower authority to override a
+higher one — trusting a live payload's hook over a verified receipt, or letting
+a CLI profile mark a target disposable — is out of scope for this design and
+must be rejected in implementation.
+
 ## Installed lifecycle receipts
 
 Source-free removal and reliable recovery require dbpm to preserve enough of the
