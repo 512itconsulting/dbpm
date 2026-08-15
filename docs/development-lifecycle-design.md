@@ -139,23 +139,50 @@ The uninstall plan should derive:
 
 - installed applications and dependencies from Core;
 - runtime packages and artifact identities from the active runtime receipt;
-- runtime uninstall hooks from installed payloads or an installed lifecycle
-  receipt;
+- runtime uninstall hooks from the checksum-verified installed lifecycle
+  receipt, never read directly from the live runtime payload;
 - database object ownership from Core;
 - exact artifact retrieval information from recorded provenance.
+
+Hook content must be verified immediately before execution, and the receipt
+must not be able to redirect execution outside the verified artifact. If no
+verified snapshot is available, dbpm must either perform a narrowly defined
+structural cleanup without hooks, or stop with a supported recovery path.
+Running an unverified installed hook, even in development, is a distinct
+emergency operation with its own audit record — it is not part of ordinary
+source-free uninstall.
 
 The current source can remain optional. When supplied, it can provide additional
 validation or operator-selected lifecycle hooks, but source drift should not make
 the installed application impossible to remove in an eligible environment.
 
-Cascade semantics must be explicit:
+Cascade semantics must be explicit, and every removal plan must state why each
+package is included. dbpm should record the installation reason for every
+package:
+
+```text
+MANUAL
+AUTO_DEPENDENCY
+APPLICATION_ROOT
+```
+
+With that record available:
 
 - no cascade: remove only the requested application and fail if dependents block
   it;
-- `--cascade unused`: also remove dependencies with no remaining external
-  dependents;
-- `--cascade graph`: remove the complete reachable application graph;
-- CORE is never part of an application cascade.
+- `--cascade unused`: remove dependencies with no remaining external dependents,
+  restricted to packages installed as `AUTO_DEPENDENCY` — a `MANUAL` dependency
+  survives even if currently unreferenced;
+- `--cascade graph`: remove the complete reachable dependency graph regardless
+  of installation reason; this is a distinct, more destructive choice from
+  `--cascade unused`;
+- a reverse-dependent cascade (removing packages that depend on the target) is a
+  separate, explicitly named option, never an implicit side effect of `graph`
+  or `unused`;
+- a graph reset prints the complete ordered package list, with each entry's
+  inclusion reason, before confirmation;
+- CORE is excluded structurally from cascade resolution, not by a late runtime
+  check.
 
 `--cascade graph` should be restricted to developer or disposable targets.
 
@@ -298,6 +325,32 @@ The installed lifecycle receipt should include:
 - deployment operation identifier;
 - target runtime prefix, when applicable.
 
+### Snapshot content and integrity
+
+A local checkout is not a safe artifact source by default. It may contain
+credentials, `.env` files, logs, test archives, generated data, ignored files,
+or other operator-local content that must never be captured, checksummed, or
+retained.
+
+- Snapshot only a manifest-defined package allowlist or reproducible build
+  output — never an unfiltered working-tree copy.
+- Use identical inclusion rules for checksum calculation and for artifact
+  creation. Hashing one file set and packaging a different one reopens the gap
+  this receipt exists to close.
+- Never include `.git`, environment profiles, local secrets, runtime `var`, or
+  other unrelated working-tree files by default.
+- Create the snapshot only after execution is approved, not during a dry-run.
+- Store snapshots with restrictive filesystem permissions.
+- Never store a rendered script that embeds credentials or environment secrets;
+  render those at execution time from a separately governed source.
+- Document cache location, retention, garbage collection, and size limits for
+  the snapshot store, and retain an artifact for as long as any installed
+  lifecycle receipt references it.
+
+The recorded checksum must identify the exact artifact that database deployment
+and runtime staging consume. If a later step reads different bytes than were
+hashed, the checksum verifies nothing.
+
 The artifact should be recoverable from one or more of:
 
 - a local content-addressed installation cache;
@@ -364,6 +417,33 @@ Activation journals should be self-healing. A retry should recognize and safely
 remove or reuse transient staged command directories rather than requiring
 manual cleanup.
 
+## Destructive dry-run fidelity
+
+The safety of any destructive command depends on a preview that matches what
+execution will actually do. A dry-run that only models expected behavior,
+without inspecting the connected target, is not a safety mechanism for a
+destructive operation.
+
+For any destructive command (uninstall, reinstall with replacement, dev reset,
+environment reset), a connected dry-run must execute the same read-only steps as
+execution:
+
+- Core policy lookup;
+- installed application and dependency lookup;
+- reverse-dependency lookup;
+- lifecycle receipt and artifact verification;
+- runtime prefix and generation inspection;
+- graph construction and ordering;
+- hook availability checks;
+- collision classification;
+- confirmation summary generation.
+
+Execution should either consume the reviewed plan directly or verify that a
+freshly generated plan has the same plan digest as the one the operator
+confirmed. A dry-run that does not inspect the connected target must be clearly
+labeled as a disconnected model and must not be presented as an execution
+preview.
+
 ## Upgrade semantics
 
 `upgrade` should remain strict and release-oriented:
@@ -375,12 +455,26 @@ manual cleanup.
 - incomplete operations should use `resume`.
 
 Same-version content replacement is not an upgrade. It belongs to `reinstall`,
-`dev reset`, or a similarly explicit replacement operation.
+`dev reset`, or a similarly explicit replacement operation, and it must not be
+allowed to invalidate dependents silently:
+
+- record a deployment revision or artifact checksum separately from semantic
+  version, so two installs of "the same version" remain distinguishable;
+- invalidate lockfile comparisons made against the previous checksum;
+- identify reverse dependents that were built or validated against the prior
+  artifact;
+- redeploy or validate affected consumers as part of the same operation, or
+  explicitly report which consumers were excluded from the replacement graph;
+- forbid isolated replacement of a single package when target policy requires
+  graph consistency.
 
 For clean-install-only packages under active development, moving from one local
-version to another can also use graph-aware reinstall. dbpm should not require a
-synthetic upgrade script when the package has never been released and the target
-is explicitly disposable.
+version to another can also use graph-aware reinstall. Whether a synthetic
+upgrade script can be skipped must depend on authoritative target lifecycle
+capability, explicit operator selection of the replacement operation, and
+source identity/checksum classification — not on whether the package "has never
+been released." A local dbpm invocation cannot prove global release history, so
+release status must not be used as an automatic safety decision.
 
 ## Environment reset
 
@@ -395,16 +489,71 @@ This command should:
 
 1. require a Core disposable-environment capability;
 2. require confirmation of the target schema or environment identity;
-3. stop if CORE is not healthy;
+3. stop if CORE is not healthy, and direct the operator to the registry salvage
+   workflow below rather than attempting a normal reset against an inconsistent
+   registry;
 4. calculate consumer-before-dependency removal order from Core;
 5. remove each application's runtime and database ownership records;
-6. preserve operator-owned `etc` and `var` by default;
+6. preserve operator-owned `etc` and `var` by default, subject to the
+   classification below;
 7. verify that only CORE remains registered;
-8. report registered-object remnants, known unmanaged remnants, and invalid
-   objects;
+8. report remnants by evidence tier, not as one undifferentiated list;
 9. never include CORE in the deletion plan.
 
-An optional `--purge-var` should be a separate, more strongly confirmed action.
+### Preserved-state classification
+
+"Preserve `etc` and `var`" is not a single behavior. A fresh database install
+may immediately consume stale configuration, work queues, inbox files, locks, or
+cached payloads left behind by the prior install, so the reset result must
+enumerate preserved paths and warn when they could affect the new deployment.
+Runtime state should be classified before any purge decision is made:
+
+- operator configuration and secrets;
+- durable business or input data;
+- application work state;
+- reproducible caches;
+- logs and diagnostics.
+
+Purge behavior should be granular against this classification. Selecting
+`--purge-var` must not delete configuration or secrets, and disposable work
+state should not be preserved automatically just because it shares a directory
+with durable business data. An optional `--purge-var` remains a separate, more
+strongly confirmed action, scoped to the categories the operator selects.
+
+### Remnant reporting
+
+Core can report registered objects, but an unregistered object cannot reliably
+be attributed to an application by name convention alone — automatically
+dropping a suspected remnant risks deleting an unrelated schema object. The
+audit must separate:
+
+- registered objects that should have been removed;
+- invalid objects remaining in the schema;
+- objects explicitly listed in a verified package ownership manifest;
+- suspected objects identified only by naming convention;
+- application configuration rows with declared ownership;
+- runtime instances not acknowledging removal.
+
+Only authoritative ownership evidence — Core registration or a verified
+ownership manifest — should permit automatic deletion. Convention-based matches
+must be reported for operator review, never dropped automatically.
+
+### Registry salvage when Core itself is unhealthy
+
+An inconsistent Core registry may be the *reason* an operator needs a reset, so
+requiring healthy Core for the normal workflow can block the recovery case that
+needs it most. That case requires a separate `doctor`/salvage workflow, not a
+relaxed reset:
+
+- it must never masquerade as a normal uninstall or environment reset;
+- it performs a read-only inventory first;
+- it distinguishes registry corruption from an incomplete application
+  deployment;
+- it requires stronger confirmation and authoritative artifact receipts than
+  normal reset;
+- it produces a manual remediation plan when ownership cannot be proven, rather
+  than guessing;
+- it never infers ownership solely from object naming.
 
 ## Recommended implementation order
 
