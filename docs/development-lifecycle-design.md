@@ -103,6 +103,32 @@ target environment policy and artifact provenance are better signals.
 8. Make destructive intent clear without requiring a collection of overlapping
    force flags.
 
+## Scope and dependencies
+
+This design does not attempt to solve every safety question a full lifecycle
+overhaul eventually touches. Three boundaries are intentional:
+
+- **Capability privilege is inherited, not redefined.** Who is authorized to
+  set `DBPM_LIFECYCLE=DEVELOPER`/`DISPOSABLE` (or the equivalent capability
+  flags) on a Core target is governed by Core's existing administrative
+  authorization model. This design does not introduce a new privilege system;
+  it only requires that whatever mechanism already controls Core configuration
+  mutation covers this capability, and that changes to it are audited with
+  actor, time, previous value, and new value.
+- **Cross-package data ownership is a pre-existing gap, not a new one.**
+  Packages can own rows in tables belonging to other packages (application
+  configuration living in a shared UFL/MFT-style table is one example).
+  Removing an application's registered schema objects does not by itself
+  remove that cross-package configuration or its processing lineage today,
+  independent of this proposal. The lifecycle hook contract described later
+  assumes package-owned objects; closing the cross-package ownership gap is
+  tracked separately and is not a precondition for this design.
+- **One colocated runtime prefix per deployment.** This design assumes a
+  single local runtime instance per database deployment, matching current
+  dbpm behavior. Multiple runtime hosts, disconnected nodes, or a deployment
+  continued from a different workstation are out of scope; supporting that
+  topology is a separate design effort.
+
 ## Options considered
 
 ### Option 1: Add force and ignore flags
@@ -206,6 +232,16 @@ The workflow must use two independent keys:
 
 1. Core marks the target as eligible for development or disposable operations.
 2. The operator explicitly selects the development reset command.
+
+Selecting the command name is not a substitute for confirming the connected
+target. Before mutating anything, `dev reset` and `dev reset-environment` must
+display a confirmation summary — database service, schema, Core environment
+label, root application, ordered package removal list with cascade reasons,
+and affected runtime prefixes — and require interactive confirmation by
+default. Noninteractive execution requires an explicit `--yes`; it does not
+bypass the two-key protection above. This keeps the command name's destructive
+intent paired with an explicit look at what it is about to touch, rather than
+replacing that look.
 
 One possible Core policy model is:
 
@@ -640,6 +676,12 @@ relaxed reset:
 2. Make uninstall source-optional and driven by Core plus installed receipts.
 3. Add explicit cascade semantics.
 4. Make runtime collision validation non-mutating and graph-wide.
+
+`--cascade unused` (restricted to `AUTO_DEPENDENCY` packages) is a bounded
+refinement of existing uninstall behavior and can ship in this phase.
+`--cascade graph` is the actual destructive-capability delta and must wait for
+the Core developer/disposable capabilities added in Phase 3, even though both
+are introduced under item 3 above.
 
 ### Phase 2: Recovery
 
