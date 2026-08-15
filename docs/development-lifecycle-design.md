@@ -6,6 +6,11 @@ Design proposal. This document evaluates ways to make dbpm easier to use during
 active, pre-release development without weakening the guarantees expected in
 shared, released, or production deployments.
 
+This proposal was adversarially reviewed; the findings adopted from that review
+are folded into the sections below, and the findings not yet decided are
+recorded in [Open design questions](#open-design-questions) rather than as a
+separate document.
+
 ## Problem statement
 
 dbpm's current lifecycle rules are intentionally conservative:
@@ -703,6 +708,68 @@ are introduced under item 3 above.
    history.
 3. Improve recovery guidance so errors name the supported next command rather
    than requiring manual receipt or runtime manipulation.
+
+## Open design questions
+
+The adversarial review raised several questions this proposal has not yet
+resolved. They are recorded here as open questions rather than folded into the
+recommendations above, because no specific answer has been chosen — only the
+question and its stakes. Each should be resolved before the phase that depends
+on it begins; none of them are implementation decisions yet.
+
+### Operation saga mechanics — before Phase 2
+
+Database and runtime operation state defines the phase states an operation
+moves through, but not how `resume` recovers reliably. Open: whether an
+operation needs a lease or fencing token to prevent concurrent continuation, a
+monotonically increasing attempt number, and durable per-step receipts that let
+`resume` roll forward from recorded evidence rather than inferring completion
+from Core application status alone.
+
+### Lifecycle hook contract detail — before Phase 1 hook execution
+
+Option 2 establishes that hooks must come from a verified snapshot, not the
+live payload, but not the full per-hook contract. Open: ordering relative to
+dependents, whether database access is guaranteed at each phase, required
+idempotency, timeout and retry behavior, logging, and what happens after a
+partial DML/DDL failure — Oracle DDL auto-commit means this can't assume
+rollback.
+
+### Threat model — before implementation begins
+
+No section enumerates what this design defends against: wrong-target
+operations, an unauthorized policy change, a tampered payload or receipt,
+source mutating between plan and execution, a compromised or unavailable
+registry, concurrent operators, a crashed operator process, an offline runtime
+host, accidental deletion of a manually installed dependency, and accidental
+deletion of operator-owned data. Authority and trust hierarchy answers *which
+source wins*; a threat model would state *what each rule defends against*, and
+should stay consistent with it.
+
+### Acceptance criteria — before each phase is considered done
+
+No section defines "done" in testable terms per phase — for example, that a
+tampered installed hook is never executed, that a dependency marked `MANUAL`
+survives unused-dependency cascade, that a connected dry-run and execution
+produce the same plan digest, or that an offline runtime node doesn't block
+database cleanup. These should be written per phase as that phase is scoped,
+not all upfront.
+
+### Runtime staging purity contract — before Phase 1 collision validation
+
+Runtime activation is proposed as build/stage/activate/validate, with staging
+expected to be filesystem-only and safe before database changes. Open: whether
+existing runtime scripts already satisfy a filesystem-only staging contract, or
+whether the phase order needs to account for scripts that currently assume
+database state during staging.
+
+### `dev reset` vs. graph-aware `reinstall` — before Phase 3
+
+Open: whether `dev reset` is a genuinely separate command or policy-gated
+syntax sugar over `reinstall` that compiles to the same normalized plan
+(recording which surface initiated it). Two independent implementations of
+destructive graph replacement should not ship; which one is canonical needs a
+decision before Phase 3.
 
 ## Recommendation
 
