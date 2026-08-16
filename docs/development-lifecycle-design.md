@@ -183,6 +183,31 @@ Running an unverified installed hook, even in development, is a distinct
 emergency operation with its own audit record — it is not part of ordinary
 source-free uninstall.
 
+This is a change to how dbpm resolves hook paths today, not a restatement of
+existing behavior: runtime payload resolution currently derives the package
+root and every script reference — including uninstall — from the live source
+checkout, for every mode. An edited or deleted checkout already changes what
+an uninstall would execute. The fix is scoped: runtime payload resolution
+needs a second, receipt-backed path, so that for uninstall and other
+maintenance-mode operations, package root and script reference resolve
+against the installed lifecycle receipt's recorded snapshot location instead
+of the current source. Checksum verification belongs immediately before the
+hook process is launched, not earlier in planning, so a snapshot that changed
+between plan and execution is still caught.
+
+Runtime scripts currently inherit the full ambient process environment in
+addition to the `DBPM_*` variables dbpm sets. That is an acceptable
+convention when a script is resolved from a source the operator controls, but
+the receipt-backed hook path should not inherit it — pass an explicit
+allowlist of `DBPM_*` variables only. Introducing a trusted, source-free
+execution path is the right moment to stop trusting the ambient environment
+along with it.
+
+Phase 1 should require hooks to be idempotent — safe to invoke again after a
+crash or retry — without yet adding enforced timeouts or automatic retry.
+Those require executor changes beyond hook sourcing and can follow once the
+receipt-backed path is in place; they should not block it.
+
 The current source can remain optional. When supplied, it can provide additional
 validation or operator-selected lifecycle hooks, but source drift should not make
 the installed application impossible to remove in an eligible environment.
@@ -494,6 +519,18 @@ operation:
 8. run database and runtime validation;
 9. mark the composite operation complete.
 
+Step 3 is deliberately scoped to collision validation, not script execution.
+Classifying every destination as missing, identical, replaceable, or
+conflicting only needs the destination paths already present in the graph, so
+that check can move ahead of the database phase with no new risk. Actually
+running each payload's install script is a separate action and stays in its
+current position, after the database phase, until either existing runtime
+scripts are audited for database independence or a package explicitly opts in
+(for example, a manifest `stage_before_database: true` flag). Runtime scripts
+have always run after database completion up to now and have never been
+required to work without it, so moving script execution earlier is a real
+behavior change, not a formalization of current practice.
+
 The operation state must distinguish at least:
 
 ```text
@@ -688,6 +725,22 @@ refinement of existing uninstall behavior and can ship in this phase.
 the Core developer/disposable capabilities added in Phase 3, even though both
 are introduced under item 3 above.
 
+Phase 1 is done when:
+
+- A tampered or replaced installed hook (checksum mismatch against the
+  installed lifecycle receipt) is never executed.
+- Uninstall completes correctly with the local source checkout deleted or
+  unavailable, using only Core and the installed lifecycle receipt.
+- A dependency installed with reason `MANUAL` is never removed by
+  `--cascade unused`, regardless of what else is being removed in the same
+  operation.
+- `--cascade graph` is unavailable until the Phase 3 developer/disposable
+  capability is granted; attempting it without that capability fails closed
+  and names the required capability.
+- Runtime collision validation runs against the full dependency graph without
+  staging or mutating any payload, and reports every conflicting destination
+  in one pass rather than failing on the first.
+
 ### Phase 2: Recovery
 
 1. Introduce composite database/runtime operation state.
@@ -728,12 +781,16 @@ from Core application status alone.
 
 ### Lifecycle hook contract detail — before Phase 1 hook execution
 
-Option 2 establishes that hooks must come from a verified snapshot, not the
-live payload, but not the full per-hook contract. Open: ordering relative to
-dependents, whether database access is guaranteed at each phase, required
-idempotency, timeout and retry behavior, logging, and what happens after a
-partial DML/DDL failure — Oracle DDL auto-commit means this can't assume
-rollback.
+Option 2 now specifies where hooks come from (a receipt-backed resolution path
+in the planner, checksum-verified immediately before launch, replacing the
+live-source lookup `_application_runtime_package()` currently uses for every
+mode including uninstall), what environment they receive (an explicit `DBPM_*`
+allowlist instead of inherited `os.environ`), and that Phase 1 requires
+idempotency without yet enforcing timeout or retry — that's deferred by design,
+not open. Still open: ordering relative to dependents during cascade, whether
+database access is guaranteed at each hook phase beyond uninstall (which is
+Core/receipt-driven and does not require it), and what happens after a partial
+DML/DDL failure — Oracle DDL auto-commit means this can't assume rollback.
 
 ### Threat model — before implementation begins
 
@@ -744,24 +801,25 @@ registry, concurrent operators, a crashed operator process, an offline runtime
 host, accidental deletion of a manually installed dependency, and accidental
 deletion of operator-owned data. Authority and trust hierarchy answers *which
 source wins*; a threat model would state *what each rule defends against*, and
-should stay consistent with it.
+should stay consistent with it. Recommended format when this is written: one
+table, threat → defending section(s) → residual risk, assembled from sections
+already in this document rather than introduced as new mechanism.
 
 ### Acceptance criteria — before each phase is considered done
 
-No section defines "done" in testable terms per phase — for example, that a
-tampered installed hook is never executed, that a dependency marked `MANUAL`
-survives unused-dependency cascade, that a connected dry-run and execution
-produce the same plan digest, or that an offline runtime node doesn't block
-database cleanup. These should be written per phase as that phase is scoped,
-not all upfront.
+Phase 1's criteria are now recorded with Phase 1 itself, under "Phase 1 is done
+when." Phases 2-4 still need theirs written the same way, as each phase is
+scoped rather than all upfront.
 
 ### Runtime staging purity contract — before Phase 1 collision validation
 
-Runtime activation is proposed as build/stage/activate/validate, with staging
-expected to be filesystem-only and safe before database changes. Open: whether
-existing runtime scripts already satisfy a filesystem-only staging contract, or
-whether the phase order needs to account for scripts that currently assume
-database state during staging.
+"Database and runtime operation state" now splits this: collision validation
+is pure path inspection and safe to run before database changes; actually
+executing each payload's install script stays in its current post-database
+position. What remains open is empirical, not architectural — whether any real
+runtime script depends on database state during staging, which requires
+auditing real packages (none exist in this repo to audit) or relying on the
+proposed `stage_before_database: true` manifest opt-in until one is audited.
 
 ### `dev reset` vs. graph-aware `reinstall` — before Phase 3
 
