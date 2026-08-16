@@ -2773,3 +2773,147 @@ def test_uninstall_cli_exposes_destructive_runtime_options():
     assert args.command == "uninstall"
     assert args.runtime_prefix == "/opt/demo"
     assert args.allow_destructive is True
+
+
+def _lifecycle_package_plan(app_name: str, *, reason: str) -> dict[str, object]:
+    return {
+        "package": {"name": app_name.lower(), "application_name": app_name, "version": "1.0.0"},
+        "installation_reason": reason,
+        "lifecycle": {
+            "uninstall": {"path": f"{app_name}/uninstall.sql", "ref": f"/store/{app_name}/uninstall.sql"}
+        },
+    }
+
+
+def _lifecycle_plan(
+    entries: list[dict[str, object]],
+    *,
+    root_app: str,
+    application_runtime: dict[str, object] | None = None,
+) -> dict[str, object]:
+    return {
+        "schema_version": "dbpm.multi-plan.v0",
+        "mode": "install",
+        "package": {"name": root_app.lower(), "application_name": root_app, "version": "1.0.0"},
+        "packages": entries,
+        "application_runtime": application_runtime,
+    }
+
+
+def _uninstall_args(application: str, runtime_prefix: Path, *extra: str):
+    return cli._build_parser().parse_args(
+        [
+            "uninstall",
+            "--application",
+            application,
+            "--runtime-prefix",
+            str(runtime_prefix),
+            "--cascade",
+            "unused",
+            "--allow-destructive",
+            *extra,
+        ]
+    )
+
+
+def test_uninstall_cascade_scopes_allow_destructive_to_root_package(tmp_path: Path, monkeypatch):
+    receipt = _lifecycle_plan(
+        [
+            _lifecycle_package_plan("DEMO", reason="AUTO_DEPENDENCY"),
+            _lifecycle_package_plan("CONSUMER", reason="APPLICATION_ROOT"),
+        ],
+        root_app="CONSUMER",
+    )
+    monkeypatch.setattr(cli, "load_lifecycle_receipt", lambda **kwargs: receipt)
+    monkeypatch.setattr(cli, "_get_installed_state", lambda args, app: None)
+    monkeypatch.setattr(cli, "_get_reverse_dependencies", lambda args, app: [])
+
+    args = _uninstall_args("CONSUMER", tmp_path)
+    plan = cli._build_installed_uninstall_plan(args)
+
+    by_app = {item["package"]["application_name"]: item for item in plan["packages"]}
+    assert by_app.keys() == {"CONSUMER", "DEMO"}
+    assert by_app["CONSUMER"]["policy"]["result"] == "allowed"
+    assert by_app["DEMO"]["policy"]["result"] == "requires-approval"
+    assert "`uninstall` requires --allow-destructive" in by_app["DEMO"]["policy"]["required_approvals"]
+
+
+def test_uninstall_cascade_keeps_dependency_still_needed_by_kept_sibling(tmp_path: Path, monkeypatch):
+    # ROOT depends on PKG_B, which depends on PKG_A. PKG_B has an external
+    # dependent (OTHER_APP) so it must survive cascade removal; PKG_A's only
+    # dependent within this receipt is PKG_B, which is being kept, so PKG_A
+    # must also survive even though nothing outside this receipt needs it.
+    receipt = _lifecycle_plan(
+        [
+            _lifecycle_package_plan("PKG_A", reason="AUTO_DEPENDENCY"),
+            _lifecycle_package_plan("PKG_B", reason="AUTO_DEPENDENCY"),
+            _lifecycle_package_plan("ROOT", reason="APPLICATION_ROOT"),
+        ],
+        root_app="ROOT",
+    )
+    monkeypatch.setattr(cli, "load_lifecycle_receipt", lambda **kwargs: receipt)
+    monkeypatch.setattr(cli, "_get_installed_state", lambda args, app: None)
+
+    def fake_reverse_dependencies(args, app_name):
+        return {
+            "PKG_B": ["ROOT", "OTHER_APP"],
+            "PKG_A": ["PKG_B"],
+        }.get(app_name, [])
+
+    monkeypatch.setattr(cli, "_get_reverse_dependencies", fake_reverse_dependencies)
+
+    args = _uninstall_args("ROOT", tmp_path)
+    plan = cli._build_installed_uninstall_plan(args)
+
+    removed = {item["package"]["application_name"] for item in plan["packages"]}
+    assert removed == {"ROOT"}
+
+
+def test_uninstall_partial_cascade_skips_application_runtime_teardown(
+    tmp_path: Path, monkeypatch, capsys
+):
+    runtime_graph = {"receipt_backed": True, "payloads": [], "commands": [], "effects": {}}
+    receipt = _lifecycle_plan(
+        [
+            _lifecycle_package_plan("PKG_A", reason="AUTO_DEPENDENCY"),
+            _lifecycle_package_plan("ROOT", reason="APPLICATION_ROOT"),
+        ],
+        root_app="ROOT",
+        application_runtime=runtime_graph,
+    )
+    monkeypatch.setattr(cli, "load_lifecycle_receipt", lambda **kwargs: receipt)
+    monkeypatch.setattr(cli, "_get_installed_state", lambda args, app: None)
+    monkeypatch.setattr(
+        cli, "_get_reverse_dependencies", lambda args, app: ["EXTERNAL_APP"] if app == "PKG_A" else []
+    )
+
+    args = _uninstall_args("ROOT", tmp_path)
+    plan = cli._build_installed_uninstall_plan(args)
+
+    assert {item["package"]["application_name"] for item in plan["packages"]} == {"ROOT"}
+    assert plan["application_runtime"] is None
+    assert "Skipping application runtime teardown" in capsys.readouterr().err
+
+
+def test_uninstall_full_cascade_retains_application_runtime_for_teardown(
+    tmp_path: Path, monkeypatch
+):
+    runtime_graph = {"receipt_backed": True, "payloads": [], "commands": [], "effects": {}}
+    receipt = _lifecycle_plan(
+        [
+            _lifecycle_package_plan("PKG_A", reason="AUTO_DEPENDENCY"),
+            _lifecycle_package_plan("ROOT", reason="APPLICATION_ROOT"),
+        ],
+        root_app="ROOT",
+        application_runtime=runtime_graph,
+    )
+    monkeypatch.setattr(cli, "load_lifecycle_receipt", lambda **kwargs: receipt)
+    monkeypatch.setattr(cli, "_get_installed_state", lambda args, app: None)
+    monkeypatch.setattr(cli, "_get_reverse_dependencies", lambda args, app: [])
+
+    args = _uninstall_args("ROOT", tmp_path)
+    plan = cli._build_installed_uninstall_plan(args)
+
+    assert {item["package"]["application_name"] for item in plan["packages"]} == {"ROOT", "PKG_A"}
+    assert plan["application_runtime"] is not None
+    assert plan["application_runtime"]["effects"]["operation"] == "uninstall"
