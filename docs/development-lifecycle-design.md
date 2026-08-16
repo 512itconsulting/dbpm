@@ -291,43 +291,51 @@ bypass the two-key protection above. This keeps the command name's destructive
 intent paired with an explicit look at what it is about to touch, rather than
 replacing that look.
 
-One possible Core policy model is:
-
-```text
-DEPLOY_LOCKED=N
-DBPM_LIFECYCLE=DEVELOPER
-```
-
-or:
-
-```text
-DEPLOY_LOCKED=N
-DBPM_LIFECYCLE=DISPOSABLE
-```
-
-An alternative is capability-based metadata, such as:
+Capability keys are the enforcement mechanism dbpm actually reads and checks;
+`DEPLOY_LOCKED=N` plus a `DBPM_LIFECYCLE` value is a documented profile that
+expands to a set of these keys, not a parallel code path:
 
 ```text
 DBPM_ALLOW_MUTABLE_SOURCE=Y
-DBPM_ALLOW_GRAPH_RESET=Y
+DBPM_ALLOW_SAME_VERSION_REPLACE=Y
 DBPM_ALLOW_RUNTIME_REPLACE=Y
+DBPM_ALLOW_GRAPH_RESET=Y
+DBPM_ALLOW_ENVIRONMENT_RESET=Y
 ```
 
-Capabilities are more precise, while lifecycle profiles are easier to operate.
-A profile can be implemented as a documented set of capabilities.
+- `DBPM_ALLOW_MUTABLE_SOURCE` — permits deploying from a dirty/mutable local
+  checkout instead of requiring an immutable artifact.
+- `DBPM_ALLOW_SAME_VERSION_REPLACE` — permits same-semantic-version database
+  content replacement (the `reinstall`/`dev reset` case).
+- `DBPM_ALLOW_RUNTIME_REPLACE` — already implemented in Phase 2, reused here
+  rather than redefined; permits runtime identity replacement, including
+  `dbpm runtime reconcile --replace` and same-version runtime payload
+  replacement.
+- `DBPM_ALLOW_GRAPH_RESET` — permits `--cascade graph` and graph-aware
+  destructive `reinstall`/`dev reset` across the full dependency graph.
+- `DBPM_ALLOW_ENVIRONMENT_RESET` — permits `dev reset-environment`. This is
+  strictly higher blast radius than graph reset (every non-CORE application,
+  not one resolved graph), so it is its own key rather than implied by
+  `DBPM_ALLOW_GRAPH_RESET`.
 
-Suggested policy behavior:
+`DEVELOPER` and `DISPOSABLE` are documented profiles over these keys, not
+independent enforcement points:
 
-| Target class | Mutable source | Same-version replacement | Graph reset |
-| --- | ---: | ---: | ---: |
-| Locked/production | No | No | No |
-| Shared unlocked | Configurable | No by default | No |
-| Developer | Yes | Yes | Explicit |
-| Disposable CI | Yes | Yes | Yes |
+| Target class | `MUTABLE_SOURCE` | `SAME_VERSION_REPLACE` | `RUNTIME_REPLACE` | `GRAPH_RESET` | `ENVIRONMENT_RESET` |
+| --- | :---: | :---: | :---: | :---: | :---: |
+| Locked/production | No | No | No | No | No |
+| Shared unlocked | Configurable | No by default | No by default | No | No |
+| `DEVELOPER` profile | Y | Y | Y | Not implied — grant explicitly | Not implied — grant explicitly |
+| `DISPOSABLE` profile | Y | Y | Y | Y | Not implied — grant explicitly |
 
-An environment name such as `DEV` is not sufficient by itself. Development
-environments may contain valuable shared data. The destructive capability must
-be deliberately configured in Core.
+`GRAPH_RESET` is never implied by the `DEVELOPER` profile and
+`ENVIRONMENT_RESET` is never implied by either profile — both must be granted
+as an explicit, separate key regardless of profile, because both cross a
+larger blast-radius boundary than "this target is fine with disposable
+content at the package level." An environment name such as `DEV` is not
+sufficient by itself, either: development environments may contain valuable
+shared data, and the destructive capability must be deliberately configured
+in Core.
 
 ### Option 4: Make reinstall graph-aware
 
@@ -905,6 +913,32 @@ Phase 2 is done when:
 3. Add `dbpm dev reset` for same-version local replacement.
 4. Add `dbpm dev reset-environment --keep CORE` for disposable schemas.
 
+`dev reset` is policy-gated syntax over `reinstall`, not a second
+implementation — see [`dev reset` vs. graph-aware
+`reinstall`](#dev-reset-vs-graph-aware-reinstall-resolved).
+
+Phase 3 is done when:
+
+- A target missing the required capability key
+  ([Recommended policy model](#recommended-policy-model)) fails closed on
+  graph-aware `reinstall`, same-version replacement, or `dev reset`, naming
+  the specific missing capability rather than a generic denial.
+- `dbpm reinstall . --cascade graph` on an eligible target installs
+  dependencies before consumers, removes consumers before dependencies,
+  replaces runtime payloads for the resolved graph, and preserves
+  application-level `etc` and `var` by default.
+- `dbpm dev reset` produces the identical normalized plan `reinstall` would
+  produce for the same graph — same plan digest — differing only in command
+  surface and the recorded audit entry for which surface initiated it.
+- `dbpm dev reset-environment --keep CORE` removes every non-CORE application
+  in consumer-before-dependency order, requires interactive confirmation of
+  the target schema/environment identity (or explicit `--yes`), and refuses
+  to run if CORE is not healthy.
+- Attempting `--cascade graph`, `dev reset`, or `dev reset-environment`
+  against a target that has only a subset of the required capability keys
+  (for example `GRAPH_RESET` without `ENVIRONMENT_RESET`) fails closed for
+  the ungranted operation without affecting the granted ones.
+
 ### Phase 4: Auditing and ergonomics
 
 1. Add a built-in post-removal and post-install audit.
@@ -933,10 +967,10 @@ Recorded here for continuity with the adversarial review that raised it.
 
 ### Acceptance criteria — before each phase is considered done
 
-Phase 1's and Phase 2's criteria are now recorded with those phases
-themselves, under "Phase 1 is done when" and "Phase 2 is done when." Phases 3
-and 4 still need theirs written the same way, as each phase is scoped rather
-than all upfront.
+Phase 1's, Phase 2's, and Phase 3's criteria are now recorded with those
+phases themselves, under "Phase 1 is done when," "Phase 2 is done when," and
+"Phase 3 is done when." Phase 4 still needs its own, written the same way
+once Phase 3 is underway, as each phase is scoped rather than all upfront.
 
 ### Runtime staging purity contract — before Phase 1 collision validation
 
@@ -948,13 +982,18 @@ runtime script depends on database state during staging, which requires
 auditing real packages (none exist in this repo to audit) or relying on the
 proposed `stage_before_database: true` manifest opt-in until one is audited.
 
-### `dev reset` vs. graph-aware `reinstall` — before Phase 3
+### `dev reset` vs. graph-aware `reinstall` — resolved
 
-Open: whether `dev reset` is a genuinely separate command or policy-gated
-syntax sugar over `reinstall` that compiles to the same normalized plan
-(recording which surface initiated it). Two independent implementations of
-destructive graph replacement should not ship; which one is canonical needs a
-decision before Phase 3.
+Graph-aware `reinstall` ([Option 4](#option-4-make-reinstall-graph-aware)) is
+the canonical implementation of destructive graph replacement. `dev reset` is
+policy-gated syntax sugar that compiles to the identical normalized plan
+`reinstall` would produce for the same graph, recording which command surface
+initiated the operation for audit purposes. There is exactly one
+implementation of destructive graph replacement; `dev reset`'s only
+difference from an equivalent `reinstall` invocation is the command name
+itself expressing destructive intent up front (per [Option
+3](#option-3-add-a-policy-gated-development-reset-workflow)) and the audit
+trail recording that intent.
 
 ## Recommendation
 
