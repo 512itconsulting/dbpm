@@ -948,23 +948,42 @@ Phase 3 is done when:
 classification (operator config/secrets vs. durable business data vs. work
 state vs. caches vs. logs) is not implemented — `dev reset-environment`
 currently only records the static label `["etc", "var"]` as preserved, with
-no `--purge-var` and no differentiation within those directories. Remnant
-reporting is a single flat list of still-registered applications, not the
-evidence-tiered breakdown (registered / invalid / manifest-owned /
-naming-convention-suspected / configuration rows / unacknowledged runtime
-instances) this document describes. Both require a manifest-driven
-classification mechanism and Core registry introspection that don't exist
-yet elsewhere in dbpm; closing them is scoped as follow-up work, not folded
-into this phase's initial implementation. Phase 3 is not done until these
-two are resolved, one way or another.
+no `--purge-var` and no differentiation within those directories. This
+requires a manifest-driven classification mechanism that doesn't exist yet
+elsewhere in dbpm; closing it is scoped as follow-up work, not folded into
+this phase's initial implementation. Phase 3 is not done until it is
+resolved, one way or another.
+
+Evidence-tiered remnant reporting (below) is deliberately *not* part of this
+list — it has been rescoped into Phase 4, since it is a post-removal audit
+concern rather than a reset-safety concern. See Phase 4 item 1.
 
 ### Phase 4: Auditing and ergonomics
 
-1. Add a built-in post-removal and post-install audit.
+1. Add a built-in post-removal and post-install audit, including
+   evidence-tiered [remnant reporting](#remnant-reporting) for
+   `dev reset-environment`: separating registered objects that should have
+   been removed, invalid objects, objects covered by a verified package
+   ownership manifest, naming-convention-suspected objects, configuration
+   rows with declared ownership, and unacknowledged runtime instances —
+   replacing the current single flat list of still-registered applications.
+   Only Core registration or a verified ownership manifest may drive
+   automatic deletion; convention-based matches are reported for operator
+   review, never dropped automatically.
 2. Record every policy exception and destructive graph operation in deployment
    history.
 3. Improve recovery guidance so errors name the supported next command rather
    than requiring manual receipt or runtime manipulation.
+
+Phase 4 is done when:
+
+- `dev reset-environment`'s remnant report separates registered / invalid /
+  manifest-owned / naming-convention-suspected / configuration-row /
+  unacknowledged-runtime-instance findings into distinct tiers, rather than
+  one undifferentiated list.
+- A naming-convention-suspected remnant is never deleted automatically —
+  only Core-registered objects or objects covered by a verified ownership
+  manifest are.
 
 ## Open design questions
 
