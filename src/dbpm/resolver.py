@@ -17,6 +17,8 @@ def create_multi_package_plan(
     reverse_dependencies: dict[str, list[str]] | None = None,
     allow_destructive: bool = False,
     approve: bool = False,
+    graph_reinstall: bool = False,
+    required_capabilities: tuple[str, ...] = (),
 ) -> dict[str, object]:
     installed_states = installed_states or {}
     reverse_dependencies = reverse_dependencies or {}
@@ -25,6 +27,7 @@ def create_multi_package_plan(
         source,
         dependency_sources,
         installed_states,
+        force_graph=graph_reinstall,
     )
     if mode == "uninstall":
         ordered_sources = list(reversed(ordered_sources))
@@ -33,7 +36,7 @@ def create_multi_package_plan(
     for item in ordered_sources:
         app_name = item.manifest.application_name
         state = installed_states.get(app_name)
-        item_mode = _dependency_mode(mode) if item is not source else mode
+        item_mode = "reinstall" if graph_reinstall else (_dependency_mode(mode) if item is not source else mode)
         package_plan = create_plan(
                 mode=item_mode,
                 source=item,
@@ -41,8 +44,9 @@ def create_multi_package_plan(
                 environment=environment,
                 installed_state=state,
                 reverse_dependencies=reverse_dependencies.get(app_name, []),
-                allow_destructive=allow_destructive if item is source else False,
+                allow_destructive=allow_destructive if item is source or graph_reinstall else False,
                 approve=approve,
+                required_capabilities=required_capabilities,
             )
         package_plan["installation_reason"] = (
             "APPLICATION_ROOT" if item is source else "AUTO_DEPENDENCY"
@@ -65,6 +69,16 @@ def create_multi_package_plan(
         "satisfied_dependencies": satisfied,
         "packages": package_plans,
     }
+    if graph_reinstall:
+        plan["graph_reinstall"] = True
+        plan["removal_order"] = list(reversed(plan["execution_order"]))
+        for package_plan in package_plans:
+            actions = package_plan.get("pre_actions")
+            if isinstance(actions, list):
+                package_plan["pre_actions"] = [
+                    action for action in actions
+                    if not isinstance(action, dict) or action.get("type") != "delete_application"
+                ]
     runtime_plans = list(package_plans)
     planned_apps = {
         item.manifest.application_name
@@ -126,6 +140,8 @@ def _resolve_dependency_order(
     source: PackageSource,
     dependency_sources: list[PackageSource],
     installed_states: dict[str, dict[str, str] | None],
+    *,
+    force_graph: bool = False,
 ) -> tuple[list[PackageSource], list[dict[str, object]]]:
     available = {item.manifest.application_name: item for item in [source, *dependency_sources]}
     ordered: list[PackageSource] = []
@@ -165,6 +181,8 @@ def _resolve_dependency_order(
                         visit(dep_source)
                         continue
             if (
+                not force_graph
+                and
                 dep_state is not None
                 and _state_satisfies_dependency(dep_state, dependency.version)
                 and (mode != "validate" or dep_source is None)

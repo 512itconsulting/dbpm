@@ -41,6 +41,7 @@ class ApplicationState:
 class DeploymentMetadata:
     deploy_locked: str | None
     deploy_environment: str | None = None
+    capabilities: dict[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -60,6 +61,12 @@ class OperationLease:
     attempt_number: int
     lease_token: str
     lease_expiry: str
+
+
+@dataclass(frozen=True)
+class TargetIdentity:
+    service_name: str
+    schema_name: str
 
 
 def run_sql_script(
@@ -199,6 +206,44 @@ def get_reverse_dependencies(
             return []
         raise ExecutionError(_format_sql_failure(f"Reverse dependency query failed for {application_name}", result))
     return _parse_reverse_dependencies(result.stdout)
+
+
+def get_installed_application_graph(
+    *, connect: str | ConnectSpec, runner: str,
+) -> tuple[list[str], list[tuple[str, str]]]:
+    result = run_sql_script(
+        sql=_installed_application_graph_sql(), connect=connect, runner=runner,
+        label="dbpm-installed-application-graph",
+    )
+    if result.returncode != 0:
+        raise ExecutionError(_format_sql_failure("Installed application graph query failed", result))
+    applications: list[str] = []
+    dependencies: list[tuple[str, str]] = []
+    for raw_line in result.stdout.splitlines():
+        line = raw_line.strip()
+        if line.startswith("DBPM_INSTALLED_APPLICATION|"):
+            applications.append(line.split("|", 1)[1])
+        elif line.startswith("DBPM_INSTALLED_DEPENDENCY|"):
+            _, consumer, dependency = line.split("|", 2)
+            dependencies.append((consumer, dependency))
+    return applications, dependencies
+
+
+def get_target_identity(
+    *, connect: str | ConnectSpec, runner: str,
+) -> TargetIdentity:
+    result = run_sql_script(
+        sql=_target_identity_sql(), connect=connect, runner=runner,
+        label="dbpm-target-identity",
+    )
+    if result.returncode != 0:
+        raise ExecutionError(_format_sql_failure("Target identity query failed", result))
+    for raw_line in result.stdout.splitlines():
+        line = raw_line.strip()
+        if line.startswith("DBPM_TARGET_IDENTITY|"):
+            _, service_name, schema_name = line.split("|", 2)
+            return TargetIdentity(service_name=service_name, schema_name=schema_name)
+    raise ExecutionError("Core did not return the target database identity")
 
 
 def get_deployment_provenance(
@@ -545,6 +590,42 @@ EXIT SUCCESS
 """
 
 
+def _installed_application_graph_sql() -> str:
+    return """
+SET HEADING OFF
+SET FEEDBACK OFF
+SET PAGESIZE 0
+SET VERIFY OFF
+WHENEVER SQLERROR EXIT FAILURE
+WHENEVER OSERROR EXIT FAILURE
+
+SELECT 'DBPM_INSTALLED_APPLICATION|' || application_name
+  FROM application
+ ORDER BY application_name;
+SELECT 'DBPM_INSTALLED_DEPENDENCY|' || application_name || '|' || depends_on
+  FROM app_dependency
+ ORDER BY application_name, depends_on;
+EXIT SUCCESS
+"""
+
+
+def _target_identity_sql() -> str:
+    return """
+SET HEADING OFF
+SET FEEDBACK OFF
+SET PAGESIZE 0
+SET VERIFY OFF
+WHENEVER SQLERROR EXIT FAILURE
+WHENEVER OSERROR EXIT FAILURE
+
+SELECT 'DBPM_TARGET_IDENTITY|'
+       || SYS_CONTEXT('USERENV', 'SERVICE_NAME') || '|'
+       || SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')
+  FROM dual;
+EXIT SUCCESS
+"""
+
+
 def _deployment_provenance_sql(application_name: str, version: str) -> str:
     app_name = _sql_literal(application_name.upper())
     major, minor, patch = _parse_semver(version)
@@ -590,6 +671,12 @@ SELECT 'DBPM_CORE_METADATA|' || key || '|' || pkg_app_dict.get_val_f('CORE', key
         SELECT 'DEPLOY_LOCKED' AS key FROM dual
         UNION ALL
         SELECT 'DEPLOY_ENVIRONMENT' AS key FROM dual
+        UNION ALL SELECT 'DBPM_LIFECYCLE' FROM dual
+        UNION ALL SELECT 'DBPM_ALLOW_MUTABLE_SOURCE' FROM dual
+        UNION ALL SELECT 'DBPM_ALLOW_SAME_VERSION_REPLACE' FROM dual
+        UNION ALL SELECT 'DBPM_ALLOW_RUNTIME_REPLACE' FROM dual
+        UNION ALL SELECT 'DBPM_ALLOW_GRAPH_RESET' FROM dual
+        UNION ALL SELECT 'DBPM_ALLOW_ENVIRONMENT_RESET' FROM dual
        )
  ORDER BY key;
 EXIT SUCCESS
@@ -902,6 +989,9 @@ def _parse_core_deployment_metadata(output: str) -> DeploymentMetadata:
     return DeploymentMetadata(
         deploy_locked=values.get("DEPLOY_LOCKED"),
         deploy_environment=values.get("DEPLOY_ENVIRONMENT"),
+        capabilities={
+            key: value for key, value in values.items() if key.startswith("DBPM_ALLOW_")
+        } or None,
     )
 
 

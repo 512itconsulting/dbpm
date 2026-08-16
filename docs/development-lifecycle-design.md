@@ -931,13 +931,32 @@ Phase 3 is done when:
   produce for the same graph — same plan digest — differing only in command
   surface and the recorded audit entry for which surface initiated it.
 - `dbpm dev reset-environment --keep CORE` removes every non-CORE application
-  in consumer-before-dependency order, requires interactive confirmation of
-  the target schema/environment identity (or explicit `--yes`), and refuses
+  in consumer-before-dependency order, requires `--confirm` matching the
+  target schema or Core environment label regardless of `--yes`, and refuses
   to run if CORE is not healthy.
 - Attempting `--cascade graph`, `dev reset`, or `dev reset-environment`
   against a target that has only a subset of the required capability keys
   (for example `GRAPH_RESET` without `ENVIRONMENT_RESET`) fails closed for
   the ungranted operation without affecting the granted ones.
+- `dev reset-environment` and database-only graph reinstall/`dev reset`
+  acquire a Core-held operation lease before mutating, so two concurrent
+  invocations against the same target fail closed on the lease rather than
+  racing — the same fencing Phase 2 established for single-application
+  composite operations, applied to these multi-package destructive paths.
+
+**Known incomplete against this document, as implemented:** preserved-state
+classification (operator config/secrets vs. durable business data vs. work
+state vs. caches vs. logs) is not implemented — `dev reset-environment`
+currently only records the static label `["etc", "var"]` as preserved, with
+no `--purge-var` and no differentiation within those directories. Remnant
+reporting is a single flat list of still-registered applications, not the
+evidence-tiered breakdown (registered / invalid / manifest-owned /
+naming-convention-suspected / configuration rows / unacknowledged runtime
+instances) this document describes. Both require a manifest-driven
+classification mechanism and Core registry introspection that don't exist
+yet elsewhere in dbpm; closing them is scoped as follow-up work, not folded
+into this phase's initial implementation. Phase 3 is not done until these
+two are resolved, one way or another.
 
 ### Phase 4: Auditing and ergonomics
 

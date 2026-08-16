@@ -183,6 +183,11 @@ def _no_reverse_dependencies(tmp_path: Path, monkeypatch):
         "get_core_deployment_metadata",
         lambda **kwargs: DeploymentMetadata(deploy_locked="N", deploy_environment="DEV"),
     )
+    monkeypatch.setattr(
+        cli,
+        "get_target_identity",
+        lambda **kwargs: cli.TargetIdentity(service_name="db", schema_name="APP"),
+    )
 
 
 def test_plan_prints_json(tmp_path: Path, capsys):
@@ -1159,6 +1164,16 @@ def test_reinstall_allows_existing_complete_package(tmp_path: Path, monkeypatch)
     )
     monkeypatch.setattr(cli, "get_reverse_dependencies", lambda **kwargs: [])
     monkeypatch.setattr(cli, "execute_plan", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(
+        cli, "get_core_deployment_metadata",
+        lambda **kwargs: DeploymentMetadata(
+            deploy_locked="N", deploy_environment="DEV",
+            capabilities={
+                "DBPM_ALLOW_MUTABLE_SOURCE": "Y",
+                "DBPM_ALLOW_SAME_VERSION_REPLACE": "Y",
+            },
+        ),
+    )
 
     assert (
         cli.main(
@@ -1226,6 +1241,16 @@ def test_reinstall_allows_incomplete_existing_package(tmp_path: Path, monkeypatc
     )
     monkeypatch.setattr(cli, "get_reverse_dependencies", lambda **kwargs: [])
     monkeypatch.setattr(cli, "execute_plan", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(
+        cli, "get_core_deployment_metadata",
+        lambda **kwargs: DeploymentMetadata(
+            deploy_locked="N", deploy_environment="DEV",
+            capabilities={
+                "DBPM_ALLOW_MUTABLE_SOURCE": "Y",
+                "DBPM_ALLOW_SAME_VERSION_REPLACE": "Y",
+            },
+        ),
+    )
 
     assert (
         cli.main(
@@ -1256,6 +1281,16 @@ def test_reinstall_blocks_when_dependents_exist(tmp_path: Path, monkeypatch, cap
         ),
     )
     monkeypatch.setattr(cli, "get_reverse_dependencies", lambda **kwargs: ["JOB_CONTROL", "MY_APP"])
+    monkeypatch.setattr(
+        cli, "get_core_deployment_metadata",
+        lambda **kwargs: DeploymentMetadata(
+            deploy_locked="N", deploy_environment="DEV",
+            capabilities={
+                "DBPM_ALLOW_MUTABLE_SOURCE": "Y",
+                "DBPM_ALLOW_SAME_VERSION_REPLACE": "Y",
+            },
+        ),
+    )
 
     assert (
         cli.main(
@@ -2789,6 +2824,81 @@ def test_runtime_reconcile_replace_fails_closed_until_capability_exists(capsys):
     )
     assert result == 2
     assert "DBPM_ALLOW_RUNTIME_REPLACE" in capsys.readouterr().err
+
+
+def test_dev_reset_and_reinstall_compile_to_same_plan_digest(tmp_path: Path, monkeypatch, capsys):
+    base = tmp_path / "base"
+    consumer = tmp_path / "consumer"
+    _write_package(base)
+    consumer.mkdir()
+    (consumer / "dbpm.yaml").write_text(
+        """
+package:
+  name: consumer
+  version: "0.1.0"
+dependencies:
+  - name: demo
+    version: "0.1.0"
+scripts:
+  install: deploy.sql
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        cli, "get_core_deployment_metadata",
+        lambda **kwargs: DeploymentMetadata(
+            "N", "DEV", {
+                "DBPM_ALLOW_MUTABLE_SOURCE": "Y",
+                "DBPM_ALLOW_SAME_VERSION_REPLACE": "Y",
+                "DBPM_ALLOW_GRAPH_RESET": "Y",
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        cli, "get_application_state",
+        lambda **kwargs: ApplicationState(kwargs["application_name"], "0.1.0", "C", "abc"),
+    )
+
+    common = [
+        str(consumer), "--dependency-source", str(base), "--cascade", "graph",
+        "--connect", "user/pass@db", "--dry-run",
+    ]
+    assert cli.main(["reinstall", *common, "--allow-destructive"]) == 0
+    reinstall_plan = json.loads(capsys.readouterr().out)
+    assert cli.main(["dev", "reset", *common]) == 0
+    reset_plan = json.loads(capsys.readouterr().out)
+
+    assert reinstall_plan["plan_digest"] == reset_plan["plan_digest"]
+    assert reinstall_plan["audit"]["initiating_surface"] == "reinstall"
+    assert reset_plan["audit"]["initiating_surface"] == "dev reset"
+
+
+def test_environment_reset_keeps_core_and_uses_consumer_first_order(monkeypatch, capsys):
+    monkeypatch.setattr(
+        cli, "get_core_deployment_metadata",
+        lambda **kwargs: DeploymentMetadata(
+            "N", "DISPOSABLE", {"DBPM_ALLOW_ENVIRONMENT_RESET": "Y"},
+        ),
+    )
+    monkeypatch.setattr(
+        cli, "get_application_state",
+        lambda **kwargs: ApplicationState("CORE", "3.5.0", "C", "abc"),
+    )
+    monkeypatch.setattr(
+        cli, "get_installed_application_graph",
+        lambda **kwargs: (["CORE", "BASE", "CONSUMER"], [("CONSUMER", "BASE")]),
+    )
+    captured = {}
+    monkeypatch.setattr(cli, "execute_plan", lambda plan, **kwargs: captured.setdefault("plan", plan) or 0)
+
+    assert cli.main([
+        "dev", "reset-environment", "--keep", "CORE", "--yes",
+        "--confirm", "APP",
+        "--connect", "user/pass@db",
+    ]) == 0
+
+    assert captured["plan"]["removal_order"] == ["CONSUMER", "BASE"]
+    assert captured["plan"]["keep"] == ["CORE"]
 
 
 def _lifecycle_package_plan(app_name: str, *, reason: str) -> dict[str, object]:

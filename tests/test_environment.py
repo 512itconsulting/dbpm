@@ -55,3 +55,23 @@ def test_core_policy_missing_deploy_locked_fails():
 def test_core_policy_invalid_deploy_locked_fails():
     with pytest.raises(PolicyError, match="CORE/DEPLOY_LOCKED must be Y or N"):
         policy_from_core_values(deploy_locked="MAYBE")
+
+
+def test_lifecycle_capabilities_are_independent_and_fail_closed():
+    policy = policy_from_core_values(
+        deploy_locked="N",
+        capabilities={"DBPM_ALLOW_GRAPH_RESET": "Y"},
+    )
+
+    graph = policy.evaluate(
+        "reinstall", dirty=False, allow_destructive=True,
+        required_capabilities=("DBPM_ALLOW_GRAPH_RESET",),
+    )
+    environment = policy.evaluate(
+        "uninstall", dirty=False, allow_destructive=True,
+        required_capabilities=("DBPM_ALLOW_ENVIRONMENT_RESET",),
+    )
+
+    assert graph["result"] == "allowed"
+    assert environment["result"] == "blocked"
+    assert "DBPM_ALLOW_ENVIRONMENT_RESET" in environment["blocked"][0]

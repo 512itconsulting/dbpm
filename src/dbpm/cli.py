@@ -29,11 +29,14 @@ from .registry import (
     registry_base_url,
 )
 from .db import (
+    TargetIdentity,
     check_core,
     get_application_state,
     get_core_deployment_metadata,
     get_deployment_provenance,
     get_current_operation,
+    get_installed_application_graph,
+    get_target_identity,
     get_reverse_dependencies,
 )
 from .environment import DeploymentPolicy, policy_from_core_values, resolve_deployment_policy
@@ -109,6 +112,34 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "runtime":
             _run_runtime(args)
             return 0
+        if args.command == "dev":
+            if args.dev_command == "reset":
+                args.allow_destructive = True
+                plan = _build_plan(
+                    "reinstall", args, include_installed_state=True,
+                    show_progress=not args.dry_run and getattr(args, "verbose", False),
+                )
+                _attach_target_identity(plan, args)
+                _attach_plan_identity(plan, "dev reset")
+                if args.dry_run:
+                    _enrich_destructive_preview(plan, args)
+                    _print_json(plan)
+                    return 0
+                _enforce_plan_policies(plan)
+                _confirm_destructive_plan(plan, args)
+                _execute_or_explain(plan, args)
+                _report_execution_success("dev reset", plan)
+                return 0
+            if args.dev_command == "reset-environment":
+                plan = _build_environment_reset_plan(args)
+                if args.dry_run:
+                    _print_json(plan)
+                    return 0
+                _execute_or_explain_policy(plan)
+                _confirm_destructive_plan(plan, args)
+                execute_plan(plan, connect=_connect_spec(args), runner=args.runner)
+                report_progress("Development environment reset completed successfully")
+                return 0
         if args.command == "plan":
             plan = _build_plan(args.mode, args, include_installed_state=_has_database_access(args))
             _print_json(plan)
@@ -198,7 +229,7 @@ def main(argv: list[str] | None = None) -> int:
                 if args.command == "install" and args.source is None and not getattr(args, "package", None):
                     raise DbpmError("install requires a source or --lockfile")
                 include_installed = not args.dry_run or (
-                    args.command == "upgrade" and _has_database_access(args)
+                    args.command in {"upgrade", "reinstall"} and _has_database_access(args)
                 )
                 plan = _build_plan(
                     args.command,
@@ -206,9 +237,17 @@ def main(argv: list[str] | None = None) -> int:
                     include_installed_state=include_installed,
                     show_progress=not args.dry_run and getattr(args, "verbose", False),
                 )
+            if args.command == "reinstall":
+                if _has_database_access(args):
+                    _attach_target_identity(plan, args)
+                _attach_plan_identity(plan, "reinstall")
             if args.dry_run:
+                if args.command == "reinstall":
+                    _enrich_destructive_preview(plan, args)
                 _print_json(plan)
                 return 0
+            if args.command == "reinstall" and getattr(args, "cascade", None) == "graph":
+                _confirm_destructive_plan(plan, args)
             _execute_or_explain(plan, args)
             _report_execution_success(args.command, plan)
             return 0
@@ -341,21 +380,22 @@ def _run_runtime(args: argparse.Namespace) -> None:
     if args.runtime_command != "reconcile":
         raise DbpmError("Unknown runtime command")
     if args.replace:
-        raise DbpmError(
-            "runtime reconcile --replace requires the Core capability "
-            "DBPM_ALLOW_RUNTIME_REPLACE; that capability is introduced in phase 3"
-        )
+        environment = _resolve_policy_for_plan("resume", args)
+        environment.require("DBPM_ALLOW_RUNTIME_REPLACE")
     # Reconciliation is receipt-backed structural repair, not a policy escape
     # hatch: it must respect the same DEPLOY_LOCKED=Y/--approve evaluation
     # `_build_installed_resume_plan` already computed for `resume`. Nothing
     # here overrides that result.
     plan = _build_installed_resume_plan(args, allow_completed=True)
+    if args.replace:
+        plan["runtime_reconcile_replace"] = True
     if args.dry_run:
         graph = plan.get("application_runtime")
         if not isinstance(graph, dict):
             raise DbpmError("Installed lifecycle receipt has no application runtime graph")
         classifications = validate_application_runtime_collisions(
-            graph, prefix=Path(args.runtime_prefix).expanduser().resolve(), mode="resume"
+            graph, prefix=Path(args.runtime_prefix).expanduser().resolve(),
+            mode="reinstall" if args.replace else "resume"
         )
         plan["runtime_reconciliation"] = {"classifications": list(classifications)}
         _print_json(plan)
@@ -500,6 +540,12 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Allow destructive reinstall planning/execution",
     )
+    _add_dependency_source_args(reinstall)
+    reinstall.add_argument(
+        "--cascade", choices=("graph",),
+        help="Reinstall the complete source dependency graph; requires DBPM_ALLOW_GRAPH_RESET",
+    )
+    reinstall.add_argument("--yes", action="store_true", help="Skip interactive confirmation")
     reinstall.add_argument(
         "--confirm-delete-system",
         help="Required for Core reinstall; must be CORE",
@@ -552,6 +598,30 @@ def _build_parser() -> argparse.ArgumentParser:
     reconcile.add_argument("--application", help="Installed application name")
     reconcile.add_argument(
         "--replace", action="store_true", help="Replace conflicting runtime destinations"
+    )
+
+    dev = subparsers.add_parser("dev", help="Policy-gated development lifecycle operations")
+    dev_subparsers = dev.add_subparsers(dest="dev_command", required=True)
+    dev_reset = dev_subparsers.add_parser(
+        "reset", help="Replace a local package using canonical reinstall semantics"
+    )
+    _add_common_args(dev_reset)
+    _add_execution_args(dev_reset)
+    _add_dependency_source_args(dev_reset)
+    dev_reset.add_argument("--cascade", choices=("graph",))
+    dev_reset.add_argument("--yes", action="store_true", help="Skip interactive confirmation")
+
+    reset_environment = dev_subparsers.add_parser(
+        "reset-environment", help="Remove every non-CORE application"
+    )
+    _add_database_args(reset_environment)
+    reset_environment.add_argument("--keep", required=True, choices=("CORE",))
+    reset_environment.add_argument("--confirm", help="Expected schema or Core environment label")
+    reset_environment.add_argument("--yes", action="store_true", help="Skip interactive confirmation")
+    reset_environment.add_argument("--dry-run", action="store_true")
+    reset_environment.add_argument(
+        "--runtime-prefix", action="append", default=[],
+        help="Installed application runtime prefix to remove (repeatable)",
     )
 
     workspace = subparsers.add_parser("workspace", help="Inspect a dbpm workspace")
@@ -770,6 +840,8 @@ def _build_plan(
         )
     _report_plan_progress(show_progress, "Resolving package provenance...")
     provenance = resolve_provenance(source)
+    if args.command == "dev" and source.source_type != "directory":
+        raise DbpmError("dev reset requires a mutable local directory source")
     if _has_database_access(args) and mode != "bootstrap-core":
         _report_plan_progress(show_progress, "Reading Core deployment policy...")
     environment = _resolve_policy_for_plan(mode, args)
@@ -794,7 +866,56 @@ def _build_plan(
             )
             reverse_dependencies = _get_reverse_dependencies(args, source.manifest.application_name)
 
-    if args.command in {"plan", "install", "lock", "upgrade", "validate", "uninstall"} and (
+    graph_reinstall = mode == "reinstall" and getattr(args, "cascade", None) == "graph"
+    required_capabilities: list[str] = []
+    if graph_reinstall:
+        required_capabilities.append("DBPM_ALLOW_GRAPH_RESET")
+    if args.command == "dev" and installed_state is None:
+        raise DbpmError(
+            f"{source.manifest.application_name} is not installed; dev reset requires an installed application"
+        )
+    if (
+        args.command == "dev"
+        and installed_state is not None
+        and installed_state.get("version") != source.manifest.version
+    ):
+        raise DbpmError(
+            f"dev reset is for same-version replacement; installed "
+            f"{installed_state.get('version')}, selected {source.manifest.version}"
+        )
+    if args.command == "dev":
+        required_capabilities.extend((
+            "DBPM_ALLOW_MUTABLE_SOURCE",
+            "DBPM_ALLOW_SAME_VERSION_REPLACE",
+        ))
+    if mode == "reinstall" and installed_state is not None and not source.manifest.is_core:
+        if source.source_type == "directory":
+            required_capabilities.append("DBPM_ALLOW_MUTABLE_SOURCE")
+        if installed_state.get("version") == source.manifest.version:
+            required_capabilities.append("DBPM_ALLOW_SAME_VERSION_REPLACE")
+            if source.source_type != "directory" and _has_database_access(args):
+                recorded = get_deployment_provenance(
+                    connect=_connect_spec(args), runner=args.runner,
+                    application_name=source.manifest.application_name,
+                    version=source.manifest.version,
+                )
+                recorded_checksum = recorded.get("artifact_checksum") if isinstance(recorded, dict) else None
+                if (
+                    recorded_checksum
+                    and source.artifact_checksum
+                    and recorded_checksum != source.artifact_checksum
+                ):
+                    raise DbpmError(
+                        f"Immutable artifact identity conflict for {source.manifest.application_name} "
+                        f"{source.manifest.version}: recorded checksum {recorded_checksum}, "
+                        f"selected checksum {source.artifact_checksum}"
+                    )
+    if mode == "reinstall" and any(
+        item.manifest.runtime is not None for item in [source, *dependency_sources]
+    ):
+        required_capabilities.append("DBPM_ALLOW_RUNTIME_REPLACE")
+
+    if args.command in {"plan", "install", "lock", "upgrade", "validate", "uninstall", "reinstall", "dev"} and (
         dependency_sources or source.manifest.dependencies
     ):
         installed_states = {source.manifest.application_name: installed_state}
@@ -813,7 +934,7 @@ def _build_plan(
                 _report_plan_progress(show_progress, f"Reading reverse dependencies for {app_name}...")
                 reverse_dependencies_by_app[app_name] = _get_reverse_dependencies(args, app_name)
         _report_plan_progress(show_progress, "Resolving dependency graph...")
-        return create_multi_package_plan(
+        plan = create_multi_package_plan(
             mode=mode,
             source=source,
             dependency_sources=dependency_sources,
@@ -822,7 +943,18 @@ def _build_plan(
             reverse_dependencies=reverse_dependencies_by_app,
             allow_destructive=allow_destructive,
             approve=args.approve,
+            graph_reinstall=graph_reinstall,
+            required_capabilities=tuple(dict.fromkeys(required_capabilities)),
         )
+        if graph_reinstall:
+            graph_apps = set(plan.get("execution_order", []))
+            for child in plan.get("packages", []):
+                if isinstance(child, dict):
+                    child["reverse_dependencies"] = [
+                        name for name in child.get("reverse_dependencies", [])
+                        if name not in graph_apps
+                    ]
+        return plan
 
     if mode == "upgrade" and installed_state is not None:
         installed_version = installed_state.get("version")
@@ -841,7 +973,182 @@ def _build_plan(
         allow_destructive=allow_destructive,
         confirm_delete_system=confirm_delete_system,
         approve=args.approve,
+        required_capabilities=tuple(dict.fromkeys(required_capabilities)),
     )
+
+
+def _attach_plan_identity(plan: dict[str, object], surface: str) -> None:
+    normalized = dict(plan)
+    normalized.pop("audit", None)
+    normalized.pop("plan_digest", None)
+    plan["plan_digest"] = hashlib.sha256(
+        json.dumps(normalized, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    plan["audit"] = {"initiating_surface": surface}
+
+
+def _attach_target_identity(plan: dict[str, object], args: argparse.Namespace) -> None:
+    identity = get_target_identity(connect=_connect_spec(args), runner=args.runner)
+    policy = plan.get("policy")
+    packages = plan.get("packages")
+    if not isinstance(policy, dict) and isinstance(packages, list) and packages:
+        first = packages[0]
+        policy = first.get("policy") if isinstance(first, dict) else None
+    context = policy.get("policy_context") if isinstance(policy, dict) else None
+    plan["target"] = {
+        "service": identity.service_name,
+        "schema": identity.schema_name,
+        "core_environment": context.get("deploy_environment") if isinstance(context, dict) else None,
+    }
+
+
+def _consumer_first_order(
+    applications: list[str], dependencies: list[tuple[str, str]],
+) -> list[str]:
+    remaining = set(applications)
+    edges = {(consumer, dependency) for consumer, dependency in dependencies if consumer in remaining and dependency in remaining}
+    ordered: list[str] = []
+    while remaining:
+        candidates = sorted(
+            app for app in remaining
+            if not any(dependency == app and consumer in remaining for consumer, dependency in edges)
+        )
+        if not candidates:
+            raise DbpmError("Installed application dependency graph contains a cycle")
+        for app in candidates:
+            ordered.append(app)
+            remaining.remove(app)
+    return ordered
+
+
+def _build_environment_reset_plan(args: argparse.Namespace) -> dict[str, object]:
+    environment = _resolve_policy_for_plan("uninstall", args)
+    environment.require("DBPM_ALLOW_ENVIRONMENT_RESET")
+    core = _get_installed_state(args, "CORE")
+    if core is None or core.get("deploy_status") != "C":
+        status = None if core is None else core.get("deploy_status")
+        raise DbpmError(
+            f"CORE is not healthy (status {status or 'not installed'}); repair Core before reset-environment"
+        )
+    applications, dependencies = get_installed_application_graph(
+        connect=_connect_spec(args), runner=args.runner
+    )
+    removable = [app for app in applications if app.upper() != "CORE"]
+    removal_order = _consumer_first_order(removable, dependencies)
+    identity = get_target_identity(connect=_connect_spec(args), runner=args.runner)
+    runtime_removals: list[dict[str, object]] = []
+    affected_prefixes: list[str] = []
+    for raw_prefix in args.runtime_prefix:
+        prefix = Path(raw_prefix).expanduser().resolve()
+        receipt = load_lifecycle_receipt(runtime_prefix=str(prefix))
+        graph = receipt.get("application_runtime")
+        package = receipt.get("package")
+        app_name = package.get("application_name") if isinstance(package, dict) else None
+        if app_name not in removal_order:
+            raise DbpmError(f"Runtime prefix {prefix} belongs to {app_name}, which is not in the reset plan")
+        if isinstance(graph, dict):
+            graph = dict(graph)
+            graph["effects"] = dict(graph.get("effects", {}), operation="uninstall")
+            runtime_removals.append({"prefix": str(prefix), "graph": graph})
+            affected_prefixes.append(str(prefix))
+    plan: dict[str, object] = {
+        "schema_version": "dbpm.environment-reset.v0",
+        "mode": "uninstall",
+        "environment_reset": True,
+        "keep": ["CORE"],
+        "target": {
+            "service": identity.service_name,
+            "schema": identity.schema_name,
+            "core_environment": environment.deploy_environment,
+        },
+        "removal_order": removal_order,
+        "affected_runtime_prefixes": affected_prefixes,
+        "runtime_removals": runtime_removals,
+        "preserved_paths": ["etc", "var"],
+        "policy": environment.evaluate(
+            "uninstall", dirty=False, allow_destructive=True,
+            required_capabilities=("DBPM_ALLOW_ENVIRONMENT_RESET",),
+        ),
+    }
+    _attach_plan_identity(plan, "dev reset-environment")
+    return plan
+
+
+def _removal_order_with_reasons(plan: dict[str, object], removal_order: list[object]) -> list[dict[str, object]]:
+    reasons: dict[str, str] = {}
+    packages = plan.get("packages")
+    if isinstance(packages, list):
+        for item in packages:
+            if not isinstance(item, dict):
+                continue
+            item_package = item.get("package")
+            app_name = item_package.get("application_name") if isinstance(item_package, dict) else None
+            if isinstance(app_name, str):
+                reasons[app_name] = str(item.get("installation_reason", "MANUAL"))
+    return [
+        {"application_name": name, "reason": reasons.get(str(name), "REGISTERED")}
+        for name in removal_order
+    ]
+
+
+def _confirm_destructive_plan(plan: dict[str, object], args: argparse.Namespace) -> None:
+    target = plan.get("target") if isinstance(plan.get("target"), dict) else {}
+    package = plan.get("package") if isinstance(plan.get("package"), dict) else {}
+    removal_order = plan.get("removal_order") or [package.get("application_name")]
+    summary = {
+        "service": target.get("service", "connected database"),
+        "schema": target.get("schema", "connected schema"),
+        "core_environment": target.get("core_environment"),
+        "root_application": package.get("application_name"),
+        "removal_order": _removal_order_with_reasons(plan, removal_order),
+        "affected_runtime_prefixes": plan.get("affected_runtime_prefixes")
+        or ([args.runtime_prefix] if getattr(args, "runtime_prefix", None) else []),
+    }
+    report_progress("Destructive operation summary: " + json.dumps(summary, sort_keys=True))
+    expected = getattr(args, "confirm", None)
+    if plan.get("environment_reset") is True and not expected:
+        raise DbpmError(
+            "reset-environment requires --confirm matching the target schema or Core environment label"
+        )
+    if expected:
+        allowed = {str(target.get("schema") or ""), str(target.get("core_environment") or "")}
+        if expected not in allowed:
+            raise DbpmError("--confirm must match the target schema or Core environment label")
+    if getattr(args, "yes", False):
+        return
+    if not sys.stdin.isatty():
+        raise DbpmError("Destructive operation requires interactive confirmation or --yes")
+    response = input("Proceed with destructive operation? [y/N] ").strip().lower()
+    if response not in {"y", "yes"}:
+        raise DbpmError("Destructive operation cancelled")
+
+
+def _enrich_destructive_preview(plan: dict[str, object], args: argparse.Namespace) -> None:
+    graph = plan.get("application_runtime")
+    if not isinstance(graph, dict):
+        return
+    runtime_prefix = getattr(args, "runtime_prefix", None)
+    if not runtime_prefix:
+        raise DbpmError("Application runtime requires --runtime-prefix")
+    classifications = validate_application_runtime_collisions(
+        graph,
+        prefix=Path(runtime_prefix).expanduser().resolve(),
+        mode="reinstall",
+    )
+    plan["runtime_preflight"] = {
+        "classifications": list(classifications),
+        "preserved_paths": ["etc", "var"],
+    }
+
+
+def _enforce_plan_policies(plan: dict[str, object]) -> None:
+    packages = plan.get("packages")
+    if isinstance(packages, list):
+        for child in packages:
+            if isinstance(child, dict):
+                _execute_or_explain_policy(child)
+        return
+    _execute_or_explain_policy(plan)
 
 
 def _build_installed_uninstall_plan(args: argparse.Namespace) -> dict[str, object]:
@@ -1119,6 +1426,7 @@ def _resolve_policy_for_plan(mode: str, args: argparse.Namespace) -> DeploymentP
         return policy_from_core_values(
             deploy_locked=metadata.deploy_locked,
             deploy_environment=metadata.deploy_environment,
+            capabilities=metadata.capabilities,
         )
     return resolve_deployment_policy(
         cli_policy,
@@ -1231,9 +1539,12 @@ def _prepare_composite_plan(
     operation["runtime_prefix"] = str(Path(runtime_prefix).expanduser().resolve()) if runtime_prefix else None
     digest_input = dict(plan)
     digest_input.pop("operation", None)
-    operation["plan_digest"] = hashlib.sha256(
+    operation["plan_digest"] = str(plan.get("plan_digest") or hashlib.sha256(
         json.dumps(digest_input, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
+    ).hexdigest())
+    audit = plan.get("audit")
+    if isinstance(audit, dict):
+        operation["initiating_surface"] = audit.get("initiating_surface")
     if mode != "resume":
         receipt_path = write_lifecycle_receipt(plan, runtime_prefix=runtime_prefix)
         operation["receipt_checksum"] = hashlib.sha256(receipt_path.read_bytes()).hexdigest()

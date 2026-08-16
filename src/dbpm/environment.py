@@ -24,6 +24,7 @@ class DeploymentPolicy:
     deployment_locked: bool
     source: str = "default"
     deploy_environment: str | None = None
+    capabilities: frozenset[str] = frozenset()
 
     def evaluate(
         self,
@@ -32,6 +33,7 @@ class DeploymentPolicy:
         dirty: bool | None,
         allow_destructive: bool = False,
         approve: bool = False,
+        required_capabilities: tuple[str, ...] = (),
     ) -> dict[str, object]:
         blocked: list[str] = []
         approvals: list[str] = []
@@ -51,6 +53,10 @@ class DeploymentPolicy:
 
         if mode in {"reinstall", "uninstall"} and not allow_destructive:
             approvals.append(f"`{mode}` requires --allow-destructive")
+
+        for capability in required_capabilities:
+            if capability not in self.capabilities:
+                blocked.append(f"Operation requires Core capability {capability}")
 
         return {
             "policy_context": self.as_dict(),
@@ -72,7 +78,16 @@ class DeploymentPolicy:
         }
         if self.deploy_environment is not None:
             result["deploy_environment"] = self.deploy_environment
+        if self.capabilities:
+            result["capabilities"] = sorted(self.capabilities)
         return result
+
+    def require(self, *capabilities: str) -> None:
+        missing = [name for name in capabilities if name not in self.capabilities]
+        if missing:
+            raise PolicyError(
+                "Operation requires Core capability " + ", ".join(missing)
+            )
 
 
 def resolve_deployment_policy(
@@ -101,6 +116,7 @@ def policy_from_core_values(
     *,
     deploy_locked: str | None,
     deploy_environment: str | None = None,
+    capabilities: dict[str, str] | None = None,
 ) -> DeploymentPolicy:
     if deploy_locked is None or not deploy_locked.strip():
         raise PolicyError("CORE/DEPLOY_LOCKED is required")
@@ -111,4 +127,8 @@ def policy_from_core_values(
         deployment_locked=normalized == "Y",
         source="core-dictionary",
         deploy_environment=deploy_environment,
+        capabilities=frozenset(
+            key for key, value in (capabilities or {}).items()
+            if value.strip().upper() == "Y"
+        ),
     )

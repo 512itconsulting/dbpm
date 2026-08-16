@@ -9,7 +9,8 @@ For Core itself, reinstall is a full system teardown: dbpm calls `pkg_applicatio
 ```
 dbpm reinstall source [--approve] [--dry-run]
                      [--package NAME] [--registry-url URL]
-                     [--allow-destructive]
+                     [--allow-destructive] [--cascade graph]
+                     [--dependency-source SOURCE]... [--yes]
                      [--confirm-delete-system CORE]
                      [--connect STRING | --connect-name NAME] [--runner EXEC]
 ```
@@ -51,6 +52,9 @@ flowchart LR
 | `--package` | none | Package name or application name to select when `source` is a workspace root. |
 | `--registry-url` | `DBPM_REGISTRY_URL` or `https://registry.dbpm.io` | Registry base URL for `registry:` sources. |
 | `--allow-destructive` | false | Required to allow the destructive pre-action (application deletion). Without this flag, dbpm fails before touching the database. |
+| `--dependency-source` | none | Package source for a dependency in a graph reinstall. Repeatable. |
+| `--cascade graph` | none | Reinstall the complete resolved graph. Requires `DBPM_ALLOW_GRAPH_RESET`. |
+| `--yes` | false | Skip interactive confirmation for graph reinstall. Does not bypass Core policy. |
 | `--confirm-delete-system` | none | Required for Core reinstall. Must be exactly `CORE`. |
 | `--connect` | `DBPM_CONNECT` or structured database variables | Raw SQL*Plus/SQLcl connect string. `DBPM_DB_USER`, `DBPM_DB_PASSWORD`, and `DBPM_DB_DSN` are composed when the raw value is unset. Mutually exclusive with `--connect-name`. |
 | `--connect-name` | `DBPM_CONNECT_NAME` | SQLcl saved connection name. Requires SQLcl via `--runner` or `DBPM_SQL_RUNNER`. |
@@ -62,6 +66,9 @@ dbpm fails before running any script if:
 
 - `--allow-destructive` is not provided.
 - Core `DEPLOY_LOCKED=Y`.
+- A local directory replacement lacks `DBPM_ALLOW_MUTABLE_SOURCE`.
+- Same-version replacement lacks `DBPM_ALLOW_SAME_VERSION_REPLACE`.
+- `--cascade graph` lacks `DBPM_ALLOW_GRAPH_RESET`.
 - The package is Core and `--confirm-delete-system CORE` is not provided.
 - The package has installed dependents. The names of the blocking dependents are reported. Dependents must be reinstalled or removed first.
 
@@ -91,6 +98,6 @@ dbpm reinstall gh-maven:512itconsulting/core:com.512itconsulting.database:core:3
 
 - `reinstall` calls `pkg_application.delete_application_p` before running the install script. This removes the Core application registration and any dependent records.
 - Core reinstall is special because Core blocks `delete_application_p` for itself. It calls `pkg_application.delete_system_p` with confirmation text and requires Core `DEPLOY_LOCKED=N`, then runs `Deployment_Manifests/uninstall.core.sql` before reinstalling Core. Treat this as equivalent to wiping dbpm-managed state from the schema.
-- Installed applications that depend on the target block reinstall. Reinstall the dependents first, or reinstall them together as separate commands.
-- Multi-package dependency ordering is not yet supported for reinstall. Run reinstall commands individually in the correct order (consumers before dependencies).
+- Installed applications outside the selected graph that depend on a selected package block reinstall.
+- Graph reinstall removes consumers before dependencies, then installs dependencies before consumers. Runtime replacement is validated and activated for the complete graph; application-level `etc` and `var` are preserved.
 - Use `dbpm resume` when a previous deployment failed but data should be preserved. Use `dbpm reinstall` only when a clean slate is acceptable.

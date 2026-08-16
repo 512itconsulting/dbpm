@@ -63,6 +63,8 @@ def test_core_deployment_metadata_sql_reads_app_dictionary():
     assert "pkg_app_dict.get_val_f('CORE', key)" in sql
     assert "'DEPLOY_LOCKED'" in sql
     assert "'DEPLOY_ENVIRONMENT'" in sql
+    assert "'DBPM_ALLOW_GRAPH_RESET'" in sql
+    assert "'DBPM_ALLOW_ENVIRONMENT_RESET'" in sql
 
 
 def test_parse_core_deployment_metadata():
@@ -75,6 +77,19 @@ DBPM_CORE_METADATA|DEPLOY_LOCKED|N
         deploy_locked="N",
         deploy_environment="DEV",
     )
+
+
+def test_parse_core_deployment_metadata_includes_enabled_capabilities():
+    output = """
+DBPM_CORE_METADATA|DEPLOY_LOCKED|N
+DBPM_CORE_METADATA|DBPM_ALLOW_GRAPH_RESET|Y
+DBPM_CORE_METADATA|DBPM_ALLOW_ENVIRONMENT_RESET|N
+"""
+    metadata = _parse_core_deployment_metadata(output)
+    assert metadata.capabilities == {
+        "DBPM_ALLOW_GRAPH_RESET": "Y",
+        "DBPM_ALLOW_ENVIRONMENT_RESET": "N",
+    }
 
 
 def test_run_sql_script_uses_sqlcl_named_connection_as_single_argument(monkeypatch):

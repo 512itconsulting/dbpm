@@ -17,6 +17,7 @@ from .db import (
     delete_system,
     get_current_operation,
     get_application_state,
+    get_installed_application_graph,
     record_deployment_provenance,
     record_operation_step,
     renew_operation_lease,
@@ -59,6 +60,49 @@ def execute_plan(
     runtime_prefix: str | None = None,
     context: _ExecutionContext | None = None,
 ) -> int:
+    if context is None and plan.get("environment_reset") is True:
+        if connect is None:
+            raise ExecutionError("Environment reset requires a Core connection")
+        context = _new_execution_context()
+        record = begin_operation(
+            connect=connect, runner=runner, operation_id=str(uuid.uuid4()),
+            application_name="CORE", mode="environment-reset",
+        )
+        lease = acquire_operation_lease(
+            connect=connect, runner=runner, operation_id=record.operation_id,
+            lease_token=uuid.uuid4().hex,
+        )
+        try:
+            runtime_removals = plan.get("runtime_removals", [])
+            if not isinstance(runtime_removals, list):
+                raise ExecutionError("Environment reset runtime_removals must be a list")
+            for item in runtime_removals:
+                if not isinstance(item, dict) or not isinstance(item.get("graph"), dict):
+                    raise ExecutionError("Environment reset runtime removal must contain a graph")
+                prefix = Path(str(item.get("prefix"))).expanduser().resolve()
+                report_progress(f"Removing application runtime at {prefix}...")
+                uninstall_application_runtime_graph(
+                    item["graph"], prefix=prefix, log_dir=context.log_dir
+                )
+            removal_order = plan.get("removal_order")
+            if not isinstance(removal_order, list):
+                raise ExecutionError("Environment reset requires a removal_order")
+            for application_name in removal_order:
+                report_progress(f"Removing {application_name}...")
+                delete_application(
+                    connect=connect, runner=runner, application_name=str(application_name),
+                    fail_on_not_found="Y",
+                )
+            remaining, _ = get_installed_application_graph(connect=connect, runner=runner)
+            unexpected = [name for name in remaining if name.upper() != "CORE"]
+            if unexpected:
+                raise ExecutionError(
+                    "Environment reset audit found registered applications: "
+                    + ", ".join(sorted(unexpected))
+                )
+        finally:
+            release_operation_lease(connect=connect, runner=runner, lease=lease)
+        return 0
     if context is None and isinstance(plan.get("operation"), dict):
         return _execute_composite_operation(
             plan, connect=connect, runner=runner, runtime_prefix=runtime_prefix
@@ -81,23 +125,67 @@ def execute_plan(
                 runtime_prefix=runtime_prefix,
                 context=context,
             )
-        for child_plan in packages:
-            if not isinstance(child_plan, dict):
-                raise ExecutionError("Multi-package plan entries must be objects")
-            execute_plan(
-                child_plan,
-                connect=connect,
-                runner=runner,
-                runtime_prefix=runtime_prefix,
-                context=context,
-            )
-        if application_runtime is not None:
-            _execute_application_runtime(
-                application_runtime,
-                mode=str(plan.get("mode") or "install"),
-                runtime_prefix=runtime_prefix,
-                context=context,
-            )
+        graph_reinstall_lease = None
+        if plan.get("graph_reinstall") is True:
+            if connect is None:
+                raise ExecutionError("Graph reinstall requires a Core connection")
+            removal_order = plan.get("removal_order")
+            if not isinstance(removal_order, list):
+                raise ExecutionError("Graph reinstall requires a removal_order")
+            # Runtime-backed graph reinstalls are already fenced by the outer
+            # composite operation. Database-only plans need their own lease.
+            if not context.defer_runtime:
+                package = plan.get("package")
+                root_application_name = (
+                    str(package.get("application_name"))
+                    if isinstance(package, dict) else ""
+                )
+                if not root_application_name:
+                    raise ExecutionError(
+                        "Graph reinstall requires a root package application_name"
+                    )
+                record = begin_operation(
+                    connect=connect, runner=runner, operation_id=str(uuid.uuid4()),
+                    application_name=root_application_name, mode="reinstall",
+                )
+                graph_reinstall_lease = acquire_operation_lease(
+                    connect=connect, runner=runner, operation_id=record.operation_id,
+                    lease_token=uuid.uuid4().hex,
+                )
+        try:
+            if plan.get("graph_reinstall") is True:
+                removal_order = plan.get("removal_order")
+                assert isinstance(removal_order, list)
+                for application_name in removal_order:
+                    report_progress(
+                        f"Removing {application_name} before graph reinstall..."
+                    )
+                    delete_application(
+                        connect=connect,
+                        runner=runner,
+                        application_name=str(application_name),
+                        fail_on_not_found="N",
+                    )
+            for child_plan in packages:
+                if not isinstance(child_plan, dict):
+                    raise ExecutionError("Multi-package plan entries must be objects")
+                execute_plan(
+                    child_plan,
+                    connect=connect,
+                    runner=runner,
+                    runtime_prefix=runtime_prefix,
+                    context=context,
+                )
+            if application_runtime is not None:
+                _execute_application_runtime(
+                    application_runtime,
+                    mode=str(plan.get("mode") or "install"),
+                    runtime_prefix=runtime_prefix,
+                    context=context,
+                )
+        finally:
+            if graph_reinstall_lease is not None:
+                release_operation_lease(connect=connect, runner=runner, lease=graph_reinstall_lease)
         return 0
 
     execution = plan.get("execution")
@@ -220,6 +308,11 @@ def _execute_composite_operation(
                 step="policy_evaluated", state="RESOLVED",
                 content_ref=str(operation.get("plan_digest") or ""),
             )
+            record_operation_step(
+                connect=connect, runner=runner, lease=lease,
+                step="initiating_surface", state="RESOLVED",
+                content_ref=str(operation.get("initiating_surface") or mode),
+            )
         else:
             record_operation_step(
                 connect=connect, runner=runner, lease=lease,
@@ -229,7 +322,11 @@ def _execute_composite_operation(
         reachable = bool(prefix and prefix.is_dir() and os.access(prefix, os.W_OK))
         if reachable:
             _preflight_application_runtime(
-                graph, mode="resume" if database_complete else mode,
+                graph,
+                mode=(
+                    "reinstall" if plan.get("runtime_reconcile_replace") is True
+                    else "resume" if database_complete else mode
+                ),
                 runtime_prefix=runtime_prefix, context=context,
             )
             if not database_complete:
@@ -278,7 +375,10 @@ def _execute_composite_operation(
             _execute_application_runtime(
                 graph, mode="resume" if database_complete else mode,
                 runtime_prefix=runtime_prefix, context=context,
-                recovery_mode=record.mode.lower() if database_complete else None,
+                recovery_mode=(
+                    "reinstall" if plan.get("runtime_reconcile_replace") is True
+                    else record.mode.lower() if database_complete else None
+                ),
             )
             receipt = load_application_runtime_receipt(
                 prefix, expected_application=str(graph.get("root_package") or "")

@@ -24,6 +24,7 @@ def create_plan(
     allow_destructive: bool = False,
     confirm_delete_system: bool = False,
     approve: bool = False,
+    required_capabilities: tuple[str, ...] = (),
 ) -> dict[str, object]:
     manifest = source.manifest
     policy = environment.evaluate(
@@ -31,6 +32,7 @@ def create_plan(
         dirty=provenance.dirty,
         allow_destructive=allow_destructive,
         approve=approve,
+        required_capabilities=required_capabilities,
     )
     policy = _apply_core_reinstall_policy(
         policy,

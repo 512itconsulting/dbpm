@@ -90,6 +90,39 @@ def test_multi_package_plan_orders_dependencies_first(tmp_path: Path):
     assert [item["mode"] for item in plan["packages"]] == ["install", "install"]
 
 
+def test_graph_reinstall_removes_consumers_first_and_installs_dependencies_first(tmp_path: Path):
+    base = tmp_path / "base"
+    consumer = tmp_path / "consumer"
+    _write_package(base, name="fixture_base")
+    _write_package(consumer, name="fixture_consumer", dependency=("fixture_base", "1.0.0"))
+    capabilities = frozenset({
+        "DBPM_ALLOW_MUTABLE_SOURCE",
+        "DBPM_ALLOW_SAME_VERSION_REPLACE",
+        "DBPM_ALLOW_GRAPH_RESET",
+    })
+    plan = create_multi_package_plan(
+        mode="reinstall",
+        source=load_package_source(str(consumer)),
+        dependency_sources=[load_package_source(str(base))],
+        environment=resolve_deployment_policy(None).__class__(False, capabilities=capabilities),
+        installed_states={
+            "FIXTURE_BASE": {"version": "1.0.0", "deploy_status": "C"},
+            "FIXTURE_CONSUMER": {"version": "1.0.0", "deploy_status": "C"},
+        },
+        allow_destructive=True,
+        graph_reinstall=True,
+        required_capabilities=("DBPM_ALLOW_GRAPH_RESET",),
+    )
+
+    assert plan["execution_order"] == ["FIXTURE_BASE", "FIXTURE_CONSUMER"]
+    assert plan["removal_order"] == ["FIXTURE_CONSUMER", "FIXTURE_BASE"]
+    assert [item["mode"] for item in plan["packages"]] == ["reinstall", "reinstall"]
+    assert all(
+        action.get("type") != "delete_application"
+        for item in plan["packages"] for action in item["pre_actions"]
+    )
+
+
 def test_multi_package_plan_skips_satisfied_installed_dependency(tmp_path: Path):
     base = tmp_path / "base"
     consumer = tmp_path / "consumer"

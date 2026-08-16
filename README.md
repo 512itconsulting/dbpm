@@ -224,6 +224,8 @@ export DBPM_DB_DSN="tns_alias_or_host/service"
 | [`dbpm install`](docs/commands/install.md) | Install a package not yet registered in Core |
 | [`dbpm upgrade`](docs/commands/upgrade.md) | Upgrade an installed package to a higher version |
 | [`dbpm reinstall`](docs/commands/reinstall.md) | Destructively reinstall a package |
+| [`dbpm dev reset`](docs/commands/dev-reset.md) | Policy-gated local package or graph replacement |
+| [`dbpm dev reset-environment`](docs/commands/dev-reset-environment.md) | Remove every non-CORE application from a disposable schema |
 | [`dbpm resume`](docs/commands/resume.md) | Resume a running or failed deployment |
 | [`dbpm validate`](docs/commands/validate.md) | Run a package's validation script |
 | [`dbpm uninstall`](docs/commands/uninstall.md) | Remove an application and its managed runtime |

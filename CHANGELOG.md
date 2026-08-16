@@ -15,7 +15,15 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Resume runtime work without replaying a database install or upgrade after
   Core confirms the database phase completed.
 - Add `dbpm runtime reconcile` for receipt-backed structural runtime repair;
-  conflicting replacement remains capability-gated for Phase 3.
+  conflicting replacement requires `DBPM_ALLOW_RUNTIME_REPLACE`.
+- Add Core-held lifecycle capability enforcement for mutable sources,
+  same-version replacement, runtime replacement, graph reset, and complete
+  environment reset.
+- Add graph-aware reinstall with dependency sources, consumer-first removal,
+  dependency-first installation, and graph-wide runtime replacement.
+- Add `dbpm dev reset` as an audited command surface over canonical reinstall,
+  and `dbpm dev reset-environment --keep CORE` for explicitly disposable
+  schemas.
 - Report concise deployment progress on stderr while preparing plans, checking
   package state, executing database deployments, and staging and activating
   application runtimes. `--verbose` exposes detailed source resolution and

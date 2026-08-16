@@ -683,6 +683,162 @@ def test_execute_plan_runs_core_teardown_before_reinstall_script(tmp_path, monke
     assert logs[1].endswith("-002-CORE-reinstall.log")
 
 
+def test_graph_reinstall_deletes_consumer_first_before_any_install(tmp_path, monkeypatch):
+    events = []
+    plan = {
+        "mode": "reinstall",
+        "graph_reinstall": True,
+        "package": {"application_name": "CONSUMER"},
+        "removal_order": ["CONSUMER", "BASE"],
+        "packages": [
+            {
+                "mode": "reinstall",
+                "package": {"application_name": "BASE"},
+                "execution": {"script_ref": "/tmp/base.sql", "arguments": [], "stdin": None},
+                "pre_actions": [], "post_actions": [],
+            },
+            {
+                "mode": "reinstall",
+                "package": {"application_name": "CONSUMER"},
+                "execution": {"script_ref": "/tmp/consumer.sql", "arguments": [], "stdin": None},
+                "pre_actions": [], "post_actions": [],
+            },
+        ],
+    }
+    monkeypatch.setattr(
+        "dbpm.executor.delete_application",
+        lambda **kwargs: events.append(("delete", kwargs["application_name"])),
+    )
+    monkeypatch.setattr(
+        "dbpm.executor._run_command",
+        lambda command, **kwargs: events.append(("install", str(command[-1]))) or 0,
+    )
+    record = OperationRecord("op-1", "CONSUMER", "reinstall", "RESOLVED", 0, None, None)
+    lease = OperationLease(record.operation_id, 1, "token", "expiry")
+    monkeypatch.setattr("dbpm.executor.begin_operation", lambda **kwargs: record)
+    monkeypatch.setattr("dbpm.executor.acquire_operation_lease", lambda **kwargs: lease)
+    monkeypatch.setattr(
+        "dbpm.executor.release_operation_lease",
+        lambda **kwargs: events.append(("release", kwargs["lease"].operation_id)),
+    )
+
+    execute_plan(plan, connect="user/pass@db", runner="sql", context=None)
+
+    assert events[:2] == [("delete", "CONSUMER"), ("delete", "BASE")]
+    assert [kind for kind, _ in events[2:4]] == ["install", "install"]
+    assert events[-1] == ("release", "op-1")
+
+
+def test_graph_reinstall_releases_lease_when_delete_fails(monkeypatch):
+    plan = {
+        "mode": "reinstall",
+        "graph_reinstall": True,
+        "package": {"application_name": "CONSUMER"},
+        "removal_order": ["CONSUMER"],
+        "packages": [],
+    }
+    record = OperationRecord("op-graph", "CONSUMER", "reinstall", "RESOLVED", 0, None, None)
+    lease = OperationLease(record.operation_id, 1, "token", "expiry")
+    released = []
+    monkeypatch.setattr("dbpm.executor.begin_operation", lambda **kwargs: record)
+    monkeypatch.setattr("dbpm.executor.acquire_operation_lease", lambda **kwargs: lease)
+    monkeypatch.setattr(
+        "dbpm.executor.delete_application",
+        lambda **kwargs: (_ for _ in ()).throw(ExecutionError("boom")),
+    )
+    monkeypatch.setattr(
+        "dbpm.executor.release_operation_lease",
+        lambda **kwargs: released.append(kwargs["lease"].operation_id),
+    )
+
+    with pytest.raises(ExecutionError, match="boom"):
+        execute_plan(plan, connect="user/pass@db", runner="sql")
+
+    assert released == ["op-graph"]
+
+
+def test_graph_reinstall_reuses_outer_composite_lease(monkeypatch):
+    plan = {
+        "mode": "reinstall",
+        "graph_reinstall": True,
+        "package": {"application_name": "CONSUMER"},
+        "removal_order": ["CONSUMER"],
+        "packages": [],
+    }
+    monkeypatch.setattr(
+        "dbpm.executor.begin_operation",
+        lambda **kwargs: pytest.fail("outer composite lease should be reused"),
+    )
+    monkeypatch.setattr("dbpm.executor.delete_application", lambda **kwargs: None)
+    from dbpm.executor import _new_execution_context
+    context = _new_execution_context()
+    context.defer_runtime = True
+
+    assert execute_plan(
+        plan, connect="user/pass@db", runner="sql", context=context
+    ) == 0
+
+
+def test_environment_reset_acquires_and_releases_operation_lease(tmp_path, monkeypatch):
+    events = []
+    plan = {
+        "environment_reset": True,
+        "removal_order": ["CONSUMER", "BASE"],
+        "runtime_removals": [],
+    }
+    monkeypatch.setattr(
+        "dbpm.executor.delete_application",
+        lambda **kwargs: events.append(("delete", kwargs["application_name"])),
+    )
+    monkeypatch.setattr(
+        "dbpm.executor.get_installed_application_graph",
+        lambda **kwargs: (["CORE"], []),
+    )
+    record = OperationRecord("op-env", "CORE", "environment-reset", "RESOLVED", 0, None, None)
+    lease = OperationLease(record.operation_id, 1, "token", "expiry")
+    begin_calls = []
+    monkeypatch.setattr(
+        "dbpm.executor.begin_operation",
+        lambda **kwargs: begin_calls.append(kwargs) or record,
+    )
+    monkeypatch.setattr("dbpm.executor.acquire_operation_lease", lambda **kwargs: lease)
+    monkeypatch.setattr(
+        "dbpm.executor.release_operation_lease",
+        lambda **kwargs: events.append(("release", kwargs["lease"].operation_id)),
+    )
+
+    assert execute_plan(plan, connect="user/pass@db", runner="sql", context=None) == 0
+
+    assert begin_calls[0]["application_name"] == "CORE"
+    assert events == [("delete", "CONSUMER"), ("delete", "BASE"), ("release", "op-env")]
+
+
+def test_environment_reset_releases_lease_even_when_delete_fails(tmp_path, monkeypatch):
+    plan = {
+        "environment_reset": True,
+        "removal_order": ["CONSUMER"],
+        "runtime_removals": [],
+    }
+    monkeypatch.setattr(
+        "dbpm.executor.delete_application",
+        lambda **kwargs: (_ for _ in ()).throw(ExecutionError("boom")),
+    )
+    record = OperationRecord("op-env", "CORE", "environment-reset", "RESOLVED", 0, None, None)
+    lease = OperationLease(record.operation_id, 1, "token", "expiry")
+    released = []
+    monkeypatch.setattr("dbpm.executor.begin_operation", lambda **kwargs: record)
+    monkeypatch.setattr("dbpm.executor.acquire_operation_lease", lambda **kwargs: lease)
+    monkeypatch.setattr(
+        "dbpm.executor.release_operation_lease",
+        lambda **kwargs: released.append(kwargs["lease"].operation_id),
+    )
+
+    with pytest.raises(ExecutionError):
+        execute_plan(plan, connect="user/pass@db", runner="sql", context=None)
+
+    assert released == ["op-env"]
+
+
 def test_execute_plan_runs_record_post_action_after_script(tmp_path, monkeypatch):
     monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
     payload = {
