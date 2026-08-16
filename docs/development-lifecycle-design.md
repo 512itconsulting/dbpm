@@ -293,7 +293,10 @@ replacing that look.
 
 Capability keys are the enforcement mechanism dbpm actually reads and checks;
 `DEPLOY_LOCKED=N` plus a `DBPM_LIFECYCLE` value is a documented profile that
-expands to a set of these keys, not a parallel code path:
+will expand to a set of these keys, not a parallel enforcement path. dbpm
+currently consumes and enforces the explicit keys; Core-side profile expansion
+and administrative provisioning are deferred to the
+[Core lifecycle integration follow-up](core-operation-api-followup.md#lifecycle-capability-profiles-and-provisioning):
 
 ```text
 DBPM_ALLOW_MUTABLE_SOURCE=Y
@@ -978,10 +981,16 @@ Phase 2 is done when:
 
 ### Phase 3: Development workflows
 
-1. Add Core developer/disposable lifecycle capabilities.
+1. Consume and enforce Core-held lifecycle capability keys.
 2. Add graph-aware reinstall with dependency sources.
 3. Add `dbpm dev reset` for same-version local replacement.
 4. Add `dbpm dev reset-environment --keep CORE` for disposable schemas.
+
+Phase 3 covers dbpm's fail-closed consumption of the explicit `DBPM_ALLOW_*`
+keys. Defining how Core administrators provision those keys and expanding the
+convenience `DBPM_LIFECYCLE=DEVELOPER`/`DISPOSABLE` profiles are deferred Core
+integration work, tracked separately in the
+[Core lifecycle integration follow-up](core-operation-api-followup.md#lifecycle-capability-profiles-and-provisioning).
 
 `dev reset` is policy-gated syntax over `reinstall`, not a second
 implementation — see [`dev reset` vs. graph-aware
