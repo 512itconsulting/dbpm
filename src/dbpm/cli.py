@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shlex
 import sys
+import uuid
 from pathlib import Path
 
 from .chain import ChainError, resolve_upgrade_chain
@@ -31,6 +33,7 @@ from .db import (
     get_application_state,
     get_core_deployment_metadata,
     get_deployment_provenance,
+    get_current_operation,
     get_reverse_dependencies,
 )
 from .environment import DeploymentPolicy, policy_from_core_values, resolve_deployment_policy
@@ -39,6 +42,7 @@ from .executor import execute_plan
 from .application_runtime import (
     load_retained_application_runtime_receipt,
     rollback_application_runtime,
+    validate_application_runtime_collisions,
 )
 from .lockfile import (
     LOCKFILE_NAME,
@@ -65,7 +69,12 @@ from .workspace import (
 )
 from .initializer import init_package, init_workspace, validate_package_name
 from .progress import report_progress
-from .lifecycle import load_lifecycle_receipt, snapshot_plan, write_lifecycle_receipt
+from .lifecycle import (
+    lifecycle_receipt_path,
+    load_lifecycle_receipt,
+    snapshot_plan,
+    write_lifecycle_receipt,
+)
 
 
 CONNECT_OPTIONS_CONFLICT_MESSAGE = (
@@ -96,6 +105,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "generate-scripts":
             _run_generate_scripts(args)
+            return 0
+        if args.command == "runtime":
+            _run_runtime(args)
             return 0
         if args.command == "plan":
             plan = _build_plan(args.mode, args, include_installed_state=_has_database_access(args))
@@ -177,6 +189,11 @@ def main(argv: list[str] | None = None) -> int:
                 )
             elif args.command == "uninstall" and args.source is None:
                 plan = _build_installed_uninstall_plan(args)
+            elif args.command == "resume" and args.runtime_prefix and (
+                args.source is None
+                or lifecycle_receipt_path(args.runtime_prefix).is_file()
+            ):
+                plan = _build_installed_resume_plan(args)
             else:
                 if args.command == "install" and args.source is None and not getattr(args, "package", None):
                     raise DbpmError("install requires a source or --lockfile")
@@ -318,6 +335,33 @@ def _run_registry(args: argparse.Namespace) -> None:
         token=token,
     )
     print(f"INDEXED={result.get('package', source.manifest.name)}@{result.get('version', source.manifest.version)}")
+
+
+def _run_runtime(args: argparse.Namespace) -> None:
+    if args.runtime_command != "reconcile":
+        raise DbpmError("Unknown runtime command")
+    if args.replace:
+        raise DbpmError(
+            "runtime reconcile --replace requires the Core capability "
+            "DBPM_ALLOW_RUNTIME_REPLACE; that capability is introduced in phase 3"
+        )
+    # Reconciliation is receipt-backed structural repair, not a policy escape
+    # hatch: it must respect the same DEPLOY_LOCKED=Y/--approve evaluation
+    # `_build_installed_resume_plan` already computed for `resume`. Nothing
+    # here overrides that result.
+    plan = _build_installed_resume_plan(args, allow_completed=True)
+    if args.dry_run:
+        graph = plan.get("application_runtime")
+        if not isinstance(graph, dict):
+            raise DbpmError("Installed lifecycle receipt has no application runtime graph")
+        classifications = validate_application_runtime_collisions(
+            graph, prefix=Path(args.runtime_prefix).expanduser().resolve(), mode="resume"
+        )
+        plan["runtime_reconciliation"] = {"classifications": list(classifications)}
+        _print_json(plan)
+        return
+    _execute_or_explain(plan, args)
+    report_progress(f"Runtime reconciliation completed successfully: {_package_progress_identity(plan)}")
 
 
 def _publish_receipt_path(receipt_output: str | None, source_arg: str, source_path: Path) -> Path:
@@ -462,8 +506,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     resume = subparsers.add_parser("resume", help="Resume a running or failed deployment")
-    _add_common_args(resume)
+    _add_common_args(resume, source_required=False)
     _add_execution_args(resume)
+    resume.add_argument("--application", help="Installed application operation to resume")
 
     validate = subparsers.add_parser("validate", help="Run a package validation script")
     _add_common_args(validate)
@@ -496,6 +541,18 @@ def _build_parser() -> argparse.ArgumentParser:
     rollback.add_argument("--runtime-prefix", required=True)
     rollback.add_argument("--target-generation", type=int)
     _add_database_args(rollback)
+
+    runtime = subparsers.add_parser("runtime", help="Reconcile application runtime state")
+    runtime_subparsers = runtime.add_subparsers(dest="runtime_command", required=True)
+    reconcile = runtime_subparsers.add_parser(
+        "reconcile", help="Restore runtime from the installed lifecycle receipt"
+    )
+    _add_common_args(reconcile, source_required=False)
+    _add_execution_args(reconcile)
+    reconcile.add_argument("--application", help="Installed application name")
+    reconcile.add_argument(
+        "--replace", action="store_true", help="Replace conflicting runtime destinations"
+    )
 
     workspace = subparsers.add_parser("workspace", help="Inspect a dbpm workspace")
     workspace_subparsers = workspace.add_subparsers(dest="workspace_command", required=True)
@@ -875,6 +932,67 @@ def _build_installed_uninstall_plan(args: argparse.Namespace) -> dict[str, objec
     return result
 
 
+def _build_installed_resume_plan(
+    args: argparse.Namespace, *, allow_completed: bool = False,
+) -> dict[str, object]:
+    if args.source is None and not args.application:
+        raise DbpmError("Source-free resume requires --application")
+    if not args.runtime_prefix:
+        raise DbpmError("Runtime recovery requires --runtime-prefix")
+    installed = load_lifecycle_receipt(runtime_prefix=args.runtime_prefix)
+    package = installed.get("package")
+    recorded_app = package.get("application_name") if isinstance(package, dict) else None
+    if args.application and str(recorded_app or "").upper() != args.application.upper():
+        raise DbpmError(
+            f"Installed lifecycle receipt is for {recorded_app}, not {args.application.upper()}"
+        )
+    operation = get_current_operation(
+        connect=_connect_spec(args), runner=args.runner, application_name=str(recorded_app)
+    )
+    if operation is None:
+        raise DbpmError(f"No recoverable composite operation exists for {recorded_app}")
+    if operation.state == "VALIDATED" and not allow_completed:
+        raise DbpmError(f"Operation {operation.operation_id} is already complete")
+    environment = _resolve_policy_for_plan("resume", args)
+    result = dict(installed)
+    plans = result.get("packages")
+    package_plans = plans if isinstance(plans, list) else [result]
+    updated_plans: list[dict[str, object]] = []
+    for item in package_plans:
+        if not isinstance(item, dict):
+            continue
+        updated = dict(item)
+        lifecycle = updated.get("lifecycle")
+        install = lifecycle.get("install") if isinstance(lifecycle, dict) else None
+        updated["mode"] = "resume"
+        updated["policy"] = environment.evaluate("resume", dirty=False, approve=args.approve)
+        updated["execution"] = {
+            "script": install.get("path") if isinstance(install, dict) else None,
+            "script_ref": install.get("ref") if isinstance(install, dict) else None,
+            "arguments": list(updated.get("execution", {}).get("arguments", [])),
+            "stdin": None,
+        }
+        app = updated.get("package")
+        app_name = app.get("application_name") if isinstance(app, dict) else None
+        updated["installed_state"] = _get_installed_state(args, str(app_name))
+        updated["operation_resume"] = True
+        updated_plans.append(updated)
+    result["mode"] = "resume"
+    result["operation"] = {
+        "operation_id": operation.operation_id,
+        "resume_existing": True,
+    }
+    if isinstance(plans, list):
+        result["packages"] = updated_plans
+    else:
+        result.update(updated_plans[0])
+        result["operation"] = {
+            "operation_id": operation.operation_id,
+            "resume_existing": True,
+        }
+    return result
+
+
 def _resolve_workspace_source_arg(
     raw_source: str | None,
     args: argparse.Namespace,
@@ -1070,8 +1188,12 @@ def _execute_or_explain(plan: dict[str, object], args: argparse.Namespace) -> No
             _enforce_major_upgrade_dependencies(child_plan, allow_dependent_break)
         if plan.get("mode") in {"bootstrap-core", "install", "upgrade", "reinstall", "resume"}:
             plan = snapshot_plan(plan, runtime_prefix=runtime_prefix)
+        plan = _prepare_composite_plan(plan, runtime_prefix=runtime_prefix, connect=connect)
         execute_plan(plan, connect=connect, runner=args.runner, runtime_prefix=runtime_prefix)
-        if plan.get("mode") in {"bootstrap-core", "install", "upgrade", "reinstall", "resume"}:
+        if (
+            plan.get("mode") in {"bootstrap-core", "install", "upgrade", "reinstall"}
+            and not isinstance(plan.get("operation"), dict)
+        ):
             write_lifecycle_receipt(plan, runtime_prefix=runtime_prefix)
         return
 
@@ -1085,9 +1207,37 @@ def _execute_or_explain(plan: dict[str, object], args: argparse.Namespace) -> No
     _enforce_major_upgrade_dependencies(plan, getattr(args, "allow_dependent_break", False))
     if plan.get("mode") in {"bootstrap-core", "install", "upgrade", "reinstall", "resume"}:
         plan = snapshot_plan(plan, runtime_prefix=runtime_prefix)
+    plan = _prepare_composite_plan(plan, runtime_prefix=runtime_prefix, connect=connect)
     execute_plan(plan, connect=connect, runner=args.runner, runtime_prefix=runtime_prefix)
-    if plan.get("mode") in {"bootstrap-core", "install", "upgrade", "reinstall", "resume"}:
+    if (
+        plan.get("mode") in {"bootstrap-core", "install", "upgrade", "reinstall"}
+        and not isinstance(plan.get("operation"), dict)
+    ):
         write_lifecycle_receipt(plan, runtime_prefix=runtime_prefix)
+
+
+def _prepare_composite_plan(
+    plan: dict[str, object], *, runtime_prefix: str | None, connect: ConnectSpec | None,
+) -> dict[str, object]:
+    if connect is None or not isinstance(plan.get("application_runtime"), dict):
+        return plan
+    mode = str(plan.get("mode") or "")
+    if mode not in {"install", "upgrade", "reinstall", "resume"}:
+        return plan
+    operation = plan.get("operation")
+    if not isinstance(operation, dict):
+        operation = {"operation_id": str(uuid.uuid4()), "resume_existing": False}
+        plan["operation"] = operation
+    operation["runtime_prefix"] = str(Path(runtime_prefix).expanduser().resolve()) if runtime_prefix else None
+    digest_input = dict(plan)
+    digest_input.pop("operation", None)
+    operation["plan_digest"] = hashlib.sha256(
+        json.dumps(digest_input, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    if mode != "resume":
+        receipt_path = write_lifecycle_receipt(plan, runtime_prefix=runtime_prefix)
+        operation["receipt_checksum"] = hashlib.sha256(receipt_path.read_bytes()).hexdigest()
+    return plan
 
 
 def _package_progress_identity(plan: dict[str, object]) -> str:
@@ -1297,6 +1447,8 @@ def _enforce_installed_state(plan: dict[str, object]) -> None:
                 f"{app_name} is not installed; use install"
                 f"{_suggest_commands(plan, ('install', []))}"
             )
+        if status == "C" and plan.get("operation_resume") is True:
+            return
         if status not in {"R", "F"}:
             raise DbpmError(f"{app_name} deployment status is {status}; resume requires R or F")
         return

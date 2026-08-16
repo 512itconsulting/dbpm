@@ -2775,6 +2775,22 @@ def test_uninstall_cli_exposes_destructive_runtime_options():
     assert args.allow_destructive is True
 
 
+def test_resume_accepts_source_free_application_recovery_options():
+    args = cli._build_parser().parse_args(
+        ["resume", "--application", "DEMO", "--runtime-prefix", "/opt/demo"]
+    )
+    assert args.source is None
+    assert args.application == "DEMO"
+
+
+def test_runtime_reconcile_replace_fails_closed_until_capability_exists(capsys):
+    result = cli.main(
+        ["runtime", "reconcile", "--application", "DEMO", "--runtime-prefix", "/opt/demo", "--replace"]
+    )
+    assert result == 2
+    assert "DBPM_ALLOW_RUNTIME_REPLACE" in capsys.readouterr().err
+
+
 def _lifecycle_package_plan(app_name: str, *, reason: str) -> dict[str, object]:
     return {
         "package": {"name": app_name.lower(), "application_name": app_name, "version": "1.0.0"},

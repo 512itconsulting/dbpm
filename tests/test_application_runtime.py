@@ -500,6 +500,32 @@ def test_resume_rejects_when_no_matching_generation(tmp_path: Path):
         )
 
 
+def test_resume_recovery_can_restage_when_no_generation_survived(
+    tmp_path: Path, monkeypatch,
+):
+    prefix = tmp_path / "app"
+    prefix.mkdir()
+    graph = {"root_package": "demo", "root_version": "1.0.0", "payloads": [], "commands": []}
+    expected = application_runtime_module.StagedApplicationRuntime(
+        path=prefix / ".dbpm/staging/new",
+        payload_root=prefix / ".dbpm/staging/new/packages",
+        log_files=(),
+    )
+    captured: dict[str, object] = {}
+
+    def fake_stage(*args, **kwargs):
+        captured.update(kwargs)
+        return expected
+
+    monkeypatch.setattr(application_runtime_module, "stage_application_runtime_graph", fake_stage)
+    resumed = resume_application_runtime_graph(
+        graph, prefix=prefix, log_dir=tmp_path / "logs", recovery_mode="upgrade"
+    )
+
+    assert resumed is expected
+    assert captured["mode"] == "upgrade"
+
+
 def test_garbage_collection_preserves_active_and_retained_payloads(tmp_path: Path):
     prefix = tmp_path / "app"
     prefix.mkdir()

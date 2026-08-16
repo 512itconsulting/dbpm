@@ -3,13 +3,26 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
 
 from .connect import ConnectSpec, build_sql_command
-from .db import delete_application, delete_system, record_deployment_provenance, stage_deployment_provenance
+from .db import (
+    acquire_operation_lease,
+    begin_operation,
+    delete_application,
+    delete_system,
+    get_current_operation,
+    get_application_state,
+    record_deployment_provenance,
+    record_operation_step,
+    renew_operation_lease,
+    release_operation_lease,
+    stage_deployment_provenance,
+)
 from .errors import ExecutionError
 from .progress import report_progress
 from .application_runtime import (
@@ -18,6 +31,7 @@ from .application_runtime import (
     validate_application_runtime_graph,
     resume_application_runtime_graph,
     garbage_collect_application_runtime,
+    load_application_runtime_receipt,
     uninstall_application_runtime_graph,
     validate_application_runtime_prefix,
     validate_application_runtime_collisions,
@@ -34,6 +48,7 @@ class _ExecutionContext:
     sequence: int = 0
     package_index: int = 0
     package_total: int = 0
+    defer_runtime: bool = False
 
 
 def execute_plan(
@@ -44,6 +59,10 @@ def execute_plan(
     runtime_prefix: str | None = None,
     context: _ExecutionContext | None = None,
 ) -> int:
+    if context is None and isinstance(plan.get("operation"), dict):
+        return _execute_composite_operation(
+            plan, connect=connect, runner=runner, runtime_prefix=runtime_prefix
+        )
     context = context or _new_execution_context()
     application_runtime = plan.get("application_runtime")
     if application_runtime is not None and not isinstance(application_runtime, dict):
@@ -53,14 +72,15 @@ def execute_plan(
         if not isinstance(packages, list):
             raise ExecutionError("Multi-package plan packages must be a list")
         context.package_total = len(packages)
-        if application_runtime is not None:
+        if application_runtime is not None and not context.defer_runtime:
             report_progress("Validating application runtime prefix...")
-        _preflight_application_runtime(
-            application_runtime,
-            mode=str(plan.get("mode") or "install"),
-            runtime_prefix=runtime_prefix,
-            context=context,
-        )
+        if not context.defer_runtime:
+            _preflight_application_runtime(
+                application_runtime,
+                mode=str(plan.get("mode") or "install"),
+                runtime_prefix=runtime_prefix,
+                context=context,
+            )
         for child_plan in packages:
             if not isinstance(child_plan, dict):
                 raise ExecutionError("Multi-package plan entries must be objects")
@@ -94,12 +114,13 @@ def execute_plan(
     if input_text is not None and not isinstance(input_text, str):
         raise ExecutionError("Plan execution stdin must be a string")
 
-    _preflight_application_runtime(
-        application_runtime,
-        mode=str(plan.get("mode") or "install"),
-        runtime_prefix=runtime_prefix,
-        context=context,
-    )
+    if not context.defer_runtime:
+        _preflight_application_runtime(
+            application_runtime,
+            mode=str(plan.get("mode") or "install"),
+            runtime_prefix=runtime_prefix,
+            context=context,
+        )
 
     if script_ref:
         if connect is None:
@@ -129,7 +150,7 @@ def execute_plan(
             raise ExecutionError(f"Deployment command failed with exit code {returncode}; see {log_file}")
         _execute_post_actions(plan, connect=connect, runner=runner)
 
-    if application_runtime is not None:
+    if application_runtime is not None and not context.defer_runtime:
         _execute_application_runtime(
             application_runtime,
             mode=str(plan.get("mode") or "install"),
@@ -137,6 +158,189 @@ def execute_plan(
             context=context,
         )
     return 0
+
+
+def _execute_composite_operation(
+    plan: dict[str, object], *, connect: str | ConnectSpec | None,
+    runner: str, runtime_prefix: str | None,
+) -> int:
+    if connect is None:
+        raise ExecutionError("Composite operations require a Core connection")
+    operation = plan.get("operation")
+    assert isinstance(operation, dict)
+    package = plan.get("package")
+    if not isinstance(package, dict):
+        raise ExecutionError("Composite operation requires a root package")
+    application_name = str(package.get("application_name") or package.get("name") or "")
+    mode = str(plan.get("mode") or "install")
+    operation_id = str(operation.get("operation_id") or uuid.uuid4())
+    resume_existing = bool(operation.get("resume_existing"))
+    record = (
+        get_current_operation(
+            connect=connect, runner=runner, application_name=application_name
+        )
+        if resume_existing
+        else begin_operation(
+            connect=connect, runner=runner, operation_id=operation_id,
+            application_name=application_name, mode=mode,
+        )
+    )
+    if record is None:
+        raise ExecutionError(f"No recoverable operation exists for {application_name}")
+    lease = acquire_operation_lease(
+        connect=connect, runner=runner, operation_id=record.operation_id,
+        lease_token=uuid.uuid4().hex,
+    )
+    context = _new_execution_context()
+    context.defer_runtime = True
+    graph = plan.get("application_runtime")
+    assert isinstance(graph, dict)
+    prefix = Path(runtime_prefix).expanduser().resolve() if runtime_prefix else None
+    database_complete = record.state in {
+        "DATABASE_COMPLETE", "RUNTIME_UNREACHABLE", "RUNTIME_ACTIVE", "VALIDATED"
+    }
+    if resume_existing and not database_complete:
+        # The recorded operation state is the authoritative evidence of what
+        # completed. Only fall back to a live Core status check when that
+        # evidence doesn't already show the database phase finished — this
+        # covers a crash between database completion and the step-evidence
+        # write, without ever discarding evidence that already says "done".
+        database_complete = _database_evidence_valid(
+            plan, connect=connect, runner=runner
+        )
+    try:
+        if not database_complete:
+            record_operation_step(
+                connect=connect, runner=runner, lease=lease,
+                step="resolved", state="RESOLVED",
+                content_ref=str(operation.get("plan_digest") or ""),
+            )
+            record_operation_step(
+                connect=connect, runner=runner, lease=lease,
+                step="policy_evaluated", state="RESOLVED",
+                content_ref=str(operation.get("plan_digest") or ""),
+            )
+        else:
+            record_operation_step(
+                connect=connect, runner=runner, lease=lease,
+                step="database_reverified", state="DATABASE_COMPLETE",
+                content_ref=application_name,
+            )
+        reachable = bool(prefix and prefix.is_dir() and os.access(prefix, os.W_OK))
+        if reachable:
+            _preflight_application_runtime(
+                graph, mode="resume" if database_complete else mode,
+                runtime_prefix=runtime_prefix, context=context,
+            )
+            if not database_complete:
+                record_operation_step(
+                    connect=connect, runner=runner, lease=lease,
+                    step="runtime_staged", state="RUNTIME_STAGED", content_ref=str(prefix),
+                )
+                record_operation_step(
+                    connect=connect, runner=runner, lease=lease,
+                    step="collisions_validated", state="RUNTIME_STAGED",
+                    content_ref=str(prefix),
+                )
+        if not database_complete:
+            lease = renew_operation_lease(connect=connect, runner=runner, lease=lease)
+            record_operation_step(
+                connect=connect, runner=runner, lease=lease,
+                step="database_started", state="RUNTIME_STAGED", content_ref=application_name,
+            )
+            try:
+                execute_plan(
+                    plan, connect=connect, runner=runner,
+                    runtime_prefix=runtime_prefix, context=context,
+                )
+            except Exception:
+                record_operation_step(
+                    connect=connect, runner=runner, lease=lease,
+                    step="database", state="FAILED", content_ref="database",
+                )
+                raise
+            record_operation_step(
+                connect=connect, runner=runner, lease=lease,
+                step="database", state="DATABASE_COMPLETE", content_ref=application_name,
+            )
+        if not reachable:
+            record_operation_step(
+                connect=connect, runner=runner, lease=lease,
+                step="runtime_reachability", state="RUNTIME_UNREACHABLE",
+                content_ref=str(operation.get("receipt_checksum") or ""),
+            )
+            raise ExecutionError(
+                f"Runtime prefix is unreachable: {runtime_prefix}; database phase is complete. "
+                "Run `dbpm runtime reconcile` when it is reachable."
+            )
+        lease = renew_operation_lease(connect=connect, runner=runner, lease=lease)
+        try:
+            _execute_application_runtime(
+                graph, mode="resume" if database_complete else mode,
+                runtime_prefix=runtime_prefix, context=context,
+                recovery_mode=record.mode.lower() if database_complete else None,
+            )
+            receipt = load_application_runtime_receipt(
+                prefix, expected_application=str(graph.get("root_package") or "")
+            )
+        except Exception:
+            if not prefix.is_dir() or not os.access(prefix, os.W_OK):
+                record_operation_step(
+                    connect=connect, runner=runner, lease=lease,
+                    step="runtime_reachability", state="RUNTIME_UNREACHABLE",
+                    content_ref=str(operation.get("receipt_checksum") or ""),
+                )
+            raise
+        record_operation_step(
+            connect=connect, runner=runner, lease=lease,
+            step="runtime_active", state="RUNTIME_ACTIVE",
+            content_ref=str(receipt.generation),
+        )
+        validate_application_runtime_graph(graph, prefix=prefix, log_dir=context.log_dir)
+        record_operation_step(
+            connect=connect, runner=runner, lease=lease,
+            step="validated", state="VALIDATED", content_ref=str(receipt.generation),
+        )
+        record_operation_step(
+            connect=connect, runner=runner, lease=lease,
+            step="composite_complete", state="VALIDATED",
+            content_ref=str(receipt.generation),
+        )
+        return 0
+    finally:
+        release_operation_lease(connect=connect, runner=runner, lease=lease)
+
+
+def _database_evidence_valid(
+    plan: dict[str, object], *, connect: str | ConnectSpec, runner: str,
+) -> bool:
+    packages = plan.get("packages")
+    items = packages if isinstance(packages, list) else [plan]
+    checked = False
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        execution = item.get("execution")
+        package = item.get("package")
+        if not isinstance(execution, dict) or not execution.get("script"):
+            continue
+        if not isinstance(package, dict):
+            return False
+        app_name = package.get("application_name")
+        if not isinstance(app_name, str):
+            return False
+        checked = True
+        state = get_application_state(
+            connect=connect, runner=runner, application_name=app_name
+        )
+        if state is None or state.deploy_status != "C":
+            return False
+    return checked or all(
+        isinstance(item, dict)
+        and isinstance(item.get("execution"), dict)
+        and not item["execution"].get("script")
+        for item in items
+    )
 
 
 def _preflight_application_runtime(
@@ -174,6 +378,7 @@ def _execute_application_runtime(
     mode: str,
     runtime_prefix: str | None,
     context: _ExecutionContext,
+    recovery_mode: str | None = None,
 ) -> None:
     if not runtime_prefix:
         raise ExecutionError("Application runtime requires --runtime-prefix")
@@ -200,9 +405,12 @@ def _execute_application_runtime(
             graph,
             prefix=prefix,
             log_dir=context.log_dir,
+            recovery_mode=recovery_mode,
         )
         report_progress("Activating application runtime...")
-        activate_staged_application_runtime(graph, staged, prefix=prefix, mode=mode)
+        activate_staged_application_runtime(
+            graph, staged, prefix=prefix, mode=recovery_mode or mode
+        )
         report_progress("Cleaning retained runtime generations...")
         garbage_collect_application_runtime(prefix, retain_generations=1)
         return

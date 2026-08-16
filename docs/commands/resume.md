@@ -1,11 +1,16 @@
 # dbpm resume
 
-Re-run the deployment script for a package whose Core deployment status is `R` (running) or `F` (failed). Preserves the existing application registration and any data already written — this is the roll-forward path after a partial or failed deployment.
+Roll an interrupted deployment forward from its durable composite-operation
+evidence. Database scripts are replayed only when the database phase is not
+confirmed complete. If Core records `DATABASE_COMPLETE` or
+`RUNTIME_UNREACHABLE`, resume continues with runtime work without running the
+database install or upgrade again.
 
 ## Syntax
 
 ```
-dbpm resume source [--approve] [--dry-run]
+dbpm resume [source | --application NAME] [--approve] [--dry-run]
+                  --runtime-prefix PATH
                   [--package NAME] [--registry-url URL]
                   [--connect STRING | --connect-name NAME] [--runner EXEC]
 ```
@@ -37,7 +42,9 @@ flowchart LR
 
 | Argument | Default | Description |
 |---|---|---|
-| `source` | required | Package source. See [source types](source-types.md). |
+| `source` | optional with `--application` | Package source. Recovery prefers the checksum-verified installed lifecycle receipt when available. |
+| `--application` | inferred from source/receipt | Installed application operation to resume. |
+| `--runtime-prefix` | required for runtime recovery | Runtime prefix containing the installed lifecycle receipt. |
 | `--approve` | false | Approve policy-gated actions. |
 | `--dry-run` | false | Print the deployment plan as JSON without executing. |
 | `--package` | none | Package name or application name to select when `source` is a workspace root. |
@@ -51,7 +58,8 @@ flowchart LR
 dbpm fails before running any script if:
 
 - The package is not installed → use `dbpm install`.
-- The package has a complete (`C`) deployment status → no resume needed.
+- Core has no recoverable composite operation for the application.
+- The composite operation is already `VALIDATED`.
 - The package has a status other than `R` or `F`.
 - Core `DEPLOY_LOCKED=Y` and `--approve` is not provided.
 
@@ -59,8 +67,10 @@ dbpm fails before running any script if:
 
 | Scenario | Command |
 |---|---|
-| Deployment script failed partway through | `dbpm resume` |
+| Deployment script failed partway through | `dbpm resume source` |
 | Deployment was interrupted (status `R`) | `dbpm resume` |
+| Database completed but runtime failed | `dbpm resume --application APP --runtime-prefix PATH` |
+| Runtime host was temporarily unreachable | `dbpm runtime reconcile` |
 | Package is not yet installed | `dbpm install` |
 | Want a clean-slate reinstall | `dbpm reinstall` |
 
@@ -85,6 +95,11 @@ dbpm resume ~/repos/utl_interval --dry-run --connect user/pass@db
 
 ## Notes
 
-- `resume` re-runs the full deployment script from the beginning. Deployment scripts should be idempotent — safe to re-run after a partial execution.
+- Resume acquires a fenced Core-held lease and increments the operation attempt
+  before doing work. An unexpired lease held by another attempt fails closed.
+- Evidence from an older attempt is reverified. Confirmed database completion
+  is never replayed merely because the current attempt number changed.
+- When database completion cannot be confirmed, deployment scripts are replayed
+  and therefore remain required to be idempotent.
 - `resume` does not call `pkg_application.delete_application_p`. Application registration and data are preserved.
 - For upgrade failures, `resume` re-runs all upgrade steps from step 1 (including chain steps). The same idempotency requirement applies.

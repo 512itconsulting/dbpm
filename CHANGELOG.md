@@ -9,6 +9,13 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Coordinate database and application-runtime deployment as a durable composite
+  operation stored in Core, with fenced time-bound leases, monotonic recovery
+  attempts, per-step evidence, and explicit recovery states.
+- Resume runtime work without replaying a database install or upgrade after
+  Core confirms the database phase completed.
+- Add `dbpm runtime reconcile` for receipt-backed structural runtime repair;
+  conflicting replacement remains capability-gated for Phase 3.
 - Report concise deployment progress on stderr while preparing plans, checking
   package state, executing database deployments, and staging and activating
   application runtimes. `--verbose` exposes detailed source resolution and

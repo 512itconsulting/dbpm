@@ -25,6 +25,23 @@ from dbpm.db import (
 )
 
 
+def test_operation_lease_sql_uses_core_row_lock_and_fencing():
+    from dbpm.db import _acquire_operation_lease_sql, _record_operation_step_sql, OperationLease
+
+    operation_id = "12345678-1234-1234-1234-123456789abc"
+    acquire = _acquire_operation_lease_sql(operation_id, "token", 300)
+    assert "FOR UPDATE" in acquire
+    assert "DBPM_OPERATION_BUSY" in acquire
+    assert "l_attempt := l_attempt + 1" in acquire
+
+    evidence = _record_operation_step_sql(
+        OperationLease(operation_id, 2, "token", "expiry"),
+        "database", "DATABASE_COMPLETE", "DEMO",
+    )
+    assert "lease was fenced by a newer attempt" in evidence
+    assert "DATABASE_COMPLETE" in evidence
+
+
 def test_core_check_sql_includes_version_check():
     sql = _core_check_sql("3.0.0")
 

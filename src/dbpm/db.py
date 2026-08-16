@@ -11,6 +11,7 @@ from .errors import ExecutionError
 
 
 DELETE_SYSTEM_CONFIRMATION = "DELETE ALL NON-CORE APPLICATIONS"
+_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD"T"HH24:MI:SS.FF3TZH:TZM'
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,25 @@ class ApplicationState:
 class DeploymentMetadata:
     deploy_locked: str | None
     deploy_environment: str | None = None
+
+
+@dataclass(frozen=True)
+class OperationRecord:
+    operation_id: str
+    application_name: str
+    mode: str
+    state: str
+    attempt_number: int
+    lease_token: str | None
+    lease_expiry: str | None
+
+
+@dataclass(frozen=True)
+class OperationLease:
+    operation_id: str
+    attempt_number: int
+    lease_token: str
+    lease_expiry: str
 
 
 def run_sql_script(
@@ -213,6 +233,107 @@ def get_core_deployment_metadata(
     if result.returncode != 0:
         raise ExecutionError(_format_sql_failure("Core deployment metadata query failed", result))
     return _parse_core_deployment_metadata(result.stdout)
+
+
+def begin_operation(
+    *, connect: str | ConnectSpec, runner: str, operation_id: str,
+    application_name: str, mode: str,
+) -> OperationRecord:
+    result = run_sql_script(
+        sql=_begin_operation_sql(operation_id, application_name, mode),
+        connect=connect, runner=runner, label="dbpm-begin-operation",
+    )
+    if result.returncode != 0:
+        raise ExecutionError(_format_sql_failure("Begin operation failed", result))
+    for raw in result.stdout.splitlines():
+        line = raw.strip()
+        if line.startswith("DBPM_OPERATION_BUSY|"):
+            _, previous_id, expiry = line.split("|", 2)
+            raise ExecutionError(
+                f"A composite operation ({previous_id}) is already in progress for "
+                f"{application_name} until {expiry}; use resume or runtime reconcile "
+                "instead of starting a new operation"
+            )
+    record = _parse_operation_record(result.stdout)
+    if record is None:
+        raise ExecutionError("Core did not return the new operation record")
+    return record
+
+
+def get_current_operation(
+    *, connect: str | ConnectSpec, runner: str, application_name: str,
+) -> OperationRecord | None:
+    result = run_sql_script(
+        sql=_current_operation_sql(application_name), connect=connect,
+        runner=runner, label="dbpm-current-operation",
+    )
+    if result.returncode != 0:
+        raise ExecutionError(_format_sql_failure("Operation lookup failed", result))
+    return _parse_operation_record(result.stdout)
+
+
+def acquire_operation_lease(
+    *, connect: str | ConnectSpec, runner: str, operation_id: str,
+    lease_token: str, lease_seconds: int = 3600,
+) -> OperationLease:
+    result = run_sql_script(
+        sql=_acquire_operation_lease_sql(operation_id, lease_token, lease_seconds),
+        connect=connect, runner=runner, label="dbpm-acquire-operation-lease",
+    )
+    if result.returncode != 0:
+        raise ExecutionError(_format_sql_failure("Operation lease acquisition failed", result))
+    for raw in result.stdout.splitlines():
+        line = raw.strip()
+        if line.startswith("DBPM_OPERATION_BUSY|"):
+            _, attempt, expiry = line.split("|", 2)
+            raise ExecutionError(
+                f"Operation lease is held by attempt {attempt} until {expiry}"
+            )
+        if line.startswith("DBPM_OPERATION_LEASE|"):
+            _, attempt, expiry = line.split("|", 2)
+            return OperationLease(operation_id, int(attempt), lease_token, expiry)
+    raise ExecutionError("Core did not return an operation lease")
+
+
+def record_operation_step(
+    *, connect: str | ConnectSpec, runner: str, lease: OperationLease,
+    step: str, state: str, content_ref: str = "",
+) -> None:
+    result = run_sql_script(
+        sql=_record_operation_step_sql(lease, step, state, content_ref),
+        connect=connect, runner=runner, label="dbpm-record-operation-step",
+    )
+    if result.returncode != 0:
+        raise ExecutionError(_format_sql_failure(f"Recording operation step {step} failed", result))
+
+
+def renew_operation_lease(
+    *, connect: str | ConnectSpec, runner: str, lease: OperationLease,
+    lease_seconds: int = 3600,
+) -> OperationLease:
+    result = run_sql_script(
+        sql=_renew_operation_lease_sql(lease, lease_seconds), connect=connect,
+        runner=runner, label="dbpm-renew-operation-lease",
+    )
+    if result.returncode != 0:
+        raise ExecutionError(_format_sql_failure("Operation lease renewal failed", result))
+    for raw in result.stdout.splitlines():
+        line = raw.strip()
+        if line.startswith("DBPM_OPERATION_LEASE|"):
+            _, attempt, expiry = line.split("|", 2)
+            return OperationLease(lease.operation_id, int(attempt), lease.lease_token, expiry)
+    raise ExecutionError("Core did not return the renewed operation lease")
+
+
+def release_operation_lease(
+    *, connect: str | ConnectSpec, runner: str, lease: OperationLease,
+) -> None:
+    result = run_sql_script(
+        sql=_release_operation_lease_sql(lease), connect=connect,
+        runner=runner, label="dbpm-release-operation-lease",
+    )
+    if result.returncode != 0:
+        raise ExecutionError(_format_sql_failure("Operation lease release failed", result))
 
 
 def _write_temp_script(sql: str, label: str) -> Path:
@@ -475,6 +596,282 @@ EXIT SUCCESS
 """
 
 
+def _operation_key(operation_id: str, field: str) -> str:
+    normalized = operation_id.replace("-", "").upper()
+    if len(normalized) != 32 or any(char not in "0123456789ABCDEF" for char in normalized):
+        raise ExecutionError("operation_id must be a UUID")
+    return f"DBPM_OP_{normalized}_{field}"
+
+
+def _current_operation_key(application_name: str) -> str:
+    return f"DBPM_CURRENT_OP_{application_name.upper()}"
+
+
+def _operation_output_sql(operation_id_expr: str) -> str:
+    return f"""
+   DBMS_OUTPUT.PUT_LINE(
+      'DBPM_OPERATION|' || {operation_id_expr} || '|'
+      || pkg_app_dict.get_val_f('CORE', 'DBPM_OP_' || REPLACE(UPPER({operation_id_expr}), '-', '') || '_APP') || '|'
+      || pkg_app_dict.get_val_f('CORE', 'DBPM_OP_' || REPLACE(UPPER({operation_id_expr}), '-', '') || '_MODE') || '|'
+      || pkg_app_dict.get_val_f('CORE', 'DBPM_OP_' || REPLACE(UPPER({operation_id_expr}), '-', '') || '_STATE') || '|'
+      || pkg_app_dict.get_val_f('CORE', 'DBPM_OP_' || REPLACE(UPPER({operation_id_expr}), '-', '') || '_ATTEMPT') || '|'
+      || NVL(pkg_app_dict.get_val_f('CORE', 'DBPM_OP_' || REPLACE(UPPER({operation_id_expr}), '-', '') || '_TOKEN'), '') || '|'
+      || NVL(pkg_app_dict.get_val_f('CORE', 'DBPM_OP_' || REPLACE(UPPER({operation_id_expr}), '-', '') || '_EXPIRY'), '')
+   );
+"""
+
+
+def _begin_operation_sql(operation_id: str, application_name: str, mode: str) -> str:
+    # Known gap: this locks the CURRENT_OP pointer and checks the previous
+    # operation's lease, but begin_operation and acquire_operation_lease are
+    # still separate round-trips. Two concurrent first-ever begin_operation
+    # calls for the same not-yet-installed application can both see the
+    # other's operation as unleased ("not busy") and delete it out from under
+    # the caller. The loser's subsequent acquire_operation_lease then fails
+    # loudly (NO_DATA_FOUND -> non-zero exit -> ExecutionError) rather than
+    # corrupting state, so this is a spurious-failure risk, not a
+    # correctness one. Closing it fully needs begin+acquire merged into one
+    # atomic statement.
+    fields = {
+        "APP": application_name.upper(), "MODE": mode.upper(), "STATE": "RESOLVED",
+        "ATTEMPT": "0", "TOKEN": "", "EXPIRY": "",
+    }
+    inserts = "\n".join(
+        f"   INSERT INTO app_dictionary(application_name, key, value) VALUES "
+        f"('CORE', {_sql_literal(_operation_key(operation_id, field))}, {_sql_literal(value or '-')} );"
+        for field, value in fields.items()
+    )
+    pointer = _current_operation_key(application_name)
+    output = _operation_output_sql(_sql_literal(operation_id))
+    return f"""
+SET HEADING OFF
+SET FEEDBACK OFF
+SET PAGESIZE 0
+SET VERIFY OFF
+SET SERVEROUTPUT ON
+WHENEVER SQLERROR EXIT FAILURE ROLLBACK
+WHENEVER OSERROR EXIT FAILURE ROLLBACK
+DECLARE
+   l_previous_id app_dictionary.value%TYPE;
+   l_previous_prefix VARCHAR2(200);
+   l_token app_dictionary.value%TYPE;
+   l_expiry app_dictionary.value%TYPE;
+BEGIN
+   MERGE INTO app_dictionary d
+   USING (SELECT 'CORE' application_name, {_sql_literal(pointer)} key FROM dual) s
+      ON (d.application_name = s.application_name AND d.key = s.key)
+   WHEN NOT MATCHED THEN INSERT(application_name, key, value)
+      VALUES('CORE', {_sql_literal(pointer)}, '-');
+   SELECT value INTO l_previous_id FROM app_dictionary
+    WHERE application_name = 'CORE' AND key = {_sql_literal(pointer)} FOR UPDATE;
+   IF l_previous_id <> '-' THEN
+      l_previous_prefix := 'DBPM_OP_' || REPLACE(UPPER(l_previous_id), '-', '') || '_';
+      BEGIN
+         SELECT value INTO l_token FROM app_dictionary
+          WHERE application_name = 'CORE' AND key = l_previous_prefix || 'TOKEN';
+         SELECT value INTO l_expiry FROM app_dictionary
+          WHERE application_name = 'CORE' AND key = l_previous_prefix || 'EXPIRY';
+      EXCEPTION WHEN NO_DATA_FOUND THEN
+         l_token := '-';
+         l_expiry := '-';
+      END;
+      IF l_token <> '-' AND l_expiry <> '-'
+         AND TO_TIMESTAMP_TZ(l_expiry, {_sql_literal(_TIMESTAMP_TZ_FORMAT)}) > SYSTIMESTAMP THEN
+         DBMS_OUTPUT.PUT_LINE('DBPM_OPERATION_BUSY|' || l_previous_id || '|' || l_expiry);
+         ROLLBACK;
+         RETURN;
+      END IF;
+      DELETE FROM app_dictionary
+       WHERE application_name = 'CORE' AND key LIKE l_previous_prefix || '%';
+   END IF;
+{inserts}
+   UPDATE app_dictionary SET value = {_sql_literal(operation_id)}
+    WHERE application_name = 'CORE' AND key = {_sql_literal(pointer)};
+   COMMIT;
+{output}
+END;
+/
+EXIT SUCCESS
+"""
+
+
+def _current_operation_sql(application_name: str) -> str:
+    pointer = _current_operation_key(application_name)
+    output = _operation_output_sql("l_operation_id")
+    return f"""
+SET HEADING OFF
+SET FEEDBACK OFF
+SET PAGESIZE 0
+SET VERIFY OFF
+SET SERVEROUTPUT ON
+WHENEVER SQLERROR EXIT FAILURE
+WHENEVER OSERROR EXIT FAILURE
+DECLARE
+   l_operation_id app_dictionary.value%TYPE;
+BEGIN
+   SELECT MAX(value) INTO l_operation_id FROM app_dictionary
+    WHERE application_name = 'CORE' AND key = {_sql_literal(pointer)};
+   IF l_operation_id IS NOT NULL THEN
+{output}
+   END IF;
+END;
+/
+EXIT SUCCESS
+"""
+
+
+def _acquire_operation_lease_sql(operation_id: str, lease_token: str, lease_seconds: int) -> str:
+    if lease_seconds < 30 or lease_seconds > 3600:
+        raise ExecutionError("operation lease duration must be between 30 and 3600 seconds")
+    attempt_key = _operation_key(operation_id, "ATTEMPT")
+    token_key = _operation_key(operation_id, "TOKEN")
+    expiry_key = _operation_key(operation_id, "EXPIRY")
+    return f"""
+SET HEADING OFF
+SET FEEDBACK OFF
+SET VERIFY OFF
+SET SERVEROUTPUT ON
+WHENEVER SQLERROR EXIT FAILURE ROLLBACK
+WHENEVER OSERROR EXIT FAILURE ROLLBACK
+DECLARE
+   l_attempt NUMBER;
+   l_token VARCHAR2(100);
+   l_expiry VARCHAR2(100);
+   l_new_expiry VARCHAR2(100);
+BEGIN
+   SELECT TO_NUMBER(value) INTO l_attempt FROM app_dictionary
+    WHERE application_name = 'CORE' AND key = {_sql_literal(attempt_key)} FOR UPDATE;
+   SELECT value INTO l_token FROM app_dictionary
+    WHERE application_name = 'CORE' AND key = {_sql_literal(token_key)};
+   SELECT value INTO l_expiry FROM app_dictionary
+    WHERE application_name = 'CORE' AND key = {_sql_literal(expiry_key)};
+   IF l_token <> '-' AND l_expiry <> '-'
+      AND TO_TIMESTAMP_TZ(l_expiry, {_sql_literal(_TIMESTAMP_TZ_FORMAT)}) > SYSTIMESTAMP THEN
+      DBMS_OUTPUT.PUT_LINE('DBPM_OPERATION_BUSY|' || l_attempt || '|' || l_expiry);
+      ROLLBACK;
+      RETURN;
+   END IF;
+   l_attempt := l_attempt + 1;
+   l_new_expiry := TO_CHAR(SYSTIMESTAMP + NUMTODSINTERVAL({lease_seconds}, 'SECOND'), {_sql_literal(_TIMESTAMP_TZ_FORMAT)});
+   UPDATE app_dictionary SET value = TO_CHAR(l_attempt)
+    WHERE application_name = 'CORE' AND key = {_sql_literal(attempt_key)};
+   UPDATE app_dictionary SET value = {_sql_literal(lease_token)}
+    WHERE application_name = 'CORE' AND key = {_sql_literal(token_key)};
+   UPDATE app_dictionary SET value = l_new_expiry
+    WHERE application_name = 'CORE' AND key = {_sql_literal(expiry_key)};
+   COMMIT;
+   DBMS_OUTPUT.PUT_LINE('DBPM_OPERATION_LEASE|' || l_attempt || '|' || l_new_expiry);
+END;
+/
+EXIT SUCCESS
+"""
+
+
+def _record_operation_step_sql(
+    lease: OperationLease, step: str, state: str, content_ref: str,
+) -> str:
+    allowed_states = {"RESOLVED", "RUNTIME_STAGED", "DATABASE_COMPLETE", "RUNTIME_UNREACHABLE", "RUNTIME_ACTIVE", "VALIDATED", "FAILED"}
+    if state not in allowed_states:
+        raise ExecutionError(f"Unknown operation state: {state}")
+    normalized_step = "".join(char if char.isalnum() else "_" for char in step.upper())
+    evidence_key = _operation_key(lease.operation_id, f"EV_{normalized_step}")
+    state_key = _operation_key(lease.operation_id, "STATE")
+    token_key = _operation_key(lease.operation_id, "TOKEN")
+    expiry_key = _operation_key(lease.operation_id, "EXPIRY")
+    evidence = f"{lease.attempt_number}:{content_ref}"[:100]
+    return f"""
+SET HEADING OFF
+SET FEEDBACK OFF
+SET VERIFY OFF
+WHENEVER SQLERROR EXIT FAILURE ROLLBACK
+WHENEVER OSERROR EXIT FAILURE ROLLBACK
+DECLARE
+   l_token app_dictionary.value%TYPE;
+   l_expiry app_dictionary.value%TYPE;
+BEGIN
+   SELECT value INTO l_token FROM app_dictionary
+    WHERE application_name = 'CORE' AND key = {_sql_literal(token_key)} FOR UPDATE;
+   SELECT value INTO l_expiry FROM app_dictionary
+    WHERE application_name = 'CORE' AND key = {_sql_literal(expiry_key)};
+   IF l_token <> {_sql_literal(lease.lease_token)} OR l_expiry = '-'
+      OR TO_TIMESTAMP_TZ(l_expiry, {_sql_literal(_TIMESTAMP_TZ_FORMAT)}) <= SYSTIMESTAMP THEN
+      RAISE_APPLICATION_ERROR(-20001, 'DBPM operation lease was fenced by a newer attempt');
+   END IF;
+   UPDATE app_dictionary SET value = {_sql_literal(state)}
+    WHERE application_name = 'CORE' AND key = {_sql_literal(state_key)};
+   MERGE INTO app_dictionary d
+   USING (SELECT 'CORE' application_name, {_sql_literal(evidence_key)} key FROM dual) s
+      ON (d.application_name = s.application_name AND d.key = s.key)
+   WHEN MATCHED THEN UPDATE SET d.value = {_sql_literal(evidence)}, d.note = TO_CHAR(SYSTIMESTAMP, {_sql_literal(_TIMESTAMP_TZ_FORMAT)})
+   WHEN NOT MATCHED THEN INSERT(application_name, key, value, note)
+      VALUES('CORE', {_sql_literal(evidence_key)}, {_sql_literal(evidence)}, TO_CHAR(SYSTIMESTAMP, {_sql_literal(_TIMESTAMP_TZ_FORMAT)}));
+   COMMIT;
+END;
+/
+EXIT SUCCESS
+"""
+
+
+def _renew_operation_lease_sql(lease: OperationLease, lease_seconds: int) -> str:
+    if lease_seconds < 30 or lease_seconds > 3600:
+        raise ExecutionError("operation lease duration must be between 30 and 3600 seconds")
+    token_key = _operation_key(lease.operation_id, "TOKEN")
+    expiry_key = _operation_key(lease.operation_id, "EXPIRY")
+    return f"""
+SET HEADING OFF
+SET FEEDBACK OFF
+SET VERIFY OFF
+SET SERVEROUTPUT ON
+WHENEVER SQLERROR EXIT FAILURE ROLLBACK
+WHENEVER OSERROR EXIT FAILURE ROLLBACK
+DECLARE
+   l_new_expiry VARCHAR2(100);
+BEGIN
+   l_new_expiry := TO_CHAR(SYSTIMESTAMP + NUMTODSINTERVAL({lease_seconds}, 'SECOND'), {_sql_literal(_TIMESTAMP_TZ_FORMAT)});
+   UPDATE app_dictionary SET value = l_new_expiry
+    WHERE application_name = 'CORE' AND key = {_sql_literal(expiry_key)}
+      AND value <> '-'
+      AND TO_TIMESTAMP_TZ(value, {_sql_literal(_TIMESTAMP_TZ_FORMAT)}) > SYSTIMESTAMP
+      AND EXISTS (
+          SELECT 1 FROM app_dictionary
+           WHERE application_name = 'CORE' AND key = {_sql_literal(token_key)}
+             AND value = {_sql_literal(lease.lease_token)}
+      );
+   IF SQL%ROWCOUNT = 0 THEN
+      RAISE_APPLICATION_ERROR(-20001, 'DBPM operation lease was fenced by a newer attempt');
+   END IF;
+   COMMIT;
+   DBMS_OUTPUT.PUT_LINE('DBPM_OPERATION_LEASE|{lease.attempt_number}|' || l_new_expiry);
+END;
+/
+EXIT SUCCESS
+"""
+
+
+def _release_operation_lease_sql(lease: OperationLease) -> str:
+    token_key = _operation_key(lease.operation_id, "TOKEN")
+    expiry_key = _operation_key(lease.operation_id, "EXPIRY")
+    return f"""
+SET HEADING OFF
+SET FEEDBACK OFF
+SET VERIFY OFF
+WHENEVER SQLERROR EXIT FAILURE ROLLBACK
+BEGIN
+   UPDATE app_dictionary SET value = '-'
+    WHERE application_name = 'CORE' AND key = {_sql_literal(token_key)}
+      AND value = {_sql_literal(lease.lease_token)};
+   IF SQL%ROWCOUNT = 0 THEN
+      RAISE_APPLICATION_ERROR(-20001, 'DBPM operation lease was fenced by a newer attempt');
+   END IF;
+   UPDATE app_dictionary SET value = '-'
+    WHERE application_name = 'CORE' AND key = {_sql_literal(expiry_key)};
+   COMMIT;
+END;
+/
+EXIT SUCCESS
+"""
+
+
 def _parse_application_state(output: str) -> ApplicationState | None:
     for raw_line in output.splitlines():
         line = raw_line.strip()
@@ -506,6 +903,23 @@ def _parse_core_deployment_metadata(output: str) -> DeploymentMetadata:
         deploy_locked=values.get("DEPLOY_LOCKED"),
         deploy_environment=values.get("DEPLOY_ENVIRONMENT"),
     )
+
+
+def _parse_operation_record(output: str) -> OperationRecord | None:
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line.startswith("DBPM_OPERATION|"):
+            continue
+        parts = line.split("|", 7)
+        if len(parts) != 8:
+            raise ExecutionError(f"Unexpected operation output: {line}")
+        return OperationRecord(
+            operation_id=parts[1], application_name=parts[2], mode=parts[3],
+            state=parts[4], attempt_number=int(parts[5]),
+            lease_token=None if parts[6] in {"", "-"} else parts[6],
+            lease_expiry=None if parts[7] in {"", "-"} else parts[7],
+        )
+    return None
 
 
 def _parse_reverse_dependencies(output: str) -> list[str]:

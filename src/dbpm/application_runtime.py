@@ -347,6 +347,8 @@ def activate_staged_application_runtime(
         bin_path = prefix / "bin"
         bin_backup = prefix / APPLICATION_RECEIPT_DIR_NAME / f"bin-generation-{generation - 1}"
         staged_bin = staged.path / "bin"
+        if staged_bin.exists():
+            shutil.rmtree(staged_bin)
         staged_bin.mkdir()
         bin_activated = False
         journal_path = prefix / APPLICATION_RECEIPT_DIR_NAME / ACTIVATION_JOURNAL_FILE_NAME
@@ -677,7 +679,11 @@ def stage_application_runtime_graph(
                 payload.get("artifact"),
                 f"application runtime payload {package_name} artifact",
             )
-            environment = dict(os.environ)
+            environment = (
+                _receipt_hook_environment()
+                if graph.get("receipt_backed") is True
+                else dict(os.environ)
+            )
             environment.update(
                 {
                     "DBPM_RUNTIME_PREFIX": str(prefix.resolve()),
@@ -754,6 +760,7 @@ def resume_application_runtime_graph(
     *,
     prefix: Path,
     log_dir: Path,
+    recovery_mode: str | None = None,
 ) -> StagedApplicationRuntime:
     staging_parent = prefix / APPLICATION_RECEIPT_DIR_NAME / "staging"
     expected = json.dumps(graph, sort_keys=True, separators=(",", ":"))
@@ -775,6 +782,10 @@ def resume_application_runtime_graph(
             ):
                 matches.append(candidate)
     if not matches:
+        if recovery_mode is not None:
+            return stage_application_runtime_graph(
+                graph, prefix=prefix, mode=recovery_mode, log_dir=log_dir
+            )
         raise ExecutionError("No matching incomplete application runtime generation to resume")
     candidate = max(matches, key=lambda item: item.stat().st_mtime_ns)
     if json.loads((candidate / "status.json").read_text(encoding="utf-8")).get("status") == "ready":
@@ -789,7 +800,7 @@ def resume_application_runtime_graph(
     return stage_application_runtime_graph(
         graph,
         prefix=prefix,
-        mode="resume",
+        mode=recovery_mode or "resume",
         log_dir=log_dir,
         staging_path=candidate,
     )

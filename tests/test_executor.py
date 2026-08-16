@@ -8,6 +8,7 @@ import pytest
 from dbpm.errors import ExecutionError
 from dbpm.executor import execute_plan
 from dbpm.connect import sqlcl_name
+from dbpm.db import ApplicationState, OperationLease, OperationRecord
 
 
 class _FakeProcess:
@@ -29,6 +30,99 @@ class _CapturingProcess(_FakeProcess):
     def __init__(self, *, returncode: int = 0, stdout: str = "ok\n"):
         super().__init__(returncode=returncode, stdout=stdout)
         self.stdin = _NonClosingStringIO()
+
+
+def _composite_plan() -> dict[str, object]:
+    return {
+        "mode": "install",
+        "package": {"name": "demo", "application_name": "DEMO", "version": "1.0.0"},
+        "execution": {"script": "deploy.sql", "script_ref": "deploy.sql", "arguments": []},
+        "pre_actions": [],
+        "post_actions": [],
+        "application_runtime": {"root_package": "demo", "payloads": [], "commands": []},
+        "operation": {"operation_id": "12345678-1234-1234-1234-123456789abc"},
+    }
+
+
+def test_runtime_failure_leaves_composite_operation_database_complete(tmp_path, monkeypatch):
+    monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
+    prefix = tmp_path / "runtime"
+    prefix.mkdir()
+    plan = _composite_plan()
+    record = OperationRecord(
+        "12345678-1234-1234-1234-123456789abc", "DEMO", "INSTALL",
+        "RESOLVED", 0, None, None,
+    )
+    lease = OperationLease(record.operation_id, 1, "token", "expiry")
+    states: list[str] = []
+    with patch("dbpm.executor.begin_operation", return_value=record), \
+         patch("dbpm.executor.acquire_operation_lease", return_value=lease), \
+         patch("dbpm.executor.renew_operation_lease", return_value=lease), \
+         patch("dbpm.executor.release_operation_lease"), \
+         patch("dbpm.executor.record_operation_step", side_effect=lambda **kw: states.append(kw["state"])), \
+         patch("dbpm.executor._preflight_application_runtime"), \
+         patch("dbpm.executor._execute_application_runtime", side_effect=ExecutionError("activation failed")), \
+         patch("dbpm.executor.subprocess.Popen", return_value=_FakeProcess()):
+        with pytest.raises(ExecutionError, match="activation failed"):
+            execute_plan(plan, connect="user/pass@db", runner="sql", runtime_prefix=str(prefix))
+
+    assert "DATABASE_COMPLETE" in states
+    assert states[-1] == "DATABASE_COMPLETE"
+
+
+def test_resume_from_database_complete_skips_database_execution(tmp_path, monkeypatch):
+    monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
+    prefix = tmp_path / "runtime"
+    prefix.mkdir()
+    plan = _composite_plan()
+    plan["mode"] = "resume"
+    plan["operation"]["resume_existing"] = True
+    record = OperationRecord(
+        "12345678-1234-1234-1234-123456789abc", "DEMO", "INSTALL",
+        "DATABASE_COMPLETE", 1, None, None,
+    )
+    lease = OperationLease(record.operation_id, 2, "token2", "expiry")
+    receipt = type("Receipt", (), {"generation": 2})()
+    with patch("dbpm.executor.get_current_operation", return_value=record), \
+         patch("dbpm.executor.acquire_operation_lease", return_value=lease), \
+         patch("dbpm.executor.renew_operation_lease", return_value=lease), \
+         patch("dbpm.executor.release_operation_lease"), \
+         patch("dbpm.executor.record_operation_step"), \
+         patch("dbpm.executor.get_application_state", return_value=ApplicationState("DEMO", "1.0.0", "C", "abc")), \
+         patch("dbpm.executor._preflight_application_runtime"), \
+         patch("dbpm.executor._execute_application_runtime") as runtime, \
+         patch("dbpm.executor.load_application_runtime_receipt", return_value=receipt), \
+         patch("dbpm.executor.validate_application_runtime_graph"), \
+         patch("dbpm.executor.subprocess.Popen") as popen:
+        execute_plan(plan, connect="user/pass@db", runner="sql", runtime_prefix=str(prefix))
+
+    popen.assert_not_called()
+    runtime.assert_called_once()
+
+
+def test_unreachable_runtime_is_recorded_after_database_completion(tmp_path, monkeypatch):
+    monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
+    plan = _composite_plan()
+    record = OperationRecord(
+        "12345678-1234-1234-1234-123456789abc", "DEMO", "INSTALL",
+        "RESOLVED", 0, None, None,
+    )
+    lease = OperationLease(record.operation_id, 1, "token", "expiry")
+    states: list[str] = []
+    with patch("dbpm.executor.begin_operation", return_value=record), \
+         patch("dbpm.executor.acquire_operation_lease", return_value=lease), \
+         patch("dbpm.executor.renew_operation_lease", return_value=lease), \
+         patch("dbpm.executor.release_operation_lease"), \
+         patch("dbpm.executor.record_operation_step", side_effect=lambda **kw: states.append(kw["state"])), \
+         patch("dbpm.executor.subprocess.Popen", return_value=_FakeProcess()):
+        with pytest.raises(ExecutionError, match="database phase is complete"):
+            execute_plan(
+                plan, connect="user/pass@db", runner="sql",
+                runtime_prefix=str(tmp_path / "offline-mount"),
+            )
+
+    assert "DATABASE_COMPLETE" in states
+    assert states[-1] == "RUNTIME_UNREACHABLE"
 
 
 def _write_runtime_receipt(prefix, *, application: str) -> None:
