@@ -868,6 +868,18 @@ entry under its dependency graph), not just the root package's own
 declarations, so a dependency's `state` rules are honored during reset even
 when the root package declares none of its own.
 
+`--runtime-prefix` is repeatable but optional, and `reset-environment`
+removes every non-CORE application registered in the database regardless of
+which prefixes were supplied — classification only happens for applications
+whose runtime prefix was explicitly passed. An application removed from the
+database without a matching `--runtime-prefix` gets no classification, no
+preserved-state report, and (since purge only ever acts on a computed
+classification) no purge either — its `etc`/`var` content is simply never
+looked at. The confirmation summary lists any such applications under
+`unscoped_applications` and prints an explicit warning naming them, so this
+gap is surfaced to the operator rather than silently absent from the
+preserved-state report.
+
 ### Remnant reporting
 
 Core can report registered objects, but an unregistered object cannot reliably
@@ -1007,6 +1019,10 @@ Phase 3 is done when:
   reports unclassified path counts in its confirmation summary, and never
   purges an unclassified, `secret`, or `config` path regardless of
   `--purge-var`.
+- `dev reset-environment` names, in its confirmation summary, any
+  application being removed for which no `--runtime-prefix` was supplied —
+  those applications get no classification, no preserved-state report, and
+  no purge, and the operator is warned rather than left to infer the gap.
 
 Evidence-tiered remnant reporting (below) is deliberately not part of Phase
 3's closing criteria — it has been rescoped into Phase 4, since it is a

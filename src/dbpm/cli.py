@@ -1096,6 +1096,7 @@ def _build_environment_reset_plan(args: argparse.Namespace) -> dict[str, object]
                 "classification": classification,
             })
             affected_prefixes.append(str(prefix))
+    unscoped_applications = sorted(str(name) for name in removal_order if str(name) not in preserved_state)
     plan: dict[str, object] = {
         "schema_version": "dbpm.environment-reset.v0",
         "mode": "uninstall",
@@ -1112,6 +1113,7 @@ def _build_environment_reset_plan(args: argparse.Namespace) -> dict[str, object]
         "preserved_paths": ["etc", "var"],
         "preserved_state": preserved_state,
         "purge_categories": purge_categories,
+        "unscoped_applications": unscoped_applications,
         "policy": environment.evaluate(
             "uninstall", dirty=False, allow_destructive=True,
             required_capabilities=("DBPM_ALLOW_ENVIRONMENT_RESET",),
@@ -1151,6 +1153,15 @@ def _confirm_destructive_plan(plan: dict[str, object], args: argparse.Namespace)
         "affected_runtime_prefixes": plan.get("affected_runtime_prefixes")
         or ([args.runtime_prefix] if getattr(args, "runtime_prefix", None) else []),
     }
+    unscoped_applications = plan.get("unscoped_applications")
+    if isinstance(unscoped_applications, list) and unscoped_applications:
+        summary["unscoped_applications"] = unscoped_applications
+        report_progress(
+            "Warning: no --runtime-prefix supplied for "
+            f"{', '.join(str(name) for name in unscoped_applications)}; "
+            "their etc/var content will not be classified, reported, or "
+            "purged by this reset."
+        )
     preserved_state = plan.get("preserved_state")
     if isinstance(preserved_state, dict) and preserved_state:
         unclassified_total = sum(

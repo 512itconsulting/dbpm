@@ -2901,6 +2901,55 @@ def test_environment_reset_keeps_core_and_uses_consumer_first_order(monkeypatch,
     assert captured["plan"]["keep"] == ["CORE"]
 
 
+def test_environment_reset_refuses_when_core_is_unhealthy(monkeypatch, capsys):
+    monkeypatch.setattr(
+        cli, "get_core_deployment_metadata",
+        lambda **kwargs: DeploymentMetadata(
+            "N", "DISPOSABLE", {"DBPM_ALLOW_ENVIRONMENT_RESET": "Y"},
+        ),
+    )
+    monkeypatch.setattr(
+        cli, "get_application_state",
+        lambda **kwargs: ApplicationState("CORE", "3.5.0", "F", "abc"),
+    )
+
+    assert cli.main([
+        "dev", "reset-environment", "--keep", "CORE", "--yes",
+        "--confirm", "APP", "--connect", "user/pass@db",
+    ]) == 2
+    assert "CORE is not healthy" in capsys.readouterr().err
+
+
+def test_environment_reset_requires_confirm_matching_target_even_with_yes(monkeypatch, capsys):
+    monkeypatch.setattr(
+        cli, "get_core_deployment_metadata",
+        lambda **kwargs: DeploymentMetadata(
+            "N", "DISPOSABLE", {"DBPM_ALLOW_ENVIRONMENT_RESET": "Y"},
+        ),
+    )
+    monkeypatch.setattr(
+        cli, "get_application_state",
+        lambda **kwargs: ApplicationState("CORE", "3.5.0", "C", "abc"),
+    )
+    monkeypatch.setattr(
+        cli, "get_installed_application_graph",
+        lambda **kwargs: (["CORE", "CONSUMER"], []),
+    )
+    monkeypatch.setattr(cli, "execute_plan", lambda plan, **kwargs: 0)
+
+    assert cli.main([
+        "dev", "reset-environment", "--keep", "CORE", "--yes",
+        "--connect", "user/pass@db",
+    ]) == 2
+    assert "requires --confirm" in capsys.readouterr().err
+
+    assert cli.main([
+        "dev", "reset-environment", "--keep", "CORE", "--yes",
+        "--confirm", "WRONG-SCHEMA", "--connect", "user/pass@db",
+    ]) == 2
+    assert "must match the target schema" in capsys.readouterr().err
+
+
 def test_environment_reset_rejects_secret_and_config_purge_choices():
     parser = cli._build_parser()
     for category in ("secret", "config"):
@@ -2960,6 +3009,101 @@ def test_environment_reset_classifies_preserved_state_and_purges_selected_catego
     consumer_state = plan["preserved_state"]["CONSUMER"]
     assert consumer_state["categories"]["cache"] == ["var/cache/a.tmp"]
     assert consumer_state["unclassified"] == ["etc/unknown.conf"]
+
+
+def test_environment_reset_warns_about_applications_missing_runtime_prefix(
+    monkeypatch, capsys, tmp_path: Path,
+):
+    from dbpm.lifecycle import write_lifecycle_receipt
+
+    prefix = tmp_path / "consumer"
+    (prefix / "var").mkdir(parents=True)
+    write_lifecycle_receipt(
+        {
+            "package": {"application_name": "CONSUMER", "state": []},
+            "application_runtime": {"root_package": "consumer", "payloads": []},
+        },
+        runtime_prefix=str(prefix),
+    )
+
+    monkeypatch.setattr(
+        cli, "get_core_deployment_metadata",
+        lambda **kwargs: DeploymentMetadata(
+            "N", "DISPOSABLE", {"DBPM_ALLOW_ENVIRONMENT_RESET": "Y"},
+        ),
+    )
+    monkeypatch.setattr(
+        cli, "get_application_state",
+        lambda **kwargs: ApplicationState("CORE", "3.5.0", "C", "abc"),
+    )
+    monkeypatch.setattr(
+        cli, "get_installed_application_graph",
+        lambda **kwargs: (["CORE", "CONSUMER", "BASE"], [("CONSUMER", "BASE")]),
+    )
+    captured = {}
+    monkeypatch.setattr(cli, "execute_plan", lambda plan, **kwargs: captured.setdefault("plan", plan) or 0)
+
+    assert cli.main([
+        "dev", "reset-environment", "--keep", "CORE", "--yes",
+        "--confirm", "APP", "--connect", "user/pass@db",
+        "--runtime-prefix", str(prefix),
+    ]) == 0
+
+    plan = captured["plan"]
+    assert plan["unscoped_applications"] == ["BASE"]
+    assert "no --runtime-prefix supplied for BASE" in capsys.readouterr().err
+
+
+def test_environment_reset_aggregates_state_rules_from_multi_package_receipt(
+    monkeypatch, capsys, tmp_path: Path,
+):
+    from dbpm.lifecycle import write_lifecycle_receipt
+
+    prefix = tmp_path / "consumer"
+    (prefix / "var" / "cache").mkdir(parents=True)
+    (prefix / "var" / "cache" / "a.tmp").write_text("x", encoding="utf-8")
+    write_lifecycle_receipt(
+        {
+            "package": {"application_name": "CONSUMER", "state": []},
+            "packages": [
+                {"package": {"application_name": "CONSUMER", "state": []}},
+                {
+                    "package": {
+                        "application_name": "BASE",
+                        "state": [{"path": "var/cache/**", "category": "cache"}],
+                    }
+                },
+            ],
+            "application_runtime": {"root_package": "consumer", "payloads": []},
+        },
+        runtime_prefix=str(prefix),
+    )
+
+    monkeypatch.setattr(
+        cli, "get_core_deployment_metadata",
+        lambda **kwargs: DeploymentMetadata(
+            "N", "DISPOSABLE", {"DBPM_ALLOW_ENVIRONMENT_RESET": "Y"},
+        ),
+    )
+    monkeypatch.setattr(
+        cli, "get_application_state",
+        lambda **kwargs: ApplicationState("CORE", "3.5.0", "C", "abc"),
+    )
+    monkeypatch.setattr(
+        cli, "get_installed_application_graph",
+        lambda **kwargs: (["CORE", "CONSUMER"], []),
+    )
+    captured = {}
+    monkeypatch.setattr(cli, "execute_plan", lambda plan, **kwargs: captured.setdefault("plan", plan) or 0)
+
+    assert cli.main([
+        "dev", "reset-environment", "--keep", "CORE", "--yes",
+        "--confirm", "APP", "--connect", "user/pass@db",
+        "--runtime-prefix", str(prefix),
+    ]) == 0
+
+    consumer_state = captured["plan"]["preserved_state"]["CONSUMER"]
+    assert consumer_state["categories"]["cache"] == ["var/cache/a.tmp"]
 
 
 def _lifecycle_package_plan(app_name: str, *, reason: str) -> dict[str, object]:
