@@ -97,6 +97,86 @@ class StagedApplicationRuntime:
     log_files: tuple[Path, ...]
 
 
+def validate_application_runtime_collisions(
+    graph: dict[str, object], *, prefix: Path, mode: str
+) -> tuple[dict[str, str], ...]:
+    """Classify the complete graph without staging, running hooks, or mutating files."""
+    payloads = graph.get("payloads")
+    if not isinstance(payloads, list):
+        raise ExecutionError("Application runtime graph payloads must be a list")
+    prior = None
+    receipt_path = application_receipt_path(prefix)
+    if receipt_path.exists():
+        prior = load_application_runtime_receipt(
+            prefix,
+            expected_application=_package_name(graph.get("root_package"), "runtime root package"),
+        )
+    managed = {item.path: item for item in prior.packages} if prior else {}
+    classifications: list[dict[str, str]] = []
+    conflicts: list[str] = []
+    for raw_payload in payloads:
+        payload = _mapping(raw_payload, "application runtime payload")
+        relative = _safe_relative_path(payload.get("payload_path"), "runtime payload path")
+        destination = prefix / relative
+        artifact = _mapping(payload.get("artifact"), "runtime payload artifact")
+        expected = (
+            _package_name(payload.get("package"), "runtime payload package"),
+            _nonempty_string(payload.get("version"), "runtime payload version"),
+            str(artifact.get("commit") or ""),
+            str(artifact.get("uri") or ""),
+            str(artifact.get("checksum")) if artifact.get("checksum") else None,
+            str(artifact.get("checksum_alg")) if artifact.get("checksum_alg") else None,
+        )
+        installed = managed.get(relative)
+        actual = None if installed is None else (
+            installed.name, installed.version, installed.commit, installed.artifact_uri,
+            installed.artifact_checksum, installed.artifact_checksum_alg,
+        )
+        if not destination.exists():
+            status = "missing"
+        elif actual == expected:
+            status = "identical"
+        elif mode in {"reinstall", "upgrade"} and installed is not None and installed.name == expected[0]:
+            status = "replaceable"
+        else:
+            status = "conflicting"
+            conflicts.append(str(destination))
+        classifications.append({"destination": str(destination), "status": status})
+    commands = graph.get("commands")
+    if not isinstance(commands, list):
+        raise ExecutionError("Application runtime graph commands must be a list")
+    prior_commands = {item.name: item for item in prior.commands} if prior else {}
+    for raw_command in commands:
+        command = _mapping(raw_command, "application runtime command")
+        name = _command_name(command.get("name"), "runtime command name")
+        destination = prefix / "bin" / name
+        installed = prior_commands.get(name)
+        expected = (
+            _package_name(command.get("package"), "runtime command package"),
+            _command_name(command.get("export"), "runtime command export"),
+            _safe_relative_path(command.get("target"), "runtime command target"),
+        )
+        actual = None if installed is None else (
+            installed.package, installed.export, installed.target
+        )
+        if not destination.exists() and not destination.is_symlink():
+            status = "missing"
+        elif actual == expected:
+            status = "identical"
+        elif mode in {"reinstall", "upgrade"} and installed is not None and installed.package == expected[0]:
+            status = "replaceable"
+        else:
+            status = "conflicting"
+            conflicts.append(str(destination))
+        classifications.append({"destination": str(destination), "status": status})
+    if conflicts:
+        raise ExecutionError(
+            "Application runtime graph has conflicting destinations:\n- "
+            + "\n- ".join(conflicts)
+        )
+    return tuple(classifications)
+
+
 def validate_application_runtime_graph(
     graph: dict[str, object],
     *,
@@ -155,7 +235,11 @@ def validate_application_runtime_graph(
         script = _validation_script(payload) if run_health_checks else None
         if script is not None:
             log_file = log_dir / f"{sequence:03d}-{name}-runtime-validate.log"
-            environment = dict(os.environ)
+            environment = (
+                {"PATH": os.environ.get("PATH", "")}
+                if graph.get("receipt_backed") is True
+                else dict(os.environ)
+            )
             environment.update(
                 {
                     "DBPM_RUNTIME_PREFIX": str(prefix.resolve()),
@@ -955,7 +1039,11 @@ def uninstall_application_runtime_graph(
         if not isinstance(script, dict) or script.get("ref") is None:
             continue
         package = installed[name]
-        environment = dict(os.environ)
+        environment = (
+            {"PATH": os.environ.get("PATH", "")}
+            if graph.get("receipt_backed") is True
+            else dict(os.environ)
+        )
         environment.update(
             {
                 "DBPM_RUNTIME_PREFIX": str(prefix.resolve()),

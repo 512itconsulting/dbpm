@@ -9,13 +9,29 @@ dbpm uninstall <source> \
   --allow-destructive
 ```
 
+For installations made with Phase 1 lifecycle receipts, the source is optional:
+
+```text
+dbpm uninstall --application APP_NAME \
+  --runtime-prefix <path> \
+  --allow-destructive [--cascade unused]
+```
+
+This path verifies and uses the immutable installed snapshot. It does not read
+hooks from the current checkout or live runtime payload, and passes only the
+documented `DBPM_*` environment to receipt-backed runtime hooks. A checksum
+mismatch stops before any hook runs. `--cascade unused` removes only packages
+recorded as `AUTO_DEPENDENCY` that have no external dependents; manual packages
+survive. `--cascade graph` remains unavailable until Core exposes the
+`DBPM_ALLOW_GRAPH_RESET` capability planned for Phase 3.
+
 Uninstall is destructive and requires `--allow-destructive`. In a
 deployment-locked environment it is blocked by policy.
 
 Before running database uninstall scripts, dbpm validates the active runtime
-receipt, payloads, command links, and package health scripts. After database
-removal, it repeats the structural receipt, payload, and command validation
-without rerunning package health scripts. It then runs optional package
+receipt, payloads, and command links, and runs package health scripts. After
+database removal, it repeats the structural receipt, payload, and command
+validation without rerunning package health scripts. It then runs optional package
 runtime uninstall scripts in reverse dependency order and removes only
 dbpm-managed runtime state: `bin`, `packages`, retained generation metadata,
 staging content, and the active receipt. The final receipt is archived as

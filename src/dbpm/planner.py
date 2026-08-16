@@ -59,6 +59,8 @@ def create_plan(
             "registry_url": source.registry_url,
             "registry_package": source.registry_package,
             "registry_constraint": source.registry_constraint,
+            "checksum": source.artifact_checksum,
+            "checksum_alg": source.artifact_checksum_alg,
         },
         "core": {
             "required": not manifest.is_core,
@@ -78,6 +80,18 @@ def create_plan(
             "script_ref": str(source.resolve_script_path(script)) if script else None,
             "arguments": _script_arguments_for_mode(mode, provenance) if script else [],
             "stdin": _script_stdin_for_mode(mode, manifest, environment) if script else None,
+        },
+        "lifecycle": {
+            name: {
+                "path": path,
+                "ref": str(source.resolve_script_path(path)) if path else None,
+            }
+            for name, path in {
+                "install": manifest.scripts.install,
+                "upgrade": manifest.scripts.upgrade,
+                "validate": manifest.scripts.validate,
+                "uninstall": manifest.scripts.uninstall,
+            }.items()
         },
         "runtime_package": runtime_package,
     }

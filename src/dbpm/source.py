@@ -33,6 +33,7 @@ TREE_CHECKSUM_EXCLUDES = (
     ".mypy_cache",
     ".ruff_cache",
     ".venv",
+    ".uv-cache",
     "__pycache__",
     "*.egg-info",
     "*.log",

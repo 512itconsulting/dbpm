@@ -65,6 +65,7 @@ from .workspace import (
 )
 from .initializer import init_package, init_workspace, validate_package_name
 from .progress import report_progress
+from .lifecycle import load_lifecycle_receipt, snapshot_plan, write_lifecycle_receipt
 
 
 CONNECT_OPTIONS_CONFLICT_MESSAGE = (
@@ -174,6 +175,8 @@ def main(argv: list[str] | None = None) -> int:
                     include_installed_state=not args.dry_run,
                     show_progress=not args.dry_run and getattr(args, "verbose", False),
                 )
+            elif args.command == "uninstall" and args.source is None:
+                plan = _build_installed_uninstall_plan(args)
             else:
                 if args.command == "install" and args.source is None and not getattr(args, "package", None):
                     raise DbpmError("install requires a source or --lockfile")
@@ -468,13 +471,22 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_dependency_source_args(validate)
 
     uninstall = subparsers.add_parser("uninstall", help="Uninstall an application package")
-    _add_common_args(uninstall)
+    _add_common_args(uninstall, source_required=False)
     _add_execution_args(uninstall)
     _add_dependency_source_args(uninstall)
     uninstall.add_argument(
         "--allow-destructive",
         action="store_true",
         help="Allow application uninstall planning/execution",
+    )
+    uninstall.add_argument(
+        "--application",
+        help="Installed application name (permits source-free uninstall with --runtime-prefix)",
+    )
+    uninstall.add_argument(
+        "--cascade",
+        choices=("unused", "graph"),
+        help="Remove unused automatic dependencies; graph requires DBPM_ALLOW_GRAPH_RESET",
     )
 
     rollback = subparsers.add_parser(
@@ -775,6 +787,94 @@ def _build_plan(
     )
 
 
+def _build_installed_uninstall_plan(args: argparse.Namespace) -> dict[str, object]:
+    if args.source is None and not args.application:
+        raise DbpmError("Source-free uninstall requires --application")
+    if not args.runtime_prefix:
+        raise DbpmError("Source-free uninstall requires --runtime-prefix")
+    if args.cascade == "graph":
+        raise DbpmError(
+            "--cascade graph requires the Core capability DBPM_ALLOW_GRAPH_RESET; "
+            "that capability is not available in phase 1"
+        )
+    installed = load_lifecycle_receipt(runtime_prefix=args.runtime_prefix)
+    environment = _resolve_policy_for_plan("uninstall", args)
+    package = installed.get("package")
+    recorded_app = package.get("application_name") if isinstance(package, dict) else None
+    if args.application and str(recorded_app or "").upper() != args.application.upper():
+        raise DbpmError(
+            f"Installed lifecycle receipt is for {recorded_app}, not {args.application.upper()}"
+        )
+    plan = installed
+    plans = plan.get("packages")
+    package_plans = plans if isinstance(plans, list) else [plan]
+    selected: list[dict[str, object]] = []
+    removal_apps = {str(recorded_app)}
+    for item in reversed(package_plans):
+        if not isinstance(item, dict):
+            continue
+        reason = item.get("installation_reason", "MANUAL")
+        item_package = item.get("package")
+        item_app_name = (
+            str(item_package.get("application_name")) if isinstance(item_package, dict) else None
+        )
+        is_root = item_app_name == str(recorded_app)
+        if not is_root:
+            if args.cascade != "unused" or reason != "AUTO_DEPENDENCY":
+                continue
+            external = set(_get_reverse_dependencies(args, item_app_name)).difference(removal_apps)
+            if external:
+                continue
+        lifecycle = item.get("lifecycle")
+        uninstall = lifecycle.get("uninstall") if isinstance(lifecycle, dict) else None
+        updated = dict(item)
+        updated["mode"] = "uninstall"
+        updated["policy"] = environment.evaluate(
+            "uninstall",
+            dirty=False,
+            allow_destructive=bool(args.allow_destructive) if is_root else False,
+            approve=args.approve,
+        )
+        updated["pre_actions"] = []
+        updated["post_actions"] = []
+        updated["execution"] = {
+            "script": uninstall.get("path") if isinstance(uninstall, dict) else None,
+            "script_ref": uninstall.get("ref") if isinstance(uninstall, dict) else None,
+            "arguments": [],
+            "stdin": None,
+        }
+        updated["installed_state"] = _get_installed_state(
+            args, str(updated.get("package", {}).get("application_name"))
+        )
+        updated["reverse_dependencies"] = _get_reverse_dependencies(
+            args, str(updated.get("package", {}).get("application_name"))
+        )
+        selected.append(updated)
+        if item_app_name is not None:
+            removal_apps.add(item_app_name)
+    result = dict(plan)
+    result["mode"] = "uninstall"
+    result["execution_order"] = [
+        item["package"]["application_name"] for item in selected if isinstance(item.get("package"), dict)
+    ]
+    if isinstance(plans, list):
+        result["packages"] = selected
+    else:
+        result = selected[0]
+    full_removal = len(selected) == len(package_plans)
+    runtime = result.get("application_runtime")
+    if isinstance(runtime, dict):
+        if full_removal:
+            runtime["effects"] = dict(runtime.get("effects", {}), operation="uninstall")
+        else:
+            report_progress(
+                "Skipping application runtime teardown: cascade removal does not cover "
+                "the full application; runtime state is left in place."
+            )
+            result["application_runtime"] = None
+    return result
+
+
 def _resolve_workspace_source_arg(
     raw_source: str | None,
     args: argparse.Namespace,
@@ -968,7 +1068,11 @@ def _execute_or_explain(plan: dict[str, object], args: argparse.Namespace) -> No
             _enforce_installed_state(child_plan)
             _enforce_core_minimum_version(child_plan, args)
             _enforce_major_upgrade_dependencies(child_plan, allow_dependent_break)
+        if plan.get("mode") in {"bootstrap-core", "install", "upgrade", "reinstall", "resume"}:
+            plan = snapshot_plan(plan, runtime_prefix=runtime_prefix)
         execute_plan(plan, connect=connect, runner=args.runner, runtime_prefix=runtime_prefix)
+        if plan.get("mode") in {"bootstrap-core", "install", "upgrade", "reinstall", "resume"}:
+            write_lifecycle_receipt(plan, runtime_prefix=runtime_prefix)
         return
 
     if getattr(args, "verbose", False):
@@ -979,7 +1083,11 @@ def _execute_or_explain(plan: dict[str, object], args: argparse.Namespace) -> No
     _enforce_installed_state(plan)
     _enforce_core_minimum_version(plan, args)
     _enforce_major_upgrade_dependencies(plan, getattr(args, "allow_dependent_break", False))
+    if plan.get("mode") in {"bootstrap-core", "install", "upgrade", "reinstall", "resume"}:
+        plan = snapshot_plan(plan, runtime_prefix=runtime_prefix)
     execute_plan(plan, connect=connect, runner=args.runner, runtime_prefix=runtime_prefix)
+    if plan.get("mode") in {"bootstrap-core", "install", "upgrade", "reinstall", "resume"}:
+        write_lifecycle_receipt(plan, runtime_prefix=runtime_prefix)
 
 
 def _package_progress_identity(plan: dict[str, object]) -> str:

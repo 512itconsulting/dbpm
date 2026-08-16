@@ -20,6 +20,7 @@ from .application_runtime import (
     garbage_collect_application_runtime,
     uninstall_application_runtime_graph,
     validate_application_runtime_prefix,
+    validate_application_runtime_collisions,
 )
 
 
@@ -163,6 +164,8 @@ def _preflight_application_runtime(
             prefix=prefix,
             log_dir=context.log_dir,
         )
+    elif mode in {"install", "upgrade", "reinstall", "resume"}:
+        validate_application_runtime_collisions(graph, prefix=prefix, mode=mode)
 
 
 def _execute_application_runtime(

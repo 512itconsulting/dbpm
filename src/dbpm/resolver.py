@@ -34,8 +34,7 @@ def create_multi_package_plan(
         app_name = item.manifest.application_name
         state = installed_states.get(app_name)
         item_mode = _dependency_mode(mode) if item is not source else mode
-        package_plans.append(
-            create_plan(
+        package_plan = create_plan(
                 mode=item_mode,
                 source=item,
                 provenance=resolve_provenance(item),
@@ -45,7 +44,10 @@ def create_multi_package_plan(
                 allow_destructive=allow_destructive if item is source else False,
                 approve=approve,
             )
+        package_plan["installation_reason"] = (
+            "APPLICATION_ROOT" if item is source else "AUTO_DEPENDENCY"
         )
+        package_plans.append(package_plan)
 
     plan: dict[str, object] = {
         "schema_version": "dbpm.multi-plan.v0",
