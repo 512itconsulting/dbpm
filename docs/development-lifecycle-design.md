@@ -208,6 +208,24 @@ crash or retry — without yet adding enforced timeouts or automatic retry.
 Those require executor changes beyond hook sourcing and can follow once the
 receipt-backed path is in place; they should not block it.
 
+Hook execution order and database-access guarantees follow directly from how
+dbpm already sequences work: a package's uninstall hook runs only after every
+package that depends on it has already had its uninstall hook run — the
+reachable removal set is topologically sorted on dependency edges and executed
+in reverse order, most-dependent first. For every mode, the database-side
+change for that phase completes before the corresponding runtime hook runs —
+single-package plans run the database script before application-runtime
+execution, and multi-package plans complete every child's database script
+before the shared runtime graph is staged or activated. A hook must not
+assume the opposite; anything needing pre-database information belongs in
+dry-run or collision validation, not in the mutating hook itself.
+
+A hook failure mid-cascade does not trigger rollback — Oracle DDL auto-commit
+makes that unsafe to promise. It transitions the operation to `FAILED`, halts
+with the remainder of the cascade still installed, and requires the same
+evidence-based `resume` path as any other saga failure; this is the general
+saga model applied to hooks, not separate hook-specific handling.
+
 The current source can remain optional. When supplied, it can provide additional
 validation or operator-selected lifecycle hooks, but source drift should not make
 the installed application impossible to remove in an eligible environment.
@@ -447,6 +465,25 @@ philosophy: any operation that would need a lower authority to override a
 higher one — trusting a live payload's hook over a verified receipt, or letting
 a CLI profile mark a target disposable — is out of scope for this design and
 must be rejected in implementation.
+
+## Threat model
+
+Authority and trust hierarchy answers *which source wins*; this section states
+*what each rule defends against*, and stays consistent with it. Assembled from
+sections already in this document rather than new mechanism.
+
+| Threat | Defending section(s) | Residual risk |
+|---|---|---|
+| Wrong-target operation (wrong database or wrong runtime prefix) | Recommended policy model (Target authority); runtime-prefix/application-name validation in execution | No cryptographic binding between the database connect target and the runtime prefix — only application-name matching. |
+| Unauthorized policy change (capability flags flipped without authorization) | Authority and trust hierarchy (Protected Core policy, top precedence); Scope and dependencies (capability privilege inherited from Core's existing admin model) | Entirely dependent on Core's existing admin/grant model; a compromised Core admin account is out of scope for this design. |
+| Tampered payload or receipt | Installed lifecycle receipts / Snapshot content and integrity (checksum verification); Authority hierarchy level 2 | Checksums catch tampering-at-rest, not a payload that was already malicious when the receipt was snapshotted. |
+| Source mutating between plan and execution (TOCTOU) | Installed lifecycle receipts (snapshot-after-approval, same inclusion rules for checksum and packaging); Destructive dry-run fidelity (plan-digest match) | Only closed for the receipt-backed path — hierarchy level 5 ("current source, explicitly selected for replacement") is live and mutable by design; that mutation risk is accepted, not defended. |
+| Compromised or unavailable registry | Installed lifecycle receipts (uninstall/hooks never re-contact the registry post-install) | Install/upgrade time still trusts the registry on first use; no defense here against a compromised registry serving a malicious package at install time. |
+| Concurrent operators | — | Undefended. Closing this is exactly what the Operation saga mechanics open question (lease/fencing token) is for — a known gap, not a solved threat, until that question resolves. |
+| Crashed operator process | Database and runtime operation state (saga states, roll-forward not rollback); Runtime activation improvements (journal-based, self-healing two-pass activation); `resume` mode | Resume currently infers completion from Core application status rather than durable per-step receipts — same gap as concurrent operators, tracked by the same open question. |
+| Offline runtime host | Database/runtime operation state decouples database completion from runtime reachability | No designed reconciliation path yet for when the host comes back — that's Phase 2's runtime reconciliation and repair commands, not yet designed. |
+| Accidental deletion of a manually installed dependency | Option 2 (`MANUAL`/`AUTO_DEPENDENCY`/`APPLICATION_ROOT` reason tracking; `--cascade unused` restricted to `AUTO_DEPENDENCY`) | Depends on install-reason being recorded correctly at install time; installs that predate this tracking have no reason recorded and need a backfill/migration decision, not addressed here. |
+| Accidental deletion of operator-owned data | Environment reset (Preserved-state classification); Option 3 (dev-reset confirmation summary) | Classification is manifest-declared, not independently verified — a package that mis-tags its own data (business data marked as cache) is still deleted as declared. |
 
 ## Installed lifecycle receipts
 
@@ -778,32 +815,6 @@ operation needs a lease or fencing token to prevent concurrent continuation, a
 monotonically increasing attempt number, and durable per-step receipts that let
 `resume` roll forward from recorded evidence rather than inferring completion
 from Core application status alone.
-
-### Lifecycle hook contract detail — before Phase 1 hook execution
-
-Option 2 now specifies where hooks come from (a receipt-backed resolution path
-in the planner, checksum-verified immediately before launch, replacing the
-live-source lookup `_application_runtime_package()` currently uses for every
-mode including uninstall), what environment they receive (an explicit `DBPM_*`
-allowlist instead of inherited `os.environ`), and that Phase 1 requires
-idempotency without yet enforcing timeout or retry — that's deferred by design,
-not open. Still open: ordering relative to dependents during cascade, whether
-database access is guaranteed at each hook phase beyond uninstall (which is
-Core/receipt-driven and does not require it), and what happens after a partial
-DML/DDL failure — Oracle DDL auto-commit means this can't assume rollback.
-
-### Threat model — before implementation begins
-
-No section enumerates what this design defends against: wrong-target
-operations, an unauthorized policy change, a tampered payload or receipt,
-source mutating between plan and execution, a compromised or unavailable
-registry, concurrent operators, a crashed operator process, an offline runtime
-host, accidental deletion of a manually installed dependency, and accidental
-deletion of operator-owned data. Authority and trust hierarchy answers *which
-source wins*; a threat model would state *what each rule defends against*, and
-should stay consistent with it. Recommended format when this is written: one
-table, threat → defending section(s) → residual risk, assembled from sections
-already in this document rather than introduced as new mechanism.
 
 ### Acceptance criteria — before each phase is considered done
 
