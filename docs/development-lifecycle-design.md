@@ -479,9 +479,9 @@ sections already in this document rather than new mechanism.
 | Tampered payload or receipt | Installed lifecycle receipts / Snapshot content and integrity (checksum verification); Authority hierarchy level 2 | Checksums catch tampering-at-rest, not a payload that was already malicious when the receipt was snapshotted. |
 | Source mutating between plan and execution (TOCTOU) | Installed lifecycle receipts (snapshot-after-approval, same inclusion rules for checksum and packaging); Destructive dry-run fidelity (plan-digest match) | Only closed for the receipt-backed path — hierarchy level 5 ("current source, explicitly selected for replacement") is live and mutable by design; that mutation risk is accepted, not defended. |
 | Compromised or unavailable registry | Installed lifecycle receipts (uninstall/hooks never re-contact the registry post-install) | Install/upgrade time still trusts the registry on first use; no defense here against a compromised registry serving a malicious package at install time. |
-| Concurrent operators | — | Undefended. Closing this is exactly what the Operation saga mechanics open question (lease/fencing token) is for — a known gap, not a solved threat, until that question resolves. |
-| Crashed operator process | Database and runtime operation state (saga states, roll-forward not rollback); Runtime activation improvements (journal-based, self-healing two-pass activation); `resume` mode | Resume currently infers completion from Core application status rather than durable per-step receipts — same gap as concurrent operators, tracked by the same open question. |
-| Offline runtime host | Database/runtime operation state decouples database completion from runtime reachability | No designed reconciliation path yet for when the host comes back — that's Phase 2's runtime reconciliation and repair commands, not yet designed. |
+| Concurrent operators | [Saga mechanics: leases, attempts, and durable per-step evidence](#saga-mechanics-leases-attempts-and-durable-per-step-evidence) (Core-held lease with fencing) | Design only until Phase 2 implements it; until then, concurrent operators remain undefended in the shipped Phase 1 code. |
+| Crashed operator process | [Saga mechanics: leases, attempts, and durable per-step evidence](#saga-mechanics-leases-attempts-and-durable-per-step-evidence) (durable per-step evidence, attempt numbering); Runtime activation improvements (journal-based, self-healing two-pass activation); `resume` mode | Design only until Phase 2 implements it; a lease that outlives its holder past the expiry window is still a temporary false "in progress" signal to a concurrent `resume`. |
+| Offline runtime host | Database/runtime operation state decouples database completion from runtime reachability; [Offline runtime host reconciliation](#offline-runtime-host-reconciliation) defines the repair path | Reconciliation is operator-triggered (explicit command or next `resume`), not automatically detected the moment the host becomes reachable; an operator who never runs it leaves the operation parked in `RUNTIME_UNREACHABLE`. |
 | Accidental deletion of a manually installed dependency | Option 2 (`MANUAL`/`AUTO_DEPENDENCY`/`APPLICATION_ROOT` reason tracking; `--cascade unused` restricted to `AUTO_DEPENDENCY`) | Depends on install-reason being recorded correctly at install time; installs that predate this tracking have no reason recorded and need a backfill/migration decision, not addressed here. |
 | Accidental deletion of operator-owned data | Environment reset (Preserved-state classification); Option 3 (dev-reset confirmation summary) | Classification is manifest-declared, not independently verified — a package that mis-tags its own data (business data marked as cache) is still deleted as declared. |
 
@@ -574,6 +574,7 @@ The operation state must distinguish at least:
 RESOLVED
 RUNTIME_STAGED
 DATABASE_COMPLETE
+RUNTIME_UNREACHABLE
 RUNTIME_ACTIVE
 VALIDATED
 FAILED
@@ -581,7 +582,9 @@ FAILED
 
 If database deployment succeeds and runtime activation fails, `resume` must be
 able to continue from `DATABASE_COMPLETE` without attempting another database
-install or upgrade.
+install or upgrade. If the runtime host cannot be reached at all, the
+operation moves to `RUNTIME_UNREACHABLE` instead — see [Offline runtime host
+reconciliation](#offline-runtime-host-reconciliation).
 
 A separate recovery surface would also be useful:
 
@@ -592,6 +595,93 @@ dbpm runtime reconcile . --replace
 
 Runtime replacement must be restricted to an eligible target. Structural repair
 that restores a recorded installed identity can be allowed more broadly.
+
+### Saga mechanics: leases, attempts, and durable per-step evidence
+
+This resolves the "Operation saga mechanics" open question raised by the
+adversarial review. It assumes the single colocated runtime prefix per
+deployment already scoped in [Scope and dependencies](#scope-and-dependencies);
+a distributed or multi-host operation lock is out of scope.
+
+- **Operation record.** Each composite operation gets a durable record keyed
+  by an `operation_id`, stored in Core — the same authority already governing
+  installed application state — rather than only on the local filesystem, so
+  a crashed or replaced workstation does not orphan the record. The record
+  tracks `operation_id`, `attempt_number`, `lease_token` and `lease_expiry`,
+  the current phase state from the enum above, and one evidence entry per
+  completed step.
+- **Lease and fencing.** Starting or resuming an operation acquires a
+  time-bounded lease on its `operation_id` — a unique-constrained row claim
+  in Core, not a new distributed-locking mechanism. A `resume` that cannot
+  acquire the lease, because another process holds an unexpired one, fails
+  closed and reports the holder's attempt number and lease expiry rather than
+  running concurrently. Long steps renew the lease before it expires; a
+  crashed process's lease simply expires and becomes reclaimable, so recovery
+  never depends on the crashed process cleaning up after itself.
+- **Attempt numbering.** Every `resume` that successfully acquires the lease
+  increments `attempt_number` before doing any work. Per-step evidence
+  records its attempt number when written. Evidence carrying an older attempt
+  number than the current one is treated as unconfirmed for this attempt and
+  is re-verified — not blindly trusted, and not blindly redone — before
+  `resume` proceeds past it.
+- **Durable per-step evidence.** Each of the nine steps above writes a small
+  evidence record on completion: step name, attempt number, timestamp, and a
+  content reference sufficient to re-verify the step (for example, the
+  database phase's evidence is Core's own recorded application status; the
+  runtime activation phase's evidence is the generation identifier
+  promoted). `resume` reconstructs the next action from this evidence chain
+  rather than re-deriving completion from Core's application status alone —
+  Core status remains one input, and the authoritative one for the database
+  phase specifically, but it is no longer the sole signal for runtime-side
+  steps.
+- **Idempotent replay.** Because hooks are already required to be idempotent
+  (see [Option 2](#option-2-make-uninstall-installed-state-driven)),
+  re-running a step whose evidence is missing or unconfirmed is always safe;
+  the lease and attempt number exist to prevent *concurrent* replay, not to
+  avoid replay itself.
+
+### Offline runtime host reconciliation
+
+This resolves the offline-runtime-host gap noted in the [threat
+model](#threat-model) and scoped out of mechanism (but not out of the
+problem) in [Scope and dependencies](#scope-and-dependencies). It covers a
+single colocated runtime prefix that is temporarily unreachable, not a
+multi-host topology.
+
+- **Recording the gap.** If the runtime host cannot be reached at step 7 or
+  8, the database phase still completes and the operation moves to
+  `RUNTIME_UNREACHABLE` rather than being left at `DATABASE_COMPLETE` with no
+  signal that runtime work is still owed. The operation record's evidence
+  includes the target runtime prefix and the expected installed lifecycle
+  receipt checksum, consistent with the tombstone behavior already described
+  in the [authority hierarchy's conflict
+  handling](#applying-the-hierarchy-to-conflicts).
+- **Detecting reachability.** Reconciliation is not backgrounded or polled by
+  dbpm; it runs on explicit operator action (`dbpm runtime reconcile .`) or
+  as the first step of the next `resume` against an operation still in
+  `RUNTIME_UNREACHABLE`.
+- **Classifying drift.** Reconciliation reuses the same four-way
+  classification as [runtime activation](#runtime-activation-improvements)
+  (missing / identical / replaceable / conflicting), comparing the live
+  filesystem (hierarchy level 6, observed only) against the installed
+  lifecycle receipt (hierarchy level 2, authoritative) — never against the
+  current source tree.
+- **Safe path.** Missing or identical destinations proceed automatically
+  through the normal two-pass activation, and the operation moves to
+  `RUNTIME_ACTIVE`. No capability is required for this path, since it only
+  restores the already-approved installed identity.
+- **Unsafe path.** A conflicting or drifted destination stops reconciliation
+  and reports the conflict. Resolving it requires `dbpm runtime reconcile
+  --replace`, restricted to a target carrying an eligible
+  development/disposable capability — the same gating as [Option
+  3](#option-3-add-a-policy-gated-development-reset-workflow) — and it fails
+  closed, naming the missing capability, otherwise.
+- **Multiple completions while offline.** Reconciliation always targets
+  Core's current installed state (hierarchy level 3) and the current
+  installed lifecycle receipt, not the operation history. If several
+  operations completed their database phase while the host was unreachable,
+  only the most recent is relevant; reconciliation is idempotent to how many
+  happened, not a replay of each one in order.
 
 ## Runtime activation improvements
 
@@ -784,6 +874,30 @@ Phase 1 is done when:
 2. Permit runtime-only resume after database completion.
 3. Add supported runtime reconciliation and repair commands.
 
+Phase 2 is done when:
+
+- A runtime activation failure after database completion leaves an operation
+  record in `DATABASE_COMPLETE` (or `RUNTIME_UNREACHABLE`, if the host was
+  unreachable), and `resume` continues from that state without attempting
+  another database install or upgrade.
+- A second `resume` against an operation whose lease has not expired fails
+  closed and reports the current lease holder's attempt number, rather than
+  executing concurrently with it.
+- A crashed operator process's operation is recoverable by `resume` using
+  only the durable per-step evidence chain, without requiring the operator to
+  reconstruct what happened from logs or manual inspection.
+- `dbpm runtime reconcile .` restores a runtime matching its recorded
+  installed identity (missing or identical destinations) without requiring
+  any development/disposable capability.
+- `dbpm runtime reconcile . --replace` is unavailable on a target without an
+  eligible development/disposable capability; attempting it fails closed and
+  names the required capability.
+- An operation that completed its database phase while the runtime host was
+  unreachable is recorded as `RUNTIME_UNREACHABLE`, not silently left at
+  `DATABASE_COMPLETE`, and is resolved by the [offline runtime host
+  reconciliation](#offline-runtime-host-reconciliation) path once the host is
+  reachable again.
+
 ### Phase 3: Development workflows
 
 1. Add Core developer/disposable lifecycle capabilities.
@@ -807,20 +921,22 @@ recommendations above, because no specific answer has been chosen — only the
 question and its stakes. Each should be resolved before the phase that depends
 on it begins; none of them are implementation decisions yet.
 
-### Operation saga mechanics — before Phase 2
+### Operation saga mechanics — resolved
 
-Database and runtime operation state defines the phase states an operation
-moves through, but not how `resume` recovers reliably. Open: whether an
-operation needs a lease or fencing token to prevent concurrent continuation, a
-monotonically increasing attempt number, and durable per-step receipts that let
-`resume` roll forward from recorded evidence rather than inferring completion
-from Core application status alone.
+Resolved by [Saga mechanics: leases, attempts, and durable per-step
+evidence](#saga-mechanics-leases-attempts-and-durable-per-step-evidence): a
+Core-held lease with fencing prevents concurrent continuation, a monotonically
+increasing attempt number distinguishes stale evidence from current, and a
+durable per-step evidence chain lets `resume` roll forward from recorded
+evidence rather than inferring completion from Core application status alone.
+Recorded here for continuity with the adversarial review that raised it.
 
 ### Acceptance criteria — before each phase is considered done
 
-Phase 1's criteria are now recorded with Phase 1 itself, under "Phase 1 is done
-when." Phases 2-4 still need theirs written the same way, as each phase is
-scoped rather than all upfront.
+Phase 1's and Phase 2's criteria are now recorded with those phases
+themselves, under "Phase 1 is done when" and "Phase 2 is done when." Phases 3
+and 4 still need theirs written the same way, as each phase is scoped rather
+than all upfront.
 
 ### Runtime staging purity contract — before Phase 1 collision validation
 
