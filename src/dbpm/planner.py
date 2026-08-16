@@ -61,6 +61,7 @@ def create_plan(
             "registry_constraint": source.registry_constraint,
             "checksum": source.artifact_checksum,
             "checksum_alg": source.artifact_checksum_alg,
+            "work_path": str(source.work_path) if source.work_path else None,
         },
         "core": {
             "required": not manifest.is_core,

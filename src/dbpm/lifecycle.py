@@ -16,37 +16,50 @@ LIFECYCLE_RECEIPT_FILE = "lifecycle-receipt.json"
 
 
 def snapshot_plan(plan: dict[str, object], *, runtime_prefix: str | None = None) -> dict[str, object]:
-    """Snapshot directory sources and rewrite every executable reference to the snapshot."""
+    """Snapshot directory sources into an immutable copy, and record a tamper-check
+    baseline for zip-extracted sources without relocating them."""
     result = deepcopy(plan)
     store = _store_path(runtime_prefix)
     for package_plan in _package_plans(result):
         source = package_plan.get("source")
-        if not isinstance(source, dict) or source.get("type") != "directory":
+        if not isinstance(source, dict):
             continue
-        root = Path(str(source.get("path") or "")).resolve()
-        expected = str(source.get("checksum") or "")
-        checksum = _tree_sha256(root)
-        if expected and checksum != expected:
-            raise ExecutionError(
-                f"Mutable package changed after planning: {root}; plan again before execution"
-            )
-        destination = store / "artifacts" / checksum
-        if not destination.exists():
-            temporary = store / "artifacts" / f".{checksum}.{os.getpid()}.tmp"
-            temporary.mkdir(parents=True, mode=0o700, exist_ok=False)
-            try:
-                for item in _tree_files(root):
-                    relative = item.relative_to(root)
-                    target = temporary / relative
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(item, target)
-                if _tree_sha256(temporary) != checksum:
-                    raise ExecutionError(f"Lifecycle snapshot verification failed for {root}")
-                temporary.replace(destination)
-            except Exception:
-                shutil.rmtree(temporary, ignore_errors=True)
-                raise
-        _rewrite_package_paths(package_plan, root, destination, checksum)
+        source_type = source.get("type")
+        if source_type == "directory":
+            root = Path(str(source.get("path") or "")).resolve()
+            expected = str(source.get("checksum") or "")
+            checksum = _tree_sha256(root)
+            if expected and checksum != expected:
+                raise ExecutionError(
+                    f"Mutable package changed after planning: {root}; plan again before execution"
+                )
+            destination = store / "artifacts" / checksum
+            if not destination.exists():
+                temporary = store / "artifacts" / f".{checksum}.{os.getpid()}.tmp"
+                temporary.mkdir(parents=True, mode=0o700, exist_ok=False)
+                try:
+                    for item in _tree_files(root):
+                        relative = item.relative_to(root)
+                        target = temporary / relative
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(item, target)
+                    if _tree_sha256(temporary) != checksum:
+                        raise ExecutionError(f"Lifecycle snapshot verification failed for {root}")
+                    temporary.replace(destination)
+                except Exception:
+                    shutil.rmtree(temporary, ignore_errors=True)
+                    raise
+            _rewrite_package_paths(package_plan, root, destination, checksum)
+        elif source_type == "zip":
+            extracted = source.get("work_path")
+            if not extracted:
+                continue
+            extracted_root = Path(str(extracted))
+            package_plan["snapshot"] = {
+                "path": str(extracted_root),
+                "checksum": _tree_sha256(extracted_root),
+                "checksum_alg": "TREE-SHA-256",
+            }
     _refresh_runtime_graph(result)
     runtime = result.get("application_runtime")
     if isinstance(runtime, dict):
