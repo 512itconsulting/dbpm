@@ -331,3 +331,110 @@ publish:
 """,
             "dbpm.yaml",
         )
+
+
+# ---------------------------------------------------------------------------
+# state: section
+# ---------------------------------------------------------------------------
+
+
+def test_parse_manifest_with_state_classification():
+    manifest = parse_manifest(
+        """
+package:
+  name: demo
+  version: "0.1.0"
+
+state:
+  - path: var/cache/**
+    category: cache
+  - path: etc/secrets.conf
+    category: secret
+""",
+        "dbpm.yaml",
+    )
+
+    assert [(entry.path, entry.category) for entry in manifest.state] == [
+        ("var/cache/**", "cache"),
+        ("etc/secrets.conf", "secret"),
+    ]
+
+
+def test_parse_manifest_without_state_defaults_to_empty():
+    manifest = parse_manifest(
+        """
+package:
+  name: demo
+  version: "0.1.0"
+""",
+        "dbpm.yaml",
+    )
+
+    assert manifest.state == ()
+
+
+def test_state_entry_rejects_unknown_category():
+    with pytest.raises(ManifestError, match="unknown category"):
+        parse_manifest(
+            """
+package:
+  name: demo
+  version: "0.1.0"
+
+state:
+  - path: var/data
+    category: bogus
+""",
+            "dbpm.yaml",
+        )
+
+
+@pytest.mark.parametrize(
+    "path", ["../escape", "/absolute", "opt/other", "etc/../../escape"]
+)
+def test_state_entry_rejects_paths_outside_etc_or_var(path: str):
+    with pytest.raises(ManifestError, match="etc/ or var/"):
+        parse_manifest(
+            f"""
+package:
+  name: demo
+  version: "0.1.0"
+
+state:
+  - path: "{path}"
+    category: cache
+""",
+            "dbpm.yaml",
+        )
+
+
+def test_state_section_must_be_a_list():
+    with pytest.raises(ManifestError, match="`state`.*must be a list"):
+        parse_manifest(
+            """
+package:
+  name: demo
+  version: "0.1.0"
+
+state:
+  path: var/data
+  category: cache
+""",
+            "dbpm.yaml",
+        )
+
+
+def test_parse_json_manifest_with_state():
+    manifest = parse_manifest(
+        json.dumps(
+            {
+                "package": {"name": "demo", "version": "0.1.0"},
+                "state": [{"path": "var/work", "category": "work_state"}],
+            }
+        ),
+        "dbpm.json",
+    )
+
+    assert [(entry.path, entry.category) for entry in manifest.state] == [
+        ("var/work", "work_state")
+    ]

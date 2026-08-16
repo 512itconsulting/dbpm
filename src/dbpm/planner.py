@@ -121,6 +121,9 @@ def _package_dict(manifest: PackageManifest) -> dict[str, object]:
             "minimum_version": manifest.database_minimum_version,
         },
         "dbpm": {"minimum_version": manifest.dbpm_minimum_version},
+        "state": [
+            {"path": entry.path, "category": entry.category} for entry in manifest.state
+        ],
     }
 
 

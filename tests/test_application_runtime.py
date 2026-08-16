@@ -14,9 +14,11 @@ from dbpm.application_runtime import (
     activate_staged_application_runtime,
     application_receipt_path,
     application_runtime_lock,
+    classify_preserved_state,
     garbage_collect_application_runtime,
     load_application_runtime_receipt,
     parse_application_runtime_receipt,
+    purge_classified_state,
     resume_application_runtime_graph,
     rollback_application_runtime,
     recover_application_runtime_activation,
@@ -760,3 +762,100 @@ def _graph(*, package_root: Path, script: Path) -> dict[str, object]:
             }
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# preserved-state classification and purge
+# ---------------------------------------------------------------------------
+
+
+_STATE_RULES = [
+    {"path": "var/cache/**", "category": "cache"},
+    {"path": "var/queue/**", "category": "work_state"},
+    {"path": "etc/secrets.conf", "category": "secret"},
+]
+
+
+def _write(path: Path, content: str = "x") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+
+
+def test_classify_preserved_state_splits_declared_and_unclassified(tmp_path: Path):
+    _write(tmp_path / "var" / "cache" / "a.tmp")
+    _write(tmp_path / "var" / "queue" / "job.json")
+    _write(tmp_path / "etc" / "secrets.conf")
+    _write(tmp_path / "etc" / "unknown.conf")
+
+    result = classify_preserved_state(tmp_path, _STATE_RULES)
+
+    assert result["categories"]["cache"] == ["var/cache/a.tmp"]
+    assert result["categories"]["work_state"] == ["var/queue/job.json"]
+    assert result["categories"]["secret"] == ["etc/secrets.conf"]
+    assert result["unclassified"] == ["etc/unknown.conf"]
+
+
+def test_classify_preserved_state_handles_missing_etc_and_var(tmp_path: Path):
+    result = classify_preserved_state(tmp_path, _STATE_RULES)
+
+    assert result["categories"] == {}
+    assert result["unclassified"] == []
+
+
+def test_purge_classified_state_deletes_only_selected_category(tmp_path: Path):
+    _write(tmp_path / "var" / "cache" / "a.tmp")
+    _write(tmp_path / "var" / "queue" / "job.json")
+    classification = classify_preserved_state(tmp_path, _STATE_RULES)
+
+    deleted = purge_classified_state(tmp_path, classification, {"cache"})
+
+    assert deleted == ["var/cache/a.tmp"]
+    assert not (tmp_path / "var" / "cache" / "a.tmp").exists()
+    assert (tmp_path / "var" / "queue" / "job.json").exists()
+
+
+def test_purge_classified_state_never_deletes_secret_or_config(tmp_path: Path):
+    _write(tmp_path / "etc" / "secrets.conf")
+    classification = classify_preserved_state(tmp_path, _STATE_RULES)
+
+    deleted = purge_classified_state(tmp_path, classification, {"secret", "config"})
+
+    assert deleted == []
+    assert (tmp_path / "etc" / "secrets.conf").exists()
+
+
+def test_purge_classified_state_never_deletes_unclassified_paths(tmp_path: Path):
+    _write(tmp_path / "var" / "cache" / "a.tmp")
+    _write(tmp_path / "var" / "mystery.dat")
+    classification = classify_preserved_state(tmp_path, _STATE_RULES)
+
+    deleted = purge_classified_state(
+        tmp_path, classification, {"cache", "work_state", "log", "business_data"}
+    )
+
+    assert deleted == ["var/cache/a.tmp"]
+    assert (tmp_path / "var" / "mystery.dat").exists()
+
+
+def test_purge_classified_state_ignores_files_created_after_classification(tmp_path: Path):
+    _write(tmp_path / "var" / "cache" / "a.tmp")
+    classification = classify_preserved_state(tmp_path, _STATE_RULES)
+    _write(tmp_path / "var" / "cache" / "b.tmp")
+
+    deleted = purge_classified_state(tmp_path, classification, {"cache"})
+
+    assert deleted == ["var/cache/a.tmp"]
+    assert (tmp_path / "var" / "cache" / "b.tmp").exists()
+
+
+def test_classify_preserved_state_treats_ambiguous_overlap_as_unclassified(tmp_path: Path):
+    _write(tmp_path / "var" / "business" / "record.dat")
+    rules = [
+        {"path": "var/**", "category": "cache"},
+        {"path": "var/business/**", "category": "business_data"},
+    ]
+
+    result = classify_preserved_state(tmp_path, rules)
+
+    assert result["categories"] == {}
+    assert result["unclassified"] == ["var/business/record.dat"]

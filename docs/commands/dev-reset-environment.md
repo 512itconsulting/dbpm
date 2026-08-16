@@ -21,3 +21,18 @@ its uninstall graph and hooks. Runtime cleanup preserves application-level
 prefixes. Interactive confirmation is required unless `--yes` is supplied.
 `--confirm` additionally asserts the connected schema or Core environment
 label; it does not bypass the interactive prompt by itself.
+
+## Preserved-state classification
+
+Content under each runtime prefix's `etc` and `var` is classified against the
+package manifest's `state` table, which tags relative paths (globs allowed)
+with one of: `config`, `secret`, `business_data`, `work_state`, `cache`, or
+`log`. Any path the manifest does not cover is reported as unclassified and
+is always preserved — dbpm never guesses at classification.
+
+`--purge-var CATEGORY` (repeatable) deletes only the manifest-classified
+files in the named categories instead of preserving them; `config` and
+`secret` are not accepted values and can never be purged. Unclassified paths
+are never purged regardless of which categories are selected. The
+confirmation summary reports the selected purge categories and the count of
+unclassified paths that will be left behind untouched.

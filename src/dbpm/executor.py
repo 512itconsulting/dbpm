@@ -33,6 +33,7 @@ from .application_runtime import (
     resume_application_runtime_graph,
     garbage_collect_application_runtime,
     load_application_runtime_receipt,
+    purge_classified_state,
     uninstall_application_runtime_graph,
     validate_application_runtime_prefix,
     validate_application_runtime_collisions,
@@ -76,6 +77,7 @@ def execute_plan(
             runtime_removals = plan.get("runtime_removals", [])
             if not isinstance(runtime_removals, list):
                 raise ExecutionError("Environment reset runtime_removals must be a list")
+            purge_categories = set(plan.get("purge_categories") or [])
             for item in runtime_removals:
                 if not isinstance(item, dict) or not isinstance(item.get("graph"), dict):
                     raise ExecutionError("Environment reset runtime removal must contain a graph")
@@ -84,6 +86,18 @@ def execute_plan(
                 uninstall_application_runtime_graph(
                     item["graph"], prefix=prefix, log_dir=context.log_dir
                 )
+                if purge_categories:
+                    classification = item.get("classification")
+                    deleted = purge_classified_state(
+                        prefix,
+                        classification if isinstance(classification, dict) else {},
+                        purge_categories,
+                    )
+                    if deleted:
+                        report_progress(
+                            f"Purged {len(deleted)} {'/'.join(sorted(purge_categories))} "
+                            f"path(s) under {prefix}"
+                        )
             removal_order = plan.get("removal_order")
             if not isinstance(removal_order, list):
                 raise ExecutionError("Environment reset requires a removal_order")

@@ -12,6 +12,10 @@ from .errors import ManifestError
 MANIFEST_NAMES = ("dbpm.yaml", "dbpm.yml", "dbpm.json", "package.dbpm.yaml")
 PACKAGE_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
 RUNTIME_COMMAND_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+STATE_CATEGORIES = frozenset(
+    {"config", "secret", "business_data", "work_state", "cache", "log"}
+)
+NEVER_PURGED_STATE_CATEGORIES = frozenset({"config", "secret"})
 
 
 @dataclass(frozen=True)
@@ -48,6 +52,12 @@ class RuntimeCommandAlias:
 
 
 @dataclass(frozen=True)
+class StatePath:
+    path: str
+    category: str
+
+
+@dataclass(frozen=True)
 class RuntimeComponent:
     install: str | None
     upgrade: str | None = None
@@ -73,6 +83,7 @@ class PackageManifest:
     dbpm_minimum_version: str | None = None
     publish: PublishConfig | None = None
     runtime: RuntimeComponent | None = None
+    state: tuple[StatePath, ...] = ()
 
     @property
     def is_core(self) -> bool:
@@ -124,6 +135,7 @@ def parse_manifest(text: str, source_name: str) -> PackageManifest:
         dbpm_minimum_version=dbpm_minimum_version,
         publish=_parse_publish_config(publish_data, source_name) if publish_data else None,
         runtime=_parse_runtime(runtime_data, source_name) if runtime_data is not None else None,
+        state=tuple(_parse_state(data.get("state"), source_name)),
     )
 
 
@@ -193,6 +205,46 @@ def _parse_dependencies(value: Any, source_name: str) -> list[Dependency]:
             )
         )
     return dependencies
+
+
+def _parse_state(value: Any, source_name: str) -> list[StatePath]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ManifestError(f"`state` in {source_name} must be a list")
+
+    entries: list[StatePath] = []
+    for item in value:
+        if not isinstance(item, dict):
+            raise ManifestError(f"Each `state` entry in {source_name} must be a mapping")
+        path = _required_string(item, "path", source_name)
+        category = _required_string(item, "category", source_name)
+        if category not in STATE_CATEGORIES:
+            raise ManifestError(
+                f"`state` entry for path {path!r} in {source_name} has unknown "
+                f"category {category!r}; must be one of {sorted(STATE_CATEGORIES)}"
+            )
+        entries.append(StatePath(path=_normalize_state_path(path, source_name), category=category))
+    return entries
+
+
+def _normalize_state_path(path: str, source_name: str) -> str:
+    if any(char in path for char in "\r\n"):
+        raise ManifestError(f"`state` paths must not contain control characters: {path!r}")
+    normalized = PurePosixPath(path.replace("\\", "/"))
+    parts = normalized.parts
+    if (
+        not parts
+        or normalized.as_posix() in {"", "."}
+        or normalized.is_absolute()
+        or ".." in parts
+        or parts[0] not in ("etc", "var")
+    ):
+        raise ManifestError(
+            f"`state` path {path!r} in {source_name} must be a relative path "
+            "rooted at etc/ or var/"
+        )
+    return normalized.as_posix()
 
 
 def _required_mapping(data: dict[str, Any], key: str, source_name: str) -> dict[str, Any]:
@@ -440,7 +492,7 @@ def _parse_simple_yaml(text: str, source_name: str) -> dict[str, Any]:
         if indent == 0:
             key, value = _split_yaml_pair(stripped, source_name)
             if value is None:
-                if key == "dependencies":
+                if key in ("dependencies", "state"):
                     current_list = []
                     root[key] = current_list
                     current_map = None

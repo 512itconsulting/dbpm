@@ -492,6 +492,7 @@ sections already in this document rather than new mechanism.
 | Offline runtime host | Database/runtime operation state decouples database completion from runtime reachability; [Offline runtime host reconciliation](#offline-runtime-host-reconciliation) defines the repair path | Reconciliation is operator-triggered (explicit command or next `resume`), not automatically detected the moment the host becomes reachable; an operator who never runs it leaves the operation parked in `RUNTIME_UNREACHABLE`. |
 | Accidental deletion of a manually installed dependency | Option 2 (`MANUAL`/`AUTO_DEPENDENCY`/`APPLICATION_ROOT` reason tracking; `--cascade unused` restricted to `AUTO_DEPENDENCY`) | Depends on install-reason being recorded correctly at install time; installs that predate this tracking have no reason recorded and need a backfill/migration decision, not addressed here. |
 | Accidental deletion of operator-owned data | Environment reset (Preserved-state classification); Option 3 (dev-reset confirmation summary) | Classification is manifest-declared, not independently verified — a package that mis-tags its own data (business data marked as cache) is still deleted as declared. |
+| Tampered `state` rules inside an installed lifecycle receipt | Installed lifecycle receipts (receipt as trust anchor, mode 0o600, snapshot checksum for mutable local-source installs); Preserved-state classification reads rules from the receipt, not by rescanning the source | Same trust boundary already accepted for the rest of the receipt (e.g. uninstall script selection): once a receipt is installed, its contents are not independently re-verified against the manifest unless a `snapshot` key is present. Not a new gap introduced by `--purge-var` — deliberately not given bespoke re-verification, to stay consistent with how every other destructive operation already trusts the receipt. |
 
 ## Installed lifecycle receipts
 
@@ -798,17 +799,74 @@ cached payloads left behind by the prior install, so the reset result must
 enumerate preserved paths and warn when they could affect the new deployment.
 Runtime state should be classified before any purge decision is made:
 
-- operator configuration and secrets;
-- durable business or input data;
-- application work state;
-- reproducible caches;
-- logs and diagnostics.
+- operator configuration (`config`);
+- secrets (`secret`);
+- durable business or input data (`business_data`);
+- application work state (`work_state`);
+- reproducible caches (`cache`);
+- logs and diagnostics (`log`).
 
 Purge behavior should be granular against this classification. Selecting
 `--purge-var` must not delete configuration or secrets, and disposable work
 state should not be preserved automatically just because it shares a directory
 with durable business data. An optional `--purge-var` remains a separate, more
 strongly confirmed action, scoped to the categories the operator selects.
+
+#### Classification schema, defaults, and `--purge-var` — implemented
+
+Classification is manifest-declared (see the risk register: "classification
+is manifest-declared, not independently verified"). A package's manifest may
+declare a `state` list of relative paths or globs under its own `etc`/`var`
+payload, each tagged with one of the six categories above:
+
+```yaml
+state:
+  - path: var/cache/**
+    category: cache
+  - path: var/queue/**
+    category: work_state
+  - path: etc/secrets.conf
+    category: secret
+```
+
+Paths not covered by any rule — including every package published before
+this schema existed — are reported as `unclassified` and are always
+preserved: `--purge-var` can never delete an unclassified path, regardless
+of which categories it selects. `dev reset-environment` reports the
+unclassified path count in its confirmation summary rather than silently
+treating uncovered content as safe to keep or safe to drop; the operator
+sees what dbpm could not classify, dbpm does not guess at it.
+
+`--purge-var CATEGORY` is an explicit, repeatable CLI argument restricted to
+the four purgeable categories (`business_data`, `work_state`, `cache`,
+`log`); `secret` and `config` are rejected as argument values outright, so
+they can never be selected. Deletion is scoped per runtime prefix to the
+files the manifest classified into a selected category — nothing else.
+Because `--purge-var` is strictly additive risk on top of the base reset,
+the confirmation summary names the selected categories and the count of
+unclassified paths that will be left behind untouched, ahead of the normal
+`--yes`/interactive confirmation gate.
+
+Two hardening properties follow directly from the plan/execute split used
+elsewhere in this design (see "Source mutating between plan and execution
+(TOCTOU)" in the risk register):
+
+- **No rescan at execution time.** Classification is computed exactly once,
+  while building the plan the operator confirms. Execution deletes only
+  from that already-computed classification and never re-walks the
+  filesystem, so a file that appears under a runtime prefix after the
+  operator confirmed the plan can never be purged by it.
+- **Ambiguous rules resolve to unclassified, not to declaration order.**
+  If more than one `state` rule matches the same path with different
+  categories, the path is treated as unclassified — always preserved —
+  rather than silently taking whichever rule happened to be declared
+  first in the manifest.
+
+For a multi-package application-runtime install, classification rules are
+collected from every package in the receipt (the root package and each
+entry under its dependency graph), not just the root package's own
+declarations, so a dependency's `state` rules are honored during reset even
+when the root package declares none of its own.
 
 ### Remnant reporting
 
@@ -943,20 +1001,17 @@ Phase 3 is done when:
   invocations against the same target fail closed on the lease rather than
   racing — the same fencing Phase 2 established for single-application
   composite operations, applied to these multi-package destructive paths.
+- `dev reset-environment` classifies each removable application's `etc`/`var`
+  content against its manifest-declared `state` table
+  ([Classification schema, defaults, and `--purge-var`](#classification-schema-defaults-and---purge-var--implemented)),
+  reports unclassified path counts in its confirmation summary, and never
+  purges an unclassified, `secret`, or `config` path regardless of
+  `--purge-var`.
 
-**Known incomplete against this document, as implemented:** preserved-state
-classification (operator config/secrets vs. durable business data vs. work
-state vs. caches vs. logs) is not implemented — `dev reset-environment`
-currently only records the static label `["etc", "var"]` as preserved, with
-no `--purge-var` and no differentiation within those directories. This
-requires a manifest-driven classification mechanism that doesn't exist yet
-elsewhere in dbpm; closing it is scoped as follow-up work, not folded into
-this phase's initial implementation. Phase 3 is not done until it is
-resolved, one way or another.
-
-Evidence-tiered remnant reporting (below) is deliberately *not* part of this
-list — it has been rescoped into Phase 4, since it is a post-removal audit
-concern rather than a reset-safety concern. See Phase 4 item 1.
+Evidence-tiered remnant reporting (below) is deliberately not part of Phase
+3's closing criteria — it has been rescoped into Phase 4, since it is a
+post-removal audit concern rather than a reset-safety concern. See Phase 4
+item 1.
 
 ### Phase 4: Auditing and ergonomics
 

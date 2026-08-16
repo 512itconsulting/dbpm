@@ -839,6 +839,52 @@ def test_environment_reset_releases_lease_even_when_delete_fails(tmp_path, monke
     assert released == ["op-env"]
 
 
+def test_environment_reset_purges_selected_state_category_after_runtime_removal(
+    tmp_path, monkeypatch,
+):
+    prefix = tmp_path / "consumer"
+    (prefix / "var" / "cache").mkdir(parents=True)
+    (prefix / "var" / "cache" / "a.tmp").write_text("x", encoding="utf-8")
+    (prefix / "var" / "queue").mkdir(parents=True)
+    (prefix / "var" / "queue" / "job.json").write_text("x", encoding="utf-8")
+
+    plan = {
+        "environment_reset": True,
+        "removal_order": ["CONSUMER"],
+        "runtime_removals": [
+            {
+                "prefix": str(prefix),
+                "graph": {"root_package": "consumer", "payloads": []},
+                "classification": {
+                    "categories": {
+                        "cache": ["var/cache/a.tmp"],
+                        "work_state": ["var/queue/job.json"],
+                    },
+                    "unclassified": [],
+                },
+            }
+        ],
+        "purge_categories": ["cache"],
+    }
+    monkeypatch.setattr(
+        "dbpm.executor.uninstall_application_runtime_graph", lambda *a, **k: None,
+    )
+    monkeypatch.setattr("dbpm.executor.delete_application", lambda **kwargs: None)
+    monkeypatch.setattr(
+        "dbpm.executor.get_installed_application_graph", lambda **kwargs: (["CORE"], []),
+    )
+    record = OperationRecord("op-env", "CORE", "environment-reset", "RESOLVED", 0, None, None)
+    lease = OperationLease(record.operation_id, 1, "token", "expiry")
+    monkeypatch.setattr("dbpm.executor.begin_operation", lambda **kwargs: record)
+    monkeypatch.setattr("dbpm.executor.acquire_operation_lease", lambda **kwargs: lease)
+    monkeypatch.setattr("dbpm.executor.release_operation_lease", lambda **kwargs: None)
+
+    assert execute_plan(plan, connect="user/pass@db", runner="sql", context=None) == 0
+
+    assert not (prefix / "var" / "cache" / "a.tmp").exists()
+    assert (prefix / "var" / "queue" / "job.json").exists()
+
+
 def test_execute_plan_runs_record_post_action_after_script(tmp_path, monkeypatch):
     monkeypatch.setenv("DBPM_LOG_DIR", str(tmp_path / "logs"))
     payload = {

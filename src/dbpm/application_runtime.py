@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fnmatch
 import json
 import errno
 import os
@@ -14,7 +15,12 @@ from typing import Any, Iterator, TextIO
 
 from .errors import ExecutionError
 from .progress import report_progress
-from .manifest import PACKAGE_NAME_RE, RUNTIME_COMMAND_NAME_RE
+from .manifest import (
+    NEVER_PURGED_STATE_CATEGORIES,
+    PACKAGE_NAME_RE,
+    RUNTIME_COMMAND_NAME_RE,
+    STATE_CATEGORIES,
+)
 
 
 APPLICATION_RECEIPT_SCHEMA = "dbpm.application-runtime.v1"
@@ -1023,6 +1029,80 @@ def _garbage_collect_application_runtime_unlocked(
             shutil.rmtree(payload_backup)
             removed.append(payload_backup)
     return tuple(removed)
+
+
+def classify_preserved_state(
+    prefix: Path, state_rules: list[dict[str, object]]
+) -> dict[str, object]:
+    """Classify files under `prefix/etc` and `prefix/var` against manifest-declared
+    state rules. Returns categorized relative paths plus an `unclassified` list for
+    paths no rule covers.
+    """
+    patterns: list[tuple[str, str]] = []
+    for rule in state_rules:
+        if not isinstance(rule, dict):
+            continue
+        path = rule.get("path")
+        category = rule.get("category")
+        if isinstance(path, str) and isinstance(category, str):
+            patterns.append((path, category))
+
+    categories: dict[str, list[str]] = {name: [] for name in STATE_CATEGORIES}
+    unclassified: list[str] = []
+    for root_name in ("etc", "var"):
+        root = prefix / root_name
+        if not root.exists():
+            continue
+        for file_path in sorted(root.rglob("*")):
+            if not file_path.is_file():
+                continue
+            relative = file_path.relative_to(prefix).as_posix()
+            category = _match_state_category(relative, patterns)
+            if category is None:
+                unclassified.append(relative)
+            else:
+                categories[category].append(relative)
+    return {
+        "categories": {name: paths for name, paths in categories.items() if paths},
+        "unclassified": unclassified,
+    }
+
+
+def _match_state_category(relative_path: str, patterns: list[tuple[str, str]]) -> str | None:
+    matched_categories = {
+        category for pattern, category in patterns if fnmatch.fnmatch(relative_path, pattern)
+    }
+    if len(matched_categories) == 1:
+        return next(iter(matched_categories))
+    return None
+
+
+def purge_classified_state(
+    prefix: Path, classification: dict[str, object], categories: set[str],
+) -> list[str]:
+    """Delete files previously classified by `classify_preserved_state` whose
+    category is in `categories`. Operates only on that recorded classification —
+    it never rescans the filesystem — so purge can never touch a path that was
+    not part of the plan the operator confirmed. `config` and `secret` are never
+    purged, and unclassified paths are never purged, regardless of what
+    `categories` requests.
+    """
+    selected = set(categories) - NEVER_PURGED_STATE_CATEGORIES
+    if not selected:
+        return []
+    categorized = classification.get("categories") if isinstance(classification, dict) else None
+    if not isinstance(categorized, dict):
+        return []
+    deleted: list[str] = []
+    for category, paths in categorized.items():
+        if category not in selected or not isinstance(paths, list):
+            continue
+        for relative in paths:
+            target = prefix / str(relative)
+            if target.is_file():
+                target.unlink()
+                deleted.append(str(relative))
+    return sorted(deleted)
 
 
 def uninstall_application_runtime_graph(

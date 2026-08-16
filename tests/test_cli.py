@@ -2901,6 +2901,67 @@ def test_environment_reset_keeps_core_and_uses_consumer_first_order(monkeypatch,
     assert captured["plan"]["keep"] == ["CORE"]
 
 
+def test_environment_reset_rejects_secret_and_config_purge_choices():
+    parser = cli._build_parser()
+    for category in ("secret", "config"):
+        with pytest.raises(SystemExit):
+            parser.parse_args([
+                "dev", "reset-environment", "--keep", "CORE",
+                "--connect", "user/pass@db", "--purge-var", category,
+            ])
+
+
+def test_environment_reset_classifies_preserved_state_and_purges_selected_category(
+    monkeypatch, capsys, tmp_path: Path,
+):
+    from dbpm.lifecycle import write_lifecycle_receipt
+
+    prefix = tmp_path / "consumer"
+    (prefix / "var" / "cache").mkdir(parents=True)
+    (prefix / "var" / "cache" / "a.tmp").write_text("x", encoding="utf-8")
+    (prefix / "etc" / "unknown.conf").parent.mkdir(parents=True, exist_ok=True)
+    (prefix / "etc" / "unknown.conf").write_text("x", encoding="utf-8")
+    write_lifecycle_receipt(
+        {
+            "package": {
+                "application_name": "CONSUMER",
+                "state": [{"path": "var/cache/**", "category": "cache"}],
+            },
+            "application_runtime": {"root_package": "consumer", "payloads": []},
+        },
+        runtime_prefix=str(prefix),
+    )
+
+    monkeypatch.setattr(
+        cli, "get_core_deployment_metadata",
+        lambda **kwargs: DeploymentMetadata(
+            "N", "DISPOSABLE", {"DBPM_ALLOW_ENVIRONMENT_RESET": "Y"},
+        ),
+    )
+    monkeypatch.setattr(
+        cli, "get_application_state",
+        lambda **kwargs: ApplicationState("CORE", "3.5.0", "C", "abc"),
+    )
+    monkeypatch.setattr(
+        cli, "get_installed_application_graph",
+        lambda **kwargs: (["CORE", "CONSUMER"], []),
+    )
+    captured = {}
+    monkeypatch.setattr(cli, "execute_plan", lambda plan, **kwargs: captured.setdefault("plan", plan) or 0)
+
+    assert cli.main([
+        "dev", "reset-environment", "--keep", "CORE", "--yes",
+        "--confirm", "APP", "--connect", "user/pass@db",
+        "--runtime-prefix", str(prefix), "--purge-var", "cache",
+    ]) == 0
+
+    plan = captured["plan"]
+    assert plan["purge_categories"] == ["cache"]
+    consumer_state = plan["preserved_state"]["CONSUMER"]
+    assert consumer_state["categories"]["cache"] == ["var/cache/a.tmp"]
+    assert consumer_state["unclassified"] == ["etc/unknown.conf"]
+
+
 def _lifecycle_package_plan(app_name: str, *, reason: str) -> dict[str, object]:
     return {
         "package": {"name": app_name.lower(), "application_name": app_name, "version": "1.0.0"},

@@ -43,10 +43,12 @@ from .environment import DeploymentPolicy, policy_from_core_values, resolve_depl
 from .errors import DbpmError
 from .executor import execute_plan
 from .application_runtime import (
+    classify_preserved_state,
     load_retained_application_runtime_receipt,
     rollback_application_runtime,
     validate_application_runtime_collisions,
 )
+from .manifest import NEVER_PURGED_STATE_CATEGORIES, STATE_CATEGORIES
 from .lockfile import (
     LOCKFILE_NAME,
     assert_database_matches_lockfile,
@@ -623,6 +625,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--runtime-prefix", action="append", default=[],
         help="Installed application runtime prefix to remove (repeatable)",
     )
+    reset_environment.add_argument(
+        "--purge-var", action="append", default=[],
+        choices=sorted(STATE_CATEGORIES - NEVER_PURGED_STATE_CATEGORIES),
+        help=(
+            "Manifest-classified var/etc category to delete instead of preserve "
+            "(repeatable); config and secret can never be purged"
+        ),
+    )
 
     workspace = subparsers.add_parser("workspace", help="Inspect a dbpm workspace")
     workspace_subparsers = workspace.add_subparsers(dest="workspace_command", required=True)
@@ -1021,6 +1031,27 @@ def _consumer_first_order(
     return ordered
 
 
+def _collect_receipt_state_rules(receipt: dict[str, object]) -> list[dict[str, object]]:
+    rules: list[dict[str, object]] = []
+    root_package = receipt.get("package")
+    if isinstance(root_package, dict):
+        root_state = root_package.get("state")
+        if isinstance(root_state, list):
+            rules.extend(item for item in root_state if isinstance(item, dict))
+    packages = receipt.get("packages")
+    if isinstance(packages, list):
+        for entry in packages:
+            if not isinstance(entry, dict):
+                continue
+            package = entry.get("package")
+            if not isinstance(package, dict):
+                continue
+            state = package.get("state")
+            if isinstance(state, list):
+                rules.extend(item for item in state if isinstance(item, dict))
+    return rules
+
+
 def _build_environment_reset_plan(args: argparse.Namespace) -> dict[str, object]:
     environment = _resolve_policy_for_plan("uninstall", args)
     environment.require("DBPM_ALLOW_ENVIRONMENT_RESET")
@@ -1036,8 +1067,15 @@ def _build_environment_reset_plan(args: argparse.Namespace) -> dict[str, object]
     removable = [app for app in applications if app.upper() != "CORE"]
     removal_order = _consumer_first_order(removable, dependencies)
     identity = get_target_identity(connect=_connect_spec(args), runner=args.runner)
+    purge_categories = sorted(set(getattr(args, "purge_var", None) or []))
+    forbidden_purge = set(purge_categories) & NEVER_PURGED_STATE_CATEGORIES
+    if forbidden_purge:
+        raise DbpmError(
+            f"--purge-var cannot select {', '.join(sorted(forbidden_purge))}"
+        )
     runtime_removals: list[dict[str, object]] = []
     affected_prefixes: list[str] = []
+    preserved_state: dict[str, object] = {}
     for raw_prefix in args.runtime_prefix:
         prefix = Path(raw_prefix).expanduser().resolve()
         receipt = load_lifecycle_receipt(runtime_prefix=str(prefix))
@@ -1046,10 +1084,17 @@ def _build_environment_reset_plan(args: argparse.Namespace) -> dict[str, object]
         app_name = package.get("application_name") if isinstance(package, dict) else None
         if app_name not in removal_order:
             raise DbpmError(f"Runtime prefix {prefix} belongs to {app_name}, which is not in the reset plan")
+        state_rules = _collect_receipt_state_rules(receipt)
+        classification = classify_preserved_state(prefix, state_rules)
+        preserved_state[str(app_name)] = {"prefix": str(prefix), **classification}
         if isinstance(graph, dict):
             graph = dict(graph)
             graph["effects"] = dict(graph.get("effects", {}), operation="uninstall")
-            runtime_removals.append({"prefix": str(prefix), "graph": graph})
+            runtime_removals.append({
+                "prefix": str(prefix),
+                "graph": graph,
+                "classification": classification,
+            })
             affected_prefixes.append(str(prefix))
     plan: dict[str, object] = {
         "schema_version": "dbpm.environment-reset.v0",
@@ -1065,6 +1110,8 @@ def _build_environment_reset_plan(args: argparse.Namespace) -> dict[str, object]
         "affected_runtime_prefixes": affected_prefixes,
         "runtime_removals": runtime_removals,
         "preserved_paths": ["etc", "var"],
+        "preserved_state": preserved_state,
+        "purge_categories": purge_categories,
         "policy": environment.evaluate(
             "uninstall", dirty=False, allow_destructive=True,
             required_capabilities=("DBPM_ALLOW_ENVIRONMENT_RESET",),
@@ -1104,6 +1151,26 @@ def _confirm_destructive_plan(plan: dict[str, object], args: argparse.Namespace)
         "affected_runtime_prefixes": plan.get("affected_runtime_prefixes")
         or ([args.runtime_prefix] if getattr(args, "runtime_prefix", None) else []),
     }
+    preserved_state = plan.get("preserved_state")
+    if isinstance(preserved_state, dict) and preserved_state:
+        unclassified_total = sum(
+            len(entry.get("unclassified", []))
+            for entry in preserved_state.values()
+            if isinstance(entry, dict)
+        )
+        summary["preserved_state"] = {
+            "unclassified_path_count": unclassified_total,
+            "applications": sorted(preserved_state),
+        }
+        purge_categories = plan.get("purge_categories")
+        if purge_categories:
+            summary["purge_categories"] = purge_categories
+            if unclassified_total:
+                report_progress(
+                    f"Warning: {unclassified_total} unclassified var/etc path(s) "
+                    "have no manifest-declared category and will be preserved "
+                    "untouched regardless of --purge-var."
+                )
     report_progress("Destructive operation summary: " + json.dumps(summary, sort_keys=True))
     expected = getattr(args, "confirm", None)
     if plan.get("environment_reset") is True and not expected:

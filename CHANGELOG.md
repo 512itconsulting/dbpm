@@ -24,6 +24,13 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Add `dbpm dev reset` as an audited command surface over canonical reinstall,
   and `dbpm dev reset-environment --keep CORE` for explicitly disposable
   schemas.
+- Add manifest-declared `state` classification for a package's `etc`/`var`
+  content (`config`, `secret`, `business_data`, `work_state`, `cache`, `log`).
+  `dev reset-environment` reports classified and unclassified preserved paths
+  in its confirmation summary, and `--purge-var CATEGORY` deletes only
+  manifest-classified files in the selected purgeable categories; `secret`
+  and `config` can never be purged, and unclassified paths are always
+  preserved.
 - Report concise deployment progress on stderr while preparing plans, checking
   package state, executing database deployments, and staging and activating
   application runtimes. `--verbose` exposes detailed source resolution and
