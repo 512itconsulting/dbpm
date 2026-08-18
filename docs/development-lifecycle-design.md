@@ -295,8 +295,10 @@ Capability keys are the enforcement mechanism dbpm actually reads and checks;
 `DEPLOY_LOCKED=N` plus a `DBPM_LIFECYCLE` value is a documented profile that
 will expand to a set of these keys, not a parallel enforcement path. dbpm
 currently consumes and enforces the explicit keys; Core-side profile expansion
-and administrative provisioning are deferred to the
-[Core lifecycle integration follow-up](core-operation-api-followup.md#lifecycle-capability-profiles-and-provisioning):
+and administrative provisioning are implemented in Core 3.6.0
+(`PKG_APP_DICT.set_capability_p` / `apply_lifecycle_profile_p`), per the
+[Core lifecycle integration follow-up](https://github.com/512itconsulting/core/blob/main/docs/core-operation-api-followup.md#lifecycle-capability-profiles-and-provisioning)
+(Core repo):
 
 ```text
 DBPM_ALLOW_MUTABLE_SOURCE=Y
@@ -987,10 +989,11 @@ Phase 2 is done when:
 4. Add `dbpm dev reset-environment --keep CORE` for disposable schemas.
 
 Phase 3 covers dbpm's fail-closed consumption of the explicit `DBPM_ALLOW_*`
-keys. Defining how Core administrators provision those keys and expanding the
-convenience `DBPM_LIFECYCLE=DEVELOPER`/`DISPOSABLE` profiles are deferred Core
-integration work, tracked separately in the
-[Core lifecycle integration follow-up](core-operation-api-followup.md#lifecycle-capability-profiles-and-provisioning).
+keys. How Core administrators provision those keys and expand the
+convenience `DBPM_LIFECYCLE=DEVELOPER`/`DISPOSABLE` profiles is implemented
+in Core 3.6.0, per the
+[Core lifecycle integration follow-up](https://github.com/512itconsulting/core/blob/main/docs/core-operation-api-followup.md#lifecycle-capability-profiles-and-provisioning)
+(Core repo).
 
 `dev reset` is policy-gated syntax over `reinstall`, not a second
 implementation — see [`dev reset` vs. graph-aware
