@@ -36,7 +36,7 @@ core:
   minimum_version: "3.0.0"
 
 dbpm:
-  minimum_version: "1.4.3"
+  minimum_version: "1.5.0"
 
 dependencies:
   - name: utl_interval

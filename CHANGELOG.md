@@ -7,6 +7,8 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-08-17
+
 ### Added
 
 - Coordinate database and application-runtime deployment as a durable composite
@@ -231,7 +233,8 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Set the intended Oracle schema explicitly in generated deployment scripts.
 
-[Unreleased]: https://github.com/512itconsulting/dbpm/compare/v1.4.3...HEAD
+[Unreleased]: https://github.com/512itconsulting/dbpm/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/512itconsulting/dbpm/compare/v1.4.3...v1.5.0
 [1.4.3]: https://github.com/512itconsulting/dbpm/compare/v1.4.2...v1.4.3
 [1.4.2]: https://github.com/512itconsulting/dbpm/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/512itconsulting/dbpm/compare/v1.4.0...v1.4.1
