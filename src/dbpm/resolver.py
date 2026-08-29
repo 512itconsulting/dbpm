@@ -84,18 +84,19 @@ def create_multi_package_plan(
         item.manifest.application_name
         for item in ordered_sources
     }
-    for item in _reachable_dependency_sources(source, dependency_sources):
-        if item.manifest.application_name in planned_apps or item.manifest.runtime is None:
-            continue
-        runtime_plans.append(
-            create_plan(
-                mode=_dependency_mode(mode),
-                source=item,
-                provenance=resolve_provenance(item),
-                environment=environment,
-                installed_state=installed_states.get(item.manifest.application_name),
+    if any(package_plan.get("runtime_package") is not None for package_plan in package_plans):
+        for item in _reachable_dependency_sources(source, dependency_sources):
+            if item.manifest.application_name in planned_apps or item.manifest.runtime is None:
+                continue
+            runtime_plans.append(
+                create_plan(
+                    mode=_dependency_mode(mode),
+                    source=item,
+                    provenance=resolve_provenance(item),
+                    environment=environment,
+                    installed_state=installed_states.get(item.manifest.application_name),
+                )
             )
-        )
     if any(package_plan.get("runtime_package") is not None for package_plan in runtime_plans):
         plan["application_runtime"] = create_application_runtime_graph_plan(
             runtime_plans,
