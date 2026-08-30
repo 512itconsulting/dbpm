@@ -7,6 +7,14 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-08-29
+
+### Fixed
+
+- `dbpm uninstall --application <name>` (source-free uninstall) no longer
+  unconditionally requires `--runtime-prefix`; it's now only required when
+  the installed application actually has runtime content to tear down.
+
 ## [1.5.1] - 2026-08-29
 
 ### Fixed

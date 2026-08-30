@@ -1232,8 +1232,6 @@ def _enforce_plan_policies(plan: dict[str, object]) -> None:
 def _build_installed_uninstall_plan(args: argparse.Namespace) -> dict[str, object]:
     if args.source is None and not args.application:
         raise DbpmError("Source-free uninstall requires --application")
-    if not args.runtime_prefix:
-        raise DbpmError("Source-free uninstall requires --runtime-prefix")
     if args.cascade == "graph":
         raise DbpmError(
             "--cascade graph requires the Core capability DBPM_ALLOW_GRAPH_RESET; "
@@ -1307,6 +1305,8 @@ def _build_installed_uninstall_plan(args: argparse.Namespace) -> dict[str, objec
     runtime = result.get("application_runtime")
     if isinstance(runtime, dict):
         if full_removal:
+            if not args.runtime_prefix:
+                raise DbpmError("Application runtime requires --runtime-prefix")
             runtime["effects"] = dict(runtime.get("effects", {}), operation="uninstall")
         else:
             report_progress(

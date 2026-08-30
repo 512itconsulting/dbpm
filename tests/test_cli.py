@@ -3248,3 +3248,59 @@ def test_uninstall_full_cascade_retains_application_runtime_for_teardown(
     assert {item["package"]["application_name"] for item in plan["packages"]} == {"ROOT", "PKG_A"}
     assert plan["application_runtime"] is not None
     assert plan["application_runtime"]["effects"]["operation"] == "uninstall"
+
+
+def test_uninstall_runtime_less_application_does_not_require_runtime_prefix(
+    tmp_path: Path, monkeypatch
+):
+    receipt = _lifecycle_plan(
+        [_lifecycle_package_plan("ROOT", reason="APPLICATION_ROOT")],
+        root_app="ROOT",
+        application_runtime=None,
+    )
+    monkeypatch.setattr(cli, "load_lifecycle_receipt", lambda **kwargs: receipt)
+    monkeypatch.setattr(cli, "_get_installed_state", lambda args, app: None)
+    monkeypatch.setattr(cli, "_get_reverse_dependencies", lambda args, app: [])
+
+    args = cli._build_parser().parse_args(
+        [
+            "uninstall",
+            "--application",
+            "ROOT",
+            "--cascade",
+            "unused",
+            "--allow-destructive",
+        ]
+    )
+    plan = cli._build_installed_uninstall_plan(args)
+
+    assert {item["package"]["application_name"] for item in plan["packages"]} == {"ROOT"}
+    assert plan.get("application_runtime") is None
+
+
+def test_uninstall_runtime_bearing_application_still_requires_runtime_prefix(
+    tmp_path: Path, monkeypatch
+):
+    runtime_graph = {"receipt_backed": True, "payloads": [], "commands": [], "effects": {}}
+    receipt = _lifecycle_plan(
+        [_lifecycle_package_plan("ROOT", reason="APPLICATION_ROOT")],
+        root_app="ROOT",
+        application_runtime=runtime_graph,
+    )
+    monkeypatch.setattr(cli, "load_lifecycle_receipt", lambda **kwargs: receipt)
+    monkeypatch.setattr(cli, "_get_installed_state", lambda args, app: None)
+    monkeypatch.setattr(cli, "_get_reverse_dependencies", lambda args, app: [])
+
+    args = cli._build_parser().parse_args(
+        [
+            "uninstall",
+            "--application",
+            "ROOT",
+            "--cascade",
+            "unused",
+            "--allow-destructive",
+        ]
+    )
+
+    with pytest.raises(cli.DbpmError, match="Application runtime requires --runtime-prefix"):
+        cli._build_installed_uninstall_plan(args)
