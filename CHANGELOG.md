@@ -7,13 +7,25 @@ and dbpm follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [1.5.2] - 2026-08-29
+## [1.5.2] - 2026-09-02
 
 ### Fixed
 
 - `dbpm uninstall --application <name>` (source-free uninstall) no longer
   unconditionally requires `--runtime-prefix`; it's now only required when
   the installed application actually has runtime content to tear down.
+- `resume` can now recover a multi-package composite plan when the root
+  package never started; packages with no live installed state fall back
+  to `install` mode instead of the whole resume being rejected.
+- Uninstall no longer crashes when a package's application runtime never
+  activated; a missing runtime receipt is now tolerated on the uninstall
+  path.
+- Fixed a `NameError` from an undefined `_receipt_hook_environment`
+  reference during receipt-backed application-runtime staging.
+- Operation-tracking SQL now sets `LINESIZE 32767` so pipe-delimited
+  `DBMS_OUTPUT` used for operation tracking isn't wrapped by SQL*Plus's
+  default 80-column width, which could corrupt line-based parsing of long
+  operation ids or reasons.
 
 ## [1.5.1] - 2026-08-29
 
