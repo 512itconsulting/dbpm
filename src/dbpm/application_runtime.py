@@ -689,7 +689,7 @@ def stage_application_runtime_graph(
                 f"application runtime payload {package_name} artifact",
             )
             environment = (
-                _receipt_hook_environment()
+                {"PATH": os.environ.get("PATH", "")}
                 if graph.get("receipt_backed") is True
                 else dict(os.environ)
             )
