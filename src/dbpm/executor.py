@@ -481,6 +481,7 @@ def _preflight_application_runtime(
             graph,
             prefix=prefix,
             log_dir=context.log_dir,
+            allow_missing_receipt=True,
         )
     elif mode in {"install", "upgrade", "reinstall", "resume"}:
         validate_application_runtime_collisions(graph, prefix=prefix, mode=mode)
