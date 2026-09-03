@@ -353,6 +353,77 @@ def test_runtime_cleanup_does_not_rerun_health_after_database_uninstall(tmp_path
     assert len(list(logs.glob("*-runtime-validate.log"))) == 1
 
 
+def test_stage_application_runtime_graph_restricts_receipt_backed_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    prefix = tmp_path / "app"
+    prefix.mkdir()
+    package_root = tmp_path / "artifact"
+    package_root.mkdir()
+    install = package_root / "install.sh"
+    install.write_text(
+        "#!/bin/sh\n"
+        "mkdir -p \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin\"\n"
+        "printf '#!/bin/sh\\nexit 0\\n' > \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin/demo\"\n"
+        "chmod +x \"$DBPM_RUNTIME_PACKAGE_PREFIX/bin/demo\"\n"
+        "printf 'SENTINEL=%s\\n' \"${DBPM_DB_PASSWORD:-unset}\"\n",
+        encoding="utf-8",
+    )
+    install.chmod(0o755)
+    graph = _graph(package_root=package_root, script=install)
+    graph["receipt_backed"] = True
+    monkeypatch.setenv("DBPM_DB_PASSWORD", "runtime_password_sentinel")
+    logs = tmp_path / "logs"
+
+    stage_application_runtime_graph(graph, prefix=prefix, mode="install", log_dir=logs)
+
+    log_text = (logs / "001-demo-runtime-stage.log").read_text(encoding="utf-8")
+    assert "SENTINEL=unset" in log_text
+    assert "runtime_password_sentinel" not in log_text
+
+
+def test_uninstall_application_runtime_graph_tolerates_missing_receipt(tmp_path: Path):
+    # The package's runtime was declared but never activated (e.g. install
+    # crashed during runtime staging), so there is no receipt.json to load.
+    # Uninstall should treat this as "nothing to remove" instead of raising.
+    prefix = tmp_path / "app"
+    prefix.mkdir()
+    package_root = tmp_path / "artifact"
+    package_root.mkdir()
+    install = package_root / "install.sh"
+    install.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    install.chmod(0o755)
+    graph = _graph(package_root=package_root, script=install)
+    logs = tmp_path / "logs"
+
+    assert not application_receipt_path(prefix).exists()
+
+    uninstall_application_runtime_graph(graph, prefix=prefix, log_dir=logs)
+
+    assert not application_receipt_path(prefix).exists()
+
+
+def test_validate_application_runtime_graph_returns_none_for_missing_receipt(tmp_path: Path):
+    prefix = tmp_path / "app"
+    prefix.mkdir()
+    package_root = tmp_path / "artifact"
+    package_root.mkdir()
+    install = package_root / "install.sh"
+    install.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    install.chmod(0o755)
+    graph = _graph(package_root=package_root, script=install)
+    logs = tmp_path / "logs"
+
+    result = validate_application_runtime_graph(
+        graph, prefix=prefix, log_dir=logs, allow_missing_receipt=True,
+    )
+
+    assert result is None
+
+    with pytest.raises(ExecutionError, match="Application runtime receipt does not exist"):
+        validate_application_runtime_graph(graph, prefix=prefix, log_dir=logs)
+
+
 def test_staged_runtime_relocates_text_launchers_before_activation(tmp_path: Path):
     prefix = tmp_path / "app"
     prefix.mkdir()

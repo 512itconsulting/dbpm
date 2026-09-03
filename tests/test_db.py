@@ -25,6 +25,18 @@ from dbpm.db import (
 )
 
 
+def test_operation_tracking_sql_sets_linesize_to_avoid_wrapped_output():
+    from dbpm.db import _begin_operation_sql, _current_operation_sql
+
+    operation_id = "12345678-1234-1234-1234-123456789abc"
+    begin = _begin_operation_sql(operation_id, "EMMT_ELEVATE", "ENVIRONMENT-RESET")
+    current = _current_operation_sql("EMMT_ELEVATE")
+
+    for sql in (begin, current):
+        assert "SET LINESIZE 32767" in sql
+        assert sql.index("SET LINESIZE 32767") < sql.index("SET SERVEROUTPUT ON")
+
+
 def test_operation_lease_sql_uses_core_row_lock_and_fencing():
     from dbpm.db import _acquire_operation_lease_sql, _record_operation_step_sql, OperationLease
 

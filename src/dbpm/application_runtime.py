@@ -189,7 +189,8 @@ def validate_application_runtime_graph(
     prefix: Path,
     log_dir: Path,
     run_health_checks: bool = True,
-) -> ApplicationRuntimeReceipt:
+    allow_missing_receipt: bool = False,
+) -> ApplicationRuntimeReceipt | None:
     root_name = _package_name(graph.get("root_package"), "runtime root package")
     root_version = _nonempty_string(graph.get("root_version"), "runtime root version")
     payloads = graph.get("payloads")
@@ -197,6 +198,8 @@ def validate_application_runtime_graph(
     if not isinstance(payloads, list) or not isinstance(commands, list):
         raise ExecutionError("Application runtime graph is incomplete")
     validate_application_runtime_prefix(prefix)
+    if allow_missing_receipt and not application_receipt_path(prefix).exists():
+        return None
     receipt = load_application_runtime_receipt(prefix, expected_application=root_name)
     if receipt.application_version != root_version:
         raise ExecutionError(
@@ -686,7 +689,7 @@ def stage_application_runtime_graph(
                 f"application runtime payload {package_name} artifact",
             )
             environment = (
-                _receipt_hook_environment()
+                {"PATH": os.environ.get("PATH", "")}
                 if graph.get("receipt_backed") is True
                 else dict(os.environ)
             )
@@ -1120,7 +1123,13 @@ def uninstall_application_runtime_graph(
         prefix=prefix,
         log_dir=log_dir,
         run_health_checks=False,
+        allow_missing_receipt=True,
     )
+    if receipt is None:
+        report_progress(
+            "No application runtime receipt found; nothing to remove on the runtime side."
+        )
+        return
     installed = {package.name: package for package in receipt.packages}
     for sequence, raw_payload in enumerate(payloads, start=1):
         payload = _mapping(raw_payload, "application runtime payload")

@@ -389,6 +389,7 @@ def test_uninstall_health_preflight_runs_before_database_and_runtime_cleanup(
         graph,
         prefix=prefix.resolve(),
         log_dir=(tmp_path / "logs").resolve(),
+        allow_missing_receipt=True,
     )
 
 

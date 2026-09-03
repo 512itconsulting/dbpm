@@ -7,7 +7,7 @@ from zipfile import ZipFile
 import pytest
 
 from dbpm import cli
-from dbpm.db import ApplicationState, DeploymentMetadata, SqlResult
+from dbpm.db import ApplicationState, DeploymentMetadata, OperationRecord, SqlResult
 from dbpm.registry import RegistryResolution, RegistrySource
 
 
@@ -3248,3 +3248,121 @@ def test_uninstall_full_cascade_retains_application_runtime_for_teardown(
     assert {item["package"]["application_name"] for item in plan["packages"]} == {"ROOT", "PKG_A"}
     assert plan["application_runtime"] is not None
     assert plan["application_runtime"]["effects"]["operation"] == "uninstall"
+
+
+def test_uninstall_runtime_less_application_does_not_require_runtime_prefix(
+    tmp_path: Path, monkeypatch
+):
+    receipt = _lifecycle_plan(
+        [_lifecycle_package_plan("ROOT", reason="APPLICATION_ROOT")],
+        root_app="ROOT",
+        application_runtime=None,
+    )
+    monkeypatch.setattr(cli, "load_lifecycle_receipt", lambda **kwargs: receipt)
+    monkeypatch.setattr(cli, "_get_installed_state", lambda args, app: None)
+    monkeypatch.setattr(cli, "_get_reverse_dependencies", lambda args, app: [])
+
+    args = cli._build_parser().parse_args(
+        [
+            "uninstall",
+            "--application",
+            "ROOT",
+            "--cascade",
+            "unused",
+            "--allow-destructive",
+        ]
+    )
+    plan = cli._build_installed_uninstall_plan(args)
+
+    assert {item["package"]["application_name"] for item in plan["packages"]} == {"ROOT"}
+    assert plan.get("application_runtime") is None
+
+
+def _resume_lifecycle_package_plan(app_name: str, *, reason: str) -> dict[str, object]:
+    return {
+        "package": {"name": app_name.lower(), "application_name": app_name, "version": "1.0.0"},
+        "installation_reason": reason,
+        "lifecycle": {
+            "install": {"path": f"{app_name}/install.sql", "ref": f"/store/{app_name}/install.sql"}
+        },
+    }
+
+
+def test_resume_recovers_multi_package_plan_when_root_never_started(tmp_path: Path, monkeypatch):
+    # DEP_A completed, DEP_B is mid-deploy (failed), and ROOT -- deployed
+    # last -- never got a row in APPLICATION at all. Resuming should not be
+    # rejected outright just because ROOT's state is None; ROOT has simply
+    # not been attempted yet.
+    receipt = _lifecycle_plan(
+        [
+            _resume_lifecycle_package_plan("DEP_A", reason="AUTO_DEPENDENCY"),
+            _resume_lifecycle_package_plan("DEP_B", reason="AUTO_DEPENDENCY"),
+            _resume_lifecycle_package_plan("ROOT", reason="APPLICATION_ROOT"),
+        ],
+        root_app="ROOT",
+    )
+    monkeypatch.setattr(cli, "load_lifecycle_receipt", lambda **kwargs: receipt)
+    monkeypatch.setattr(
+        cli,
+        "get_current_operation",
+        lambda **kwargs: OperationRecord(
+            operation_id="op-1",
+            application_name="ROOT",
+            mode="install",
+            state="RUNNING",
+            attempt_number=1,
+            lease_token=None,
+            lease_expiry=None,
+        ),
+    )
+    states = {
+        "DEP_A": {"application_name": "DEP_A", "version": "1.0.0", "deploy_status": "C"},
+        "DEP_B": {"application_name": "DEP_B", "version": "1.0.0", "deploy_status": "R"},
+        "ROOT": None,
+    }
+    monkeypatch.setattr(cli, "_get_installed_state", lambda args, app: states.get(app))
+
+    args = cli._build_parser().parse_args(
+        [
+            "resume", "--application", "ROOT", "--runtime-prefix", str(tmp_path),
+            "--connect", "user/pass@db",
+        ]
+    )
+    plan = cli._build_installed_resume_plan(args)
+
+    by_app = {item["package"]["application_name"]: item for item in plan["packages"]}
+    assert by_app["DEP_A"]["mode"] == "resume"
+    assert by_app["DEP_B"]["mode"] == "resume"
+    assert by_app["ROOT"]["mode"] == "install"
+    assert by_app["ROOT"]["installed_state"] is None
+
+    for item in plan["packages"]:
+        cli._enforce_installed_state(item)
+
+
+def test_uninstall_runtime_bearing_application_still_requires_runtime_prefix(
+    tmp_path: Path, monkeypatch
+):
+    runtime_graph = {"receipt_backed": True, "payloads": [], "commands": [], "effects": {}}
+    receipt = _lifecycle_plan(
+        [_lifecycle_package_plan("ROOT", reason="APPLICATION_ROOT")],
+        root_app="ROOT",
+        application_runtime=runtime_graph,
+    )
+    monkeypatch.setattr(cli, "load_lifecycle_receipt", lambda **kwargs: receipt)
+    monkeypatch.setattr(cli, "_get_installed_state", lambda args, app: None)
+    monkeypatch.setattr(cli, "_get_reverse_dependencies", lambda args, app: [])
+
+    args = cli._build_parser().parse_args(
+        [
+            "uninstall",
+            "--application",
+            "ROOT",
+            "--cascade",
+            "unused",
+            "--allow-destructive",
+        ]
+    )
+
+    with pytest.raises(cli.DbpmError, match="Application runtime requires --runtime-prefix"):
+        cli._build_installed_uninstall_plan(args)
