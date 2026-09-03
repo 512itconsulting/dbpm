@@ -3250,6 +3250,108 @@ def test_uninstall_full_cascade_retains_application_runtime_for_teardown(
     assert plan["application_runtime"]["effects"]["operation"] == "uninstall"
 
 
+def _skip_runtime_args(*extra: str) -> object:
+    return cli._build_parser().parse_args(["install", "--skip-runtime", *extra])
+
+
+def test_apply_skip_runtime_is_noop_when_flag_not_set():
+    plan = {"application_runtime": {"receipt_backed": True}, "policy": {"policy_context": {"deployment_locked": False}}}
+    args = cli._build_parser().parse_args(["install"])
+
+    cli._apply_skip_runtime(plan, args)
+
+    assert plan["application_runtime"] == {"receipt_backed": True}
+
+
+def test_apply_skip_runtime_is_noop_when_plan_has_no_runtime():
+    plan = {"application_runtime": None, "policy": {"policy_context": {"deployment_locked": True}}}
+    args = _skip_runtime_args()
+
+    cli._apply_skip_runtime(plan, args)
+
+    assert plan["application_runtime"] is None
+
+
+def test_apply_skip_runtime_nulls_runtime_when_unlocked(capsys):
+    plan = {
+        "application_runtime": {"receipt_backed": True},
+        "policy": {"policy_context": {"deployment_locked": False}},
+    }
+    args = _skip_runtime_args()
+
+    cli._apply_skip_runtime(plan, args)
+
+    assert plan["application_runtime"] is None
+    assert "Skipping application runtime staging/activation" in capsys.readouterr().err
+
+
+def test_apply_skip_runtime_reads_policy_from_first_child_for_multi_package_plan():
+    plan = {
+        "application_runtime": {"receipt_backed": True},
+        "packages": [
+            {"policy": {"policy_context": {"deployment_locked": False}}},
+            {"policy": {"policy_context": {"deployment_locked": True}}},
+        ],
+    }
+    args = _skip_runtime_args()
+
+    cli._apply_skip_runtime(plan, args)
+
+    assert plan["application_runtime"] is None
+
+
+def test_apply_skip_runtime_blocked_when_core_deploy_locked():
+    plan = {
+        "application_runtime": {"receipt_backed": True},
+        "policy": {"policy_context": {"deployment_locked": True}},
+    }
+    args = _skip_runtime_args()
+
+    with pytest.raises(cli.DbpmError, match="--skip-runtime requires DEPLOY_LOCKED=N"):
+        cli._apply_skip_runtime(plan, args)
+
+    assert plan["application_runtime"] == {"receipt_backed": True}
+
+
+def test_install_dry_run_with_skip_runtime_nulls_plan_runtime(tmp_path: Path, monkeypatch, capsys):
+    package = tmp_path / "package"
+    _write_package(package)
+
+    real_build_plan = cli._build_plan
+
+    def fake_build_plan(command, args, **kwargs):
+        plan = real_build_plan(command, args, **kwargs)
+        plan["application_runtime"] = {"receipt_backed": True}
+        plan["policy"] = {"policy_context": {"deployment_locked": False}}
+        return plan
+
+    monkeypatch.setattr(cli, "_build_plan", fake_build_plan)
+
+    assert cli.main(["install", str(package), "--skip-runtime", "--dry-run"]) == 0
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["application_runtime"] is None
+
+
+def test_install_with_skip_runtime_blocked_when_core_deploy_locked(tmp_path: Path, monkeypatch, capsys):
+    package = tmp_path / "package"
+    _write_package(package)
+
+    real_build_plan = cli._build_plan
+
+    def fake_build_plan(command, args, **kwargs):
+        plan = real_build_plan(command, args, **kwargs)
+        plan["application_runtime"] = {"receipt_backed": True}
+        plan["policy"] = {"policy_context": {"deployment_locked": True}}
+        return plan
+
+    monkeypatch.setattr(cli, "_build_plan", fake_build_plan)
+
+    assert cli.main(["install", str(package), "--skip-runtime", "--dry-run"]) == 2
+
+    assert "--skip-runtime requires DEPLOY_LOCKED=N" in capsys.readouterr().err
+
+
 def test_uninstall_runtime_less_application_does_not_require_runtime_prefix(
     tmp_path: Path, monkeypatch
 ):

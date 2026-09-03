@@ -239,6 +239,8 @@ def main(argv: list[str] | None = None) -> int:
                     include_installed_state=include_installed,
                     show_progress=not args.dry_run and getattr(args, "verbose", False),
                 )
+            if args.command in {"install", "upgrade", "reinstall", "resume", "uninstall"}:
+                _apply_skip_runtime(plan, args)
             if args.command == "reinstall":
                 if _has_database_access(args):
                     _attach_target_identity(plan, args)
@@ -523,6 +525,7 @@ def _build_parser() -> argparse.ArgumentParser:
         const=LOCKFILE_NAME,
         help=f"Install from a resolved lockfile, default when no value is provided: {LOCKFILE_NAME}",
     )
+    _add_skip_runtime_arg(install)
 
     upgrade = subparsers.add_parser("upgrade", help="Upgrade an installed package to a new version")
     _add_common_args(upgrade)
@@ -533,6 +536,7 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Allow major upgrade even when installed dependents may have incompatible constraints",
     )
+    _add_skip_runtime_arg(upgrade)
 
     reinstall = subparsers.add_parser("reinstall", help="Destructively reinstall a package")
     _add_common_args(reinstall)
@@ -552,11 +556,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--confirm-delete-system",
         help="Required for Core reinstall; must be CORE",
     )
+    _add_skip_runtime_arg(reinstall)
 
     resume = subparsers.add_parser("resume", help="Resume a running or failed deployment")
     _add_common_args(resume, source_required=False)
     _add_execution_args(resume)
     resume.add_argument("--application", help="Installed application operation to resume")
+    _add_skip_runtime_arg(resume)
 
     validate = subparsers.add_parser("validate", help="Run a package validation script")
     _add_common_args(validate)
@@ -581,6 +587,7 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=("unused", "graph"),
         help="Remove unused automatic dependencies; graph requires DBPM_ALLOW_GRAPH_RESET",
     )
+    _add_skip_runtime_arg(uninstall)
 
     rollback = subparsers.add_parser(
         "rollback",
@@ -793,6 +800,17 @@ def _add_execution_args(parser: argparse.ArgumentParser) -> None:
         help="Application-level target prefix for the complete runtime dependency graph",
     )
     _add_database_args(parser)
+
+
+def _add_skip_runtime_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--skip-runtime",
+        action="store_true",
+        help=(
+            "Opt out of application runtime staging/activation for this invocation; "
+            "only the database component is deployed. Requires DEPLOY_LOCKED=N."
+        ),
+    )
 
 
 def _add_dependency_source_args(parser: argparse.ArgumentParser) -> None:
@@ -1010,6 +1028,25 @@ def _attach_target_identity(plan: dict[str, object], args: argparse.Namespace) -
         "schema": identity.schema_name,
         "core_environment": context.get("deploy_environment") if isinstance(context, dict) else None,
     }
+
+
+def _apply_skip_runtime(plan: dict[str, object], args: argparse.Namespace) -> None:
+    if not getattr(args, "skip_runtime", False):
+        return
+    if plan.get("application_runtime") is None:
+        return
+    policy = plan.get("policy")
+    packages = plan.get("packages")
+    if not isinstance(policy, dict) and isinstance(packages, list) and packages:
+        first = packages[0]
+        policy = first.get("policy") if isinstance(first, dict) else None
+    context = policy.get("policy_context") if isinstance(policy, dict) else None
+    if isinstance(context, dict) and context.get("deployment_locked"):
+        raise DbpmError(
+            "--skip-runtime requires DEPLOY_LOCKED=N; the target Core environment is locked"
+        )
+    plan["application_runtime"] = None
+    report_progress("Skipping application runtime staging/activation (--skip-runtime)")
 
 
 def _consumer_first_order(
