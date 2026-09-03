@@ -1349,7 +1349,14 @@ def _build_installed_resume_plan(
         updated = dict(item)
         lifecycle = updated.get("lifecycle")
         install = lifecycle.get("install") if isinstance(lifecycle, dict) else None
-        updated["mode"] = "resume"
+        app = updated.get("package")
+        app_name = app.get("application_name") if isinstance(app, dict) else None
+        fresh_state = _get_installed_state(args, str(app_name))
+        # A package the composite operation has not reached yet (no APPLICATION
+        # row) has nothing to resume; treat it like a fresh install instead of
+        # rejecting the whole resume, since get_current_operation() above
+        # already confirmed a recoverable operation exists for the plan.
+        updated["mode"] = "resume" if fresh_state is not None else "install"
         updated["policy"] = environment.evaluate("resume", dirty=False, approve=args.approve)
         updated["execution"] = {
             "script": install.get("path") if isinstance(install, dict) else None,
@@ -1357,9 +1364,7 @@ def _build_installed_resume_plan(
             "arguments": list(updated.get("execution", {}).get("arguments", [])),
             "stdin": None,
         }
-        app = updated.get("package")
-        app_name = app.get("application_name") if isinstance(app, dict) else None
-        updated["installed_state"] = _get_installed_state(args, str(app_name))
+        updated["installed_state"] = fresh_state
         updated["operation_resume"] = True
         updated_plans.append(updated)
     result["mode"] = "resume"
